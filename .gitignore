@@ -1,0 +1,36 @@
+node_modules/
+.DS_Store
+dist/
+build/
+*.log
+
+# Sentinel runtime
+.sentinel/cache/
+.sentinel/update.log
+reports/
+
+# IDE / Editor configs (local only, not part of Sentinel)
+.vscode/
+.idea/
+.kiro/
+
+# Local dev notes (not Sentinel documentation)
+AGENTS.md
+DEBUG-AUDIT.md
+
+# TypeScript build cache
+tsconfig.tsbuildinfo
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Sentinel 敏感配置（LLM 真实 key 不入库）
+.sentinel/llm.yml
+.sentinel/llm.local.yml
+**/.sentinel/llm.yml
+**/.sentinel/llm.local.yml
+
+# OS
+Thumbs.db

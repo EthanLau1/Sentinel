@@ -1,0 +1,27 @@
+{
+  "name": "@sentinel/cli",
+  "version": "0.1.0-m8",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "sentinel": "./dist/index.js"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./run": "./dist/run.js",
+    "./doctor": "./dist/doctor.js",
+    "./map": "./dist/map.js",
+    "./hello": "./dist/hello.js",
+    "./init": "./dist/init.js",
+    "./ui": "./dist/ui.js",
+    "./config": "./dist/config.js"
+  },
+  "dependencies": {
+    "@sentinel/core": "workspace:*",
+    "@sentinel/providers": "workspace:*",
+    "@sentinel/adapters": "workspace:*",
+    "@sentinel/subagents": "workspace:*",
+    "@sentinel/reporters": "workspace:*"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  "references": [
+    { "path": "../core" },
+    { "path": "../providers" },
+    { "path": "../adapters" },
+    { "path": "../subagents" },
+    { "path": "../reporters" }
+  ],
+  "include": ["src/**/*"]
+}

@@ -1,0 +1,14 @@
+{
+  "project": {
+    "name": "sentinel",
+    "stack": [],
+    "frameworks": [],
+    "runtime": "bun",
+    "packageManager": "bun"
+  },
+  "pages": [],
+  "api": [],
+  "data": [],
+  "flows": [],
+  "risks": []
+}

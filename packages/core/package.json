@@ -1,0 +1,23 @@
+{
+  "name": "@sentinel/core",
+  "version": "0.1.0-m0",
+  "description": "Sentinel core: types, ports, bus, kernel, budget. ≤500 lines, 0 dependencies.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./types": "./dist/types.js",
+    "./ports": "./dist/ports.js",
+    "./bus": "./dist/bus.js",
+    "./kernel": "./dist/kernel.js",
+    "./budget": "./dist/budget.js"
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run --project core"
+  },
+  "dependencies": {}
+}

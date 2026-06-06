@@ -1,0 +1,29 @@
+{
+  "id": "2026-05-22-003",
+  "project": "sentinel-self",
+  "feature": "subagents.planner.event_routing",
+  "stage": "MVP",
+  "symptom": "Vitest worker exits unexpectedly with V8 heap exhaustion when running integration test for planner subagent",
+  "realRootCause": "Planner subagent subscribes to bug.confirmed AND publishes bug.confirmed → infinite event loop. Bus has no cycle detection.",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "事件循环：subagent 订阅与发布同一个 event type → 无限递归 → V8 OOM",
+    "confidence": 0.96,
+    "evidenceCount": 2,
+    "evidenceKinds": ["test-failure", "v8-heap-trace"]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "planner_use_distinct_event_v1",
+    "title": "把后续 bug 数据放进 fix.proposed payload (含 bug + options)，不再发 bug.confirmed",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.88
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "notes": "M0+M4-M5 期间通过集成测试发现。修复后该 case 也作为 'event-loop 防御' 的 critic 训练样本。",
+  "createdAt": "2026-05-23T07:50:00Z",
+  "sentinelVersion": "0.1.0-m9rc"
+}

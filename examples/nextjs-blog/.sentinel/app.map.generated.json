@@ -1,0 +1,93 @@
+{
+  "project": {
+    "name": "nextjs-blog-demo",
+    "stack": [
+      "next@^15.0.0"
+    ],
+    "frameworks": [
+      "nextjs",
+      "react",
+      "prisma"
+    ],
+    "runtime": "node",
+    "packageManager": "npm"
+  },
+  "pages": [
+    {
+      "id": "page_0",
+      "path": "/posts",
+      "requiresAuth": false,
+      "criticalCTAs": []
+    },
+    {
+      "id": "page_2",
+      "path": "/",
+      "requiresAuth": false,
+      "criticalCTAs": []
+    }
+  ],
+  "api": [
+    {
+      "id": "api_1",
+      "method": "GET",
+      "path": "/api/posts",
+      "requiresAuth": false
+    }
+  ],
+  "data": [
+    {
+      "id": "data_0",
+      "kind": "table",
+      "name": "User"
+    },
+    {
+      "id": "data_1",
+      "kind": "table",
+      "name": "Post"
+    }
+  ],
+  "flows": [
+    {
+      "id": "flow_page_0",
+      "description": "Visit page /posts and verify loads",
+      "steps": [
+        {
+          "action": "visit",
+          "url": "/posts"
+        },
+        {
+          "action": "wait",
+          "ms": 1500
+        }
+      ]
+    },
+    {
+      "id": "flow_page_1",
+      "description": "Visit page / and verify loads",
+      "steps": [
+        {
+          "action": "visit",
+          "url": "/"
+        },
+        {
+          "action": "wait",
+          "ms": 1500
+        }
+      ]
+    },
+    {
+      "id": "flow_api_2",
+      "description": "GET /api/posts should not return 5xx",
+      "steps": [
+        {
+          "action": "assert",
+          "kind": "api",
+          "method": "GET",
+          "path": "/api/posts",
+          "expectStatus": "not_5xx"
+        }
+      ]
+    }
+  ],
+  "risks": []
+}

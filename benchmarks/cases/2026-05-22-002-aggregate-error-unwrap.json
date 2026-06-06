@@ -1,0 +1,29 @@
+{
+  "id": "2026-05-22-002",
+  "project": "sentinel-self",
+  "feature": "core.kernel.budget_handling",
+  "stage": "MVP",
+  "symptom": "handler 内 throw BudgetExceededError 时，kernel 没识别为预算错误",
+  "realRootCause": "Bus.publish 把 handler 错误包成 AggregateError，Kernel 用 instanceof 判断对包装后的错误失效",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "AggregateError 包装层未拆解",
+    "confidence": 0.92,
+    "evidenceCount": 1,
+    "evidenceKinds": ["test-failure"]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "kernel_unwrap_aggregate_v1",
+    "title": "新增 findBudgetError() 私有方法识别 BudgetExceededError 和 AggregateError 包装两种情况",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.82
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "notes": "M0 期间通过 TDD 发现并修复，作为 Sentinel 自反 case 第 2 条。",
+  "createdAt": "2026-05-22T13:50:00Z",
+  "sentinelVersion": "0.1.0-m0"
+}

@@ -1,0 +1,15 @@
+# Sentinel 预算配置
+stage: MVP
+
+limits:
+  maxCostUsdPerRun: 0.50
+  maxTokensPerRun: 100000
+  maxDurationSecPerRun: 300
+
+# 可选：自定义权重（默认沿用 stage 对应预设）
+# weights:
+#   confidence: 0.35
+#   impact: 0.25
+#   stageFit: 0.20
+#   effort: -0.10
+#   risk: -0.10

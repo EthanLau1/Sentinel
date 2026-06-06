@@ -1,0 +1,32 @@
+{
+  "name": "@sentinel/providers",
+  "version": "0.1.0-m1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./llm/openai-compatible": "./dist/llm/openai-compatible.js",
+    "./llm/ollama-native": "./dist/llm/ollama-native.js",
+    "./memory/none": "./dist/memory/none.js",
+    "./memory/files": "./dist/memory/files.js",
+    "./skills/markdown": "./dist/skills/markdown.js",
+    "./mcp/registry": "./dist/mcp/registry.js",
+    "./mcp/built-in/http": "./dist/mcp/built-in/http.js",
+    "./mcp/built-in/browser": "./dist/mcp/built-in/browser.js",
+    "./mcp/built-in/fs": "./dist/mcp/built-in/fs.js",
+    "./knowledge/docs": "./dist/knowledge/docs.js",
+    "./knowledge/github": "./dist/knowledge/github.js",
+    "./knowledge/stackoverflow": "./dist/knowledge/stackoverflow.js",
+    "./knowledge/x": "./dist/knowledge/x.js"
+  },
+  "dependencies": {
+    "@sentinel/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "playwright": "*"
+  },
+  "peerDependenciesMeta": {
+    "playwright": { "optional": true }
+  }
+}

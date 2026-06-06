@@ -1,0 +1,17 @@
+# Sentinel LLM 配置 — 示例模板
+# 真实配置请复制本文件为 llm.yml（已加入 .gitignore），
+# 或直接通过环境变量 MINIMAX_API_KEY 注入 key，不要把真实 key 提交进 git。
+
+default: minimax
+
+providers:
+  minimax:
+    type: openai-compatible
+    baseUrl: https://api.minimaxi.com/v1
+    apiKey: ${MINIMAX_API_KEY}  # 从环境变量读取
+    model: MiniMax-M3
+
+  local-fast:
+    type: ollama-native
+    baseUrl: http://localhost:11434
+    model: qwen3:7b

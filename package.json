@@ -1,0 +1,30 @@
+{
+  "name": "sentinel",
+  "version": "0.1.0-m9rc",
+  "private": true,
+  "description": "Universal Debug Agent for modern web LLM apps",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": ["packages/*", "sentinel-ui"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -b --pretty && npm --workspace sentinel-ui run build",
+    "lint": "npm --workspace sentinel-ui run lint && bun run lint:core && bun run lint:lines",
+    "typecheck": "tsc -b --pretty",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "bun scripts/run-end-to-end.mjs",
+    "lint:core": "node scripts/check-core-purity.mjs",
+    "lint:lines": "node scripts/check-core-lines.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@vitest/coverage-v8": "^2.1.5",
+    "playwright": "^1.60.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

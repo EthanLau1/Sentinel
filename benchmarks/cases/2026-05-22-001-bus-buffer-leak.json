@@ -1,0 +1,29 @@
+{
+  "id": "2026-05-22-001",
+  "project": "sentinel-self",
+  "feature": "core.bus.recording",
+  "stage": "MVP",
+  "symptom": "Bus.stopRecording 第二次调用返回前一次的事件",
+  "realRootCause": "stopRecording 只置 recording=false，未清空 recorded 数组，导致下次 startRecording → publish → stopRecording 时拿到旧数据",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "内存泄漏：buffer 未在 stop 时清理",
+    "confidence": 0.95,
+    "evidenceCount": 1,
+    "evidenceKinds": ["test-failure"]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "bus_clear_buffer_v1",
+    "title": "stopRecording 内 const events = [...recorded]; recorded = []; return events;",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.85
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "notes": "M0 期间通过 TDD 发现并修复，作为 Sentinel 自反 case 第 1 条。",
+  "createdAt": "2026-05-22T13:45:00Z",
+  "sentinelVersion": "0.1.0-m0"
+}
