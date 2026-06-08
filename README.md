@@ -14,23 +14,25 @@ Autonomous debug agent for web apps. Scans your project, runs user flows with Pl
 # Install
 cd Sentinel && bun install
 
-# Demo (no LLM key needed) — outputs 3 hardcoded sample reports
-bun packages/cli/src/index.ts run --demo
+# One-click launch (macOS: double-click start.command)
+./start.command
+# → builds UI, opens http://127.0.0.1:4317
 
-# Web UI
+# Or manually:
 bun packages/cli/src/index.ts ui
-# → http://127.0.0.1:4317
 ```
 
-For real bug detection, configure an LLM provider and ensure your target app's dev server is running:
+```bash
+# Demo (no LLM key needed) — outputs 3 hardcoded sample reports
+bun packages/cli/src/index.ts run --demo
+```
+
+For real bug detection, configure an LLM provider then run:
 
 ```bash
-# Initialize target project
-bun packages/cli/src/index.ts init --project=/path/to/your-app
+# Edit .sentinel/llm.yml in your target project (see "LLM Configuration" below)
+# Sentinel auto-initializes projects and detects running dev servers.
 
-# Edit .sentinel/llm.yml (see "LLM Configuration" below)
-
-# Start your app's dev server in another terminal, then:
 bun packages/cli/src/index.ts run --project=/path/to/your-app
 ```
 
