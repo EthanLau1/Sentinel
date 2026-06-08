@@ -299,10 +299,12 @@ async function runProjectStream(projectPath: string, res: ServerResponse): Promi
   const entry = join(repo, 'packages', 'cli', isTs ? 'src/index.ts' : 'dist/index.js');
   const hasLlmConfig = existsSync(join(projectPath, '.sentinel', 'llm.yml'));
   if (!hasLlmConfig) {
-    send({ step: 1, message: 'No .sentinel/llm.yml found. Running no-key demo mode.' });
+    send({ step: 1, message: 'No .sentinel/llm.yml found. Auto-initializing project...' });
   }
   const args = [entry, 'run', `--project=${projectPath}`];
-  if (!hasLlmConfig) args.push('--demo');
+  if (!hasLlmConfig && !existsSync(join(projectPath, '.sentinel'))) {
+    // auto-init will handle this inside the run command now
+  }
   const child = spawn(process.execPath, args, {
     cwd: repo,
     env: process.env,
@@ -542,11 +544,52 @@ export async function runUi(): Promise<number> {
       return;
     }
 
-    // POST /api/settings — persist provider settings (best-effort)
+    // POST /api/settings — persist LLM provider settings
     if (method === 'POST' && pathname === '/api/settings') {
-      await readRequestBody(req);
-      // Settings persistence is a future feature; acknowledge receipt
-      writeJson(res, 200, { ok: true, note: 'Settings received. Persistent storage coming in a future release.' });
+      try {
+        const body = await readRequestBody(req);
+        const payload = JSON.parse(body || '{}') as {
+          providerName?: string;
+          type?: string;
+          baseUrl?: string;
+          apiKey?: string;
+          model?: string;
+          projectId?: string;
+        };
+
+        const providerName = payload.providerName?.trim() || 'default-provider';
+        const type = payload.type || 'openai-compatible';
+        const baseUrl = payload.baseUrl?.trim() || '';
+        const model = payload.model?.trim() || '';
+        const apiKey = payload.apiKey?.trim() || '';
+
+        // Build llm.yml content
+        let yml = `default: ${providerName}\n\nproviders:\n`;
+        yml += `  ${providerName}:\n`;
+        yml += `    type: ${type}\n`;
+        if (baseUrl) yml += `    baseUrl: ${baseUrl}\n`;
+        if (apiKey) yml += `    apiKey: ${apiKey}\n`;
+        if (model) yml += `    model: ${model}\n`;
+
+        // Write to global ~/.sentinel/llm.yml
+        const globalDir = join(homedir(), '.sentinel');
+        await mkdir(globalDir, { recursive: true });
+        await writeFile(join(globalDir, 'llm.yml'), yml, 'utf8');
+
+        // Write to selected project if provided
+        if (payload.projectId) {
+          const p = byId.get(payload.projectId);
+          if (p) {
+            const projectSentinelDir = join(p.path, '.sentinel');
+            await mkdir(projectSentinelDir, { recursive: true });
+            await writeFile(join(projectSentinelDir, 'llm.yml'), yml, 'utf8');
+          }
+        }
+
+        writeJson(res, 200, { ok: true, saved: true, global: join(globalDir, 'llm.yml') });
+      } catch (err) {
+        writeJson(res, 400, { ok: false, error: (err as Error).message });
+      }
       return;
     }
 

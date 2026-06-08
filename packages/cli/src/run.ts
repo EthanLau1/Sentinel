@@ -46,6 +46,8 @@ import {
 } from '@sentinel/reporters';
 import { loadBudgetConfig, loadLlmConfig, projectRoot } from './config.js';
 import { demoBugs } from './demo.js';
+import { autoInit } from './auto-init.js';
+import { startDevServer, type DevServerHandle } from './dev-server.js';
 
 export interface RunOptions {
   detailed?: boolean;
@@ -101,17 +103,25 @@ export async function runRun(): Promise<number> {
     return 0;
   }
 
-  // 1. 加载配置
+  // 1. 自动初始化（如果需要）
+  await autoInit(root);
+
+  // 2. 加载配置
   const llmCfg = await loadLlmConfig(root);
   if (!llmCfg) {
-    console.error(color.red('✗ .sentinel/llm.yml not found. Run sentinel init.'));
+    console.error(color.red('✗ .sentinel/llm.yml not found after init. Please configure LLM provider.'));
+    console.error(color.dim('  Open Sentinel WebUI to configure: sentinel ui'));
     return 1;
   }
   const budgetCfg = await loadBudgetConfig(root);
   const stage = budgetCfg.stage;
   const weights = budgetCfg.weights ?? PRESETS[stage.toLowerCase() as keyof typeof PRESETS] ?? DEFAULT_WEIGHTS;
 
-  // 2. 构建 providers
+  // 3. 自动启动 dev server（如果需要）
+  let devServer: DevServerHandle | null = null;
+  devServer = await startDevServer(root);
+
+  // 4. 构建 providers
   const llm = buildLlm(llmCfg);
   const memory = createNoneMemory();
   const skills = createMarkdownSkills({ root: join(root, '.sentinel/skills') });
@@ -199,6 +209,12 @@ export async function runRun(): Promise<number> {
   console.log('');
   console.log(color.dim(`tokens: ${usage.tokens}  cost: $${usage.usd.toFixed(4)}  duration: ${dur}ms`));
   console.log(color.dim(`reports/sentinel-latest.{md,json}`));
+
+  // 9. 关闭 dev server（如果是我们启动的）
+  if (devServer) {
+    devServer.stop();
+    console.log(color.dim('   Dev server stopped.'));
+  }
 
   return bugs.some((b) => b.severity === 'P0' || b.severity === 'P1') ? 1 : 0;
 }
