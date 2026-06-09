@@ -47,7 +47,7 @@ For power users who prefer the terminal:
 |---------|-------------|
 | `sentinel ui` | Launch Web Console |
 | `sentinel run --project=/path` | Full debug pipeline |
-| `sentinel run --demo` | Sample reports (no LLM key needed) |
+| `sentinel run --demo` | 3 hardcoded sample reports (no LLM key, no real bug detection) |
 | `sentinel run --tier 0` | Report only, no patches |
 | `sentinel map --project=/path` | Generate FeatureMap only |
 | `sentinel doctor` | Check environment & config |
@@ -113,9 +113,9 @@ Sentinel/
 │   ├── core/           Microkernel (Bus / Budget / Kernel)
 │   ├── subagents/      8 agents (mapper/sensor/runner/analyst/critic/planner/enhancer/executor)
 │   ├── adapters/       13 framework detectors
-│   ├── providers/      LLM / MCP / Knowledge providers
-│   ├── reporters/      Markdown + JSON report generators
-│   ├── sensors/        Evidence collection
+│   ├── providers/      LLM / Memory / Skills / MCP / Knowledge providers
+│   ├── reporters/      Markdown + JSON report generators + CLI printer
+│   ├── sensors/        Evidence types + dedupe helpers (sensor agent lives in subagents)
 │   └── cli/            CLI entry point
 ├── sentinel-ui/        React 19 + Vite Web Console
 ├── examples/           nextjs-blog sample project
