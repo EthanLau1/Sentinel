@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react';
 import { useApp } from '../context/AppState';
 import { apiClient } from '../api/client';
-import { Play, Square, Loader, CheckCircle, Terminal, ShieldAlert } from 'lucide-react';
+import { Play, Square, Loader, CheckCircle, Terminal, FolderPlus } from 'lucide-react';
 
 export function RunCenter() {
-  const { state, navigate } = useApp();
+  const { state, setProjects, selectProject } = useApp();
   const project = state.projects.find(p => p.id === state.selectedProjectId);
 
   const [isRunning, setIsRunning] = useState(false);
@@ -13,14 +13,42 @@ export function RunCenter() {
   const [logs, setLogs] = useState<{ time: string; msg: string }[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
+  const handleAddProject = async (): Promise<void> => {
+    try {
+      // Call backend to open macOS system folder picker
+      const res = await fetch('/api/pick-folder');
+      const data = await res.json() as { ok: boolean; path?: string; cancelled?: boolean; error?: string };
+
+      if (data.cancelled || !data.ok) return;
+      if (!data.path) return;
+
+      const path = data.path;
+      const suggestedName = path.split('/').filter(Boolean).at(-1) ?? 'project';
+      const nameInput = window.prompt('Give it a short name (optional):', suggestedName);
+      const name = nameInput?.trim() ? nameInput.trim() : undefined;
+
+      const created = await apiClient.addProject(path, name);
+      const projects = await apiClient.getProjects();
+      setProjects(projects);
+      selectProject(created.id);
+    } catch (err) {
+      window.alert(`Failed to add project: ${String(err)}`);
+    }
+  };
+
   if (!project) {
     return (
       <div className="flex items-center justify-center h-full text-muted">
         <div className="text-center">
-          <ShieldAlert size={48} className="mx-auto mb-4 opacity-20" />
-          <p className="mb-4">Select a project from the sidebar to run a debug session.</p>
-          <button onClick={() => navigate('settings')} className="btn btn-secondary">
-            Check Setup
+          <FolderPlus size={48} className="mx-auto mb-4 opacity-40" style={{ color: 'var(--accent-blue)' }} />
+          <p className="mb-2" style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            Add a project to debug
+          </p>
+          <p className="mb-6" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            Select your web project folder, then click Run Debug.
+          </p>
+          <button onClick={handleAddProject} className="btn btn-primary">
+            <FolderPlus size={16} /> Add Project
           </button>
         </div>
       </div>
@@ -80,9 +108,6 @@ export function RunCenter() {
           <p className="text-secondary text-sm">Execute diagnostic and mapping commands for <strong>{project.name}</strong>.</p>
         </div>
         <div className="flex gap-2">
-          <button className="btn btn-secondary" onClick={() => navigate('settings')}>
-            Check Setup
-          </button>
           <button
             className="btn btn-secondary"
             onClick={() => runFlow('scan')}

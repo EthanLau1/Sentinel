@@ -1,6 +1,6 @@
 {
   "name": "sentinel",
-  "version": "0.1.0-m9rc",
+  "version": "0.2.0",
   "private": true,
   "description": "Universal Debug Agent for modern web LLM apps",
   "license": "MIT",
@@ -18,7 +18,10 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "bun scripts/run-end-to-end.mjs",
     "lint:core": "node scripts/check-core-purity.mjs",
-    "lint:lines": "node scripts/check-core-lines.mjs"
+    "lint:lines": "node scripts/check-core-lines.mjs",
+    "sentinel:run": "bun packages/cli/src/index.ts run",
+    "sentinel:ui": "bun packages/cli/src/index.ts ui",
+    "sentinel:init": "bun packages/cli/src/index.ts init"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

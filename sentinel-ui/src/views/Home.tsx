@@ -1,5 +1,5 @@
 import { useApp } from '../context/AppState';
-import { Settings, Radar, Bug, FileText, Zap, ArrowRight, Shield, AlertTriangle, Info } from 'lucide-react';
+import { Settings, Radar, Bug, FileText, Zap, ArrowRight, Shield, Info } from 'lucide-react';
 
 export function Home() {
   const { navigate, state } = useApp();
@@ -81,23 +81,23 @@ export function Home() {
         </p>
       </div>
 
-      {/* Prerequisite Notice */}
+      {/* Auto Dev Server Notice */}
       <div
         className="card mb-5 flex items-start gap-3"
         style={{
           padding: '0.875rem 1rem',
-          borderColor: 'var(--accent-yellow)',
+          borderColor: 'var(--accent-green)',
           borderLeftWidth: '3px',
         }}
       >
-        <AlertTriangle size={16} style={{ color: 'var(--accent-yellow)', flexShrink: 0, marginTop: '2px' }} />
+        <Zap size={16} style={{ color: 'var(--accent-green)', flexShrink: 0, marginTop: '2px' }} />
         <div>
-          <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-yellow)', marginBottom: '0.25rem' }}>
-            使用前提
+          <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-green)', marginBottom: '0.25rem' }}>
+            自动化
           </p>
           <p style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-            目标项目的 dev server 必须正在运行（<code style={{ padding: '1px 3px', background: 'var(--bg-surface-elevated)', borderRadius: '3px', fontSize: '0.625rem' }}>npm run dev</code>），
-            否则 Runner 无法访问页面和 API 端点，只能做静态分析。
+            Sentinel 会自动检测并启动目标项目的 dev server（读取 package.json 里的 dev/start 脚本）。
+            如果 dev server 已在运行，Sentinel 会自动使用它。无需手动操作。
           </p>
         </div>
       </div>

@@ -544,6 +544,70 @@ export async function runUi(): Promise<number> {
       return;
     }
 
+    // GET /api/pick-folder — open macOS system folder picker via AppleScript
+    if (method === 'GET' && pathname === '/api/pick-folder') {
+      try {
+        const { execFile } = await import('node:child_process');
+        const { promisify } = await import('node:util');
+        const execFileAsync = promisify(execFile);
+        const { stdout } = await execFileAsync('osascript', [
+          '-e',
+          'POSIX path of (choose folder with prompt "Select your web project folder:")',
+        ]);
+        const folderPath = stdout.trim();
+        writeJson(res, 200, { ok: true, path: folderPath });
+      } catch (err) {
+        // User cancelled or AppleScript not available
+        const msg = (err as Error).message ?? '';
+        if (msg.includes('cancel') || msg.includes('-128')) {
+          writeJson(res, 200, { ok: false, cancelled: true });
+        } else {
+          writeJson(res, 200, { ok: false, error: msg });
+        }
+      }
+      return;
+    }
+
+    // GET /api/settings — read current LLM config
+    if (method === 'GET' && pathname === '/api/settings') {
+      const globalLlmPath = join(homedir(), '.sentinel', 'llm.yml');
+      if (!existsSync(globalLlmPath)) {
+        writeJson(res, 200, { configured: false });
+        return;
+      }
+      try {
+        const raw = await readFile(globalLlmPath, 'utf8');
+        // Simple extraction of key fields from yaml
+        const getVal = (key: string): string => {
+          const m = new RegExp(`^\\s*${key}:\\s*(.+)$`, 'm').exec(raw);
+          return m ? m[1]!.trim() : '';
+        };
+        const defaultProvider = getVal('default');
+        const typeVal = getVal('type');
+        const baseUrlVal = getVal('baseUrl');
+        const apiKeyRaw = getVal('apiKey');
+        const modelVal = getVal('model');
+
+        // Mask API key for display (show first 6 + last 4 chars)
+        let apiKeyDisplay = apiKeyRaw;
+        if (apiKeyRaw && !apiKeyRaw.startsWith('${') && apiKeyRaw.length > 12) {
+          apiKeyDisplay = apiKeyRaw.slice(0, 6) + '••••' + apiKeyRaw.slice(-4);
+        }
+
+        writeJson(res, 200, {
+          configured: true,
+          providerName: defaultProvider,
+          type: typeVal,
+          baseUrl: baseUrlVal,
+          apiKey: apiKeyDisplay,
+          model: modelVal,
+        });
+      } catch {
+        writeJson(res, 200, { configured: false });
+      }
+      return;
+    }
+
     // POST /api/settings — persist LLM provider settings
     if (method === 'POST' && pathname === '/api/settings') {
       try {
@@ -557,11 +621,21 @@ export async function runUi(): Promise<number> {
           projectId?: string;
         };
 
-        const providerName = payload.providerName?.trim() || 'default-provider';
         const type = payload.type || 'openai-compatible';
+        const providerName = payload.providerName?.trim() || (type === 'ollama-native' ? 'local' : 'cloud');
         const baseUrl = payload.baseUrl?.trim() || '';
         const model = payload.model?.trim() || '';
-        const apiKey = payload.apiKey?.trim() || '';
+        let apiKey = payload.apiKey?.trim() || '';
+
+        // If no new key provided, try to keep the existing one
+        if (!apiKey) {
+          const existingPath = join(homedir(), '.sentinel', 'llm.yml');
+          if (existsSync(existingPath)) {
+            const existingRaw = await readFile(existingPath, 'utf8');
+            const keyMatch = /^\s*apiKey:\s*(.+)$/m.exec(existingRaw);
+            if (keyMatch) apiKey = keyMatch[1]!.trim();
+          }
+        }
 
         // Build llm.yml content
         let yml = `default: ${providerName}\n\nproviders:\n`;

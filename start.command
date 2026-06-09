@@ -1,46 +1,53 @@
 #!/bin/bash
-# Sentinel — 一键启动
-# macOS: 双击此文件即可启动 Sentinel WebUI
-# 终端: ./start.command
+# Sentinel — 双击启动
+# 每次双击这个文件，WebUI 在后台运行，关掉终端也不受影响。
+# 再次双击会自动打开已运行的 WebUI（不会重复启动）。
 
 set -e
-
-# 定位到脚本所在目录（即 Sentinel 根目录）
 cd "$(dirname "$0")"
 
-echo "🛰  Sentinel — Starting..."
-echo ""
+PORT=4317
 
-# 1. 检查 bun
+# 检查 bun
 if ! command -v bun &> /dev/null; then
-  echo "❌ 未检测到 bun。请先安装 bun："
-  echo ""
+  echo "❌ 未检测到 bun。请先安装："
   echo "   curl -fsSL https://bun.sh/install | bash"
-  echo ""
-  echo "   安装完成后重新运行此文件。"
-  echo ""
   read -n 1 -s -r -p "按任意键退出..."
   exit 1
 fi
 
-echo "✓ bun $(bun --version)"
+# 首次：安装依赖
+[ -d "node_modules" ] || bun install
 
-# 2. 安装依赖
-echo ""
-echo "📦 安装依赖..."
-bun install
+# 首次：构建 UI
+[ -f "sentinel-ui/dist/index.html" ] || npm --workspace sentinel-ui run build
 
-# 3. 构建 WebUI（如果 dist 不存在）
-if [ ! -f "sentinel-ui/dist/index.html" ]; then
-  echo ""
-  echo "🔨 构建 WebUI..."
-  npm --workspace sentinel-ui run build
+# 检查是否已在运行
+if curl -s "http://127.0.0.1:$PORT/api/bootstrap" > /dev/null 2>&1; then
+  echo "🛰  Sentinel 已在运行中"
+  echo "   打开 http://127.0.0.1:$PORT"
+  open "http://127.0.0.1:$PORT"
+  exit 0
 fi
 
-# 4. 启动 WebUI（会自动打开浏览器）
-echo ""
-echo "🚀 启动 Sentinel Console..."
-echo "   浏览器会自动打开 http://127.0.0.1:4317"
-echo "   按 Ctrl+C 停止"
-echo ""
-bun packages/cli/src/index.ts ui
+# 后台启动 server
+echo "🚀 Starting Sentinel Console (background)..."
+nohup bun packages/cli/src/index.ts ui --no-open > /tmp/sentinel-server.log 2>&1 &
+SERVER_PID=$!
+echo $SERVER_PID > /tmp/sentinel-server.pid
+
+# 等待 server 就绪
+for i in $(seq 1 20); do
+  if curl -s "http://127.0.0.1:$PORT/api/bootstrap" > /dev/null 2>&1; then
+    echo "✓ Sentinel Console running (PID: $SERVER_PID)"
+    echo "   http://127.0.0.1:$PORT"
+    echo ""
+    echo "   关闭方式: 双击 stop.command"
+    open "http://127.0.0.1:$PORT"
+    exit 0
+  fi
+  sleep 0.5
+done
+
+echo "⚠  Server 启动超时，查看日志: /tmp/sentinel-server.log"
+exit 1

@@ -6,15 +6,19 @@ export function ProjectList() {
   const { state, selectProject, setProjects, navigate } = useApp();
 
   const handleAddProject = async (): Promise<void> => {
-    const path = window.prompt('Project path (absolute path):');
-    if (!path || !path.trim()) return;
-
-    const suggestedName = path.trim().split('/').filter(Boolean).at(-1) ?? 'project';
-    const nameInput = window.prompt('Project name (optional):', suggestedName);
-    const name = nameInput?.trim() ? nameInput.trim() : undefined;
-
     try {
-      const created = await apiClient.addProject(path.trim(), name);
+      // Open macOS system folder picker via backend
+      const res = await fetch('/api/pick-folder');
+      const data = await res.json() as { ok: boolean; path?: string; cancelled?: boolean; error?: string };
+
+      if (data.cancelled || !data.ok || !data.path) return;
+
+      const path = data.path;
+      const suggestedName = path.split('/').filter(Boolean).at(-1) ?? 'project';
+      const nameInput = window.prompt('Give it a short name (optional):', suggestedName);
+      const name = nameInput?.trim() ? nameInput.trim() : undefined;
+
+      const created = await apiClient.addProject(path, name);
       const projects = await apiClient.getProjects();
       setProjects(projects);
       selectProject(created.id);
