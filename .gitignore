@@ -9,11 +9,14 @@ build/
 .sentinel/update.log
 reports/
 
-# IDE / Editor configs (local only, not part of Sentinel)
+# Non-Sentinel: IDE / Editor configs (local only)
 .vscode/
 .idea/
 .kiro/
 .trae/
+
+# Non-Sentinel: personal documents, won't commit to GitHub
+Documents/
 
 # Local dev notes (not Sentinel documentation)
 AGENTS.md
