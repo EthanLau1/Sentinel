@@ -53,6 +53,7 @@ For power users who prefer the terminal:
 | `sentinel doctor` | Check environment & config |
 | `sentinel hello` | Test LLM connectivity |
 | `sentinel init --project=/path` | Initialize `.sentinel/` in target project |
+| `sentinel update` | Self-update Sentinel (M8.5 stub) |
 
 ---
 
@@ -80,18 +81,20 @@ Supported:
 ## How It Works
 
 ```
-Mapper → Runner → Analyst → Critic → Planner → Executor
-  │         │         │         │         │         │
-  ▼         ▼         ▼         ▼         ▼         ▼
-FeatureMap  Evidence  Hypothesis Confirm   FixOption  Patch
+Mapper → Sensor → Runner → Analyst → Critic → Planner → Enhancer → Executor
+  │         │         │         │         │         │           │         │
+  ▼         ▼         ▼         ▼         ▼         ▼           ▼         ▼
+FeatureMap Probes   Evidence  Hypothesis Confirm  FixOption Enriched  Patch
 ```
 
 1. **Mapper** — Detects frameworks, routes, data models; auto-generates user flows
-2. **Runner** — Auto-starts dev server, executes flows with Playwright
-3. **Analyst** — LLM diagnoses root cause from collected evidence
-4. **Critic** — Validates hypothesis against evidence (confirm/reject)
-5. **Planner** — Generates fix options with cost scoring
-6. **Executor** — Writes patches to `.sentinel/auto-patches/` (never modifies source directly)
+2. **Sensor** — Probes runtime state (file system, network, MCP) to collect targeted evidence per request
+3. **Runner** — Auto-starts dev server, executes flows with Playwright; emits flow.passed / flow.failed with evidence
+4. **Analyst** — LLM diagnoses root cause from collected evidence
+5. **Critic** — Validates hypothesis against evidence (confirm/reject)
+6. **Planner** — Generates fix options with cost scoring
+7. **Enhancer** — Augments fix options with external knowledge when confidence is low or 3rd-party SDK / security / version-bump is involved (skippable via `--no-enhance`)
+8. **Executor** — Writes patches to `.sentinel/auto-patches/` (never modifies source directly)
 
 ---
 

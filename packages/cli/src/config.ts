@@ -12,7 +12,7 @@ export interface LlmConfig {
   providers: Record<
     string,
     {
-      type: 'openai-compatible' | 'ollama' | 'ollama-native';
+      type: 'openai-compatible' | 'ollama-native';
       baseUrl?: string;
       apiKey?: string;
       model: string;

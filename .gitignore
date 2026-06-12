@@ -13,6 +13,7 @@ reports/
 .vscode/
 .idea/
 .kiro/
+.trae/
 
 # Local dev notes (not Sentinel documentation)
 AGENTS.md

@@ -74,7 +74,7 @@ providers:
 bun packages/cli/src/index.ts doctor --project=/path/to/your-app
 ```
 
-期望输出 "All checks passed."
+**配置正确的环境**下期望输出 `All checks passed.`。如果 doctor 报 `N fail(s)`，通常是 LLM 连接失败、`llm.yml` 缺字段或 `playwright` 未安装，参考下方"常见问题"逐条排查。
 
 ### Step 4: 启动目标项目
 
