@@ -504,3 +504,68 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--gradient-brand);
   border-radius: 0 2px 2px 0;
 }
+
+@media (max-width: 600px) {
+  .console-header-provider,
+  .project-section-title {
+    display: none;
+  }
+
+  .console-body {
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .console-sidebar {
+    width: 100% !important;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .console-sidebar > div {
+    height: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    border-right: 0 !important;
+  }
+
+  .project-items {
+    min-width: 0;
+    max-height: 84px;
+    padding: 4px 0;
+  }
+
+  .project-items button {
+    margin-bottom: 0;
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+
+  .project-add {
+    padding: 0 10px;
+  }
+
+  .project-add button {
+    width: auto;
+    white-space: nowrap;
+  }
+
+  .project-nav {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 2px;
+    padding: 4px 8px;
+  }
+
+  .project-nav .nav-btn {
+    justify-content: center;
+    gap: 5px;
+    padding: 7px 4px;
+  }
+
+  .console-main {
+    min-width: 0;
+    padding: 16px;
+  }
+}

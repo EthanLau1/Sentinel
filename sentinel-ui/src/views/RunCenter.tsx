@@ -1,6 +1,8 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useApp } from '../context/AppState';
 import { apiClient } from '../api/client';
+import type { UiRunRecord, RunSummary } from '../types';
+import { RunSummaryPanel } from '../components/RunSummaryPanel';
 import { Play, Square, Loader, CheckCircle, Terminal, FolderPlus } from 'lucide-react';
 
 export function RunCenter() {
@@ -11,12 +13,43 @@ export function RunCenter() {
   const [runMode, setRunMode] = useState<'scan' | 'debug' | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [logs, setLogs] = useState<{ time: string; msg: string }[]>([]);
-  const abortRef = useRef<AbortController | null>(null);
+  const pendingRunRef = useRef(false);
+  const [stopping, setStopping] = useState(false);
+  const [history, setHistory] = useState<UiRunRecord[]>([]);
+  const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
+  const projectId = project?.id;
+
+  useEffect(() => {
+    if (!projectId) return;
+    let mounted = true;
+    const refresh = async () => {
+      try {
+        const status = await apiClient.getRunStatus(projectId);
+        if (!mounted) return;
+        setHistory(status.history);
+        void apiClient.getRunSummary(projectId)
+          .then(summary => { if (mounted) setRunSummary(summary); })
+          .catch(err => { if (mounted) console.error('Failed to load run summary', err); });
+        setIsRunning(Boolean(status.active) || pendingRunRef.current);
+        const active = status.active;
+        if (active) {
+          setRunMode(active.mode === 'run' ? 'debug' : 'scan');
+          setLogs(active.events.map(e => ({ time: new Date(active.startedAt).toLocaleTimeString(), msg: e.message })));
+          setCurrentStep(active.events.at(-1)?.step ?? 0);
+        }
+      } catch (err) {
+        if (mounted) console.error('Failed to load run status', err);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 1500);
+    return () => { mounted = false; window.clearInterval(timer); };
+  }, [projectId]);
 
   const handleAddProject = async (): Promise<void> => {
     try {
       // Call backend to open macOS system folder picker
-      const res = await fetch('/api/pick-folder');
+      const res = await fetch('/api/pick-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const data = await res.json() as { ok: boolean; path?: string; cancelled?: boolean; error?: string };
 
       if (data.cancelled || !data.ok) return;
@@ -56,8 +89,7 @@ export function RunCenter() {
   }
 
   const runFlow = async (mode: 'scan' | 'debug') => {
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
+    pendingRunRef.current = true;
     setIsRunning(true);
     setRunMode(mode);
     setCurrentStep(0);
@@ -67,28 +99,36 @@ export function RunCenter() {
     }]);
 
     const runner = mode === 'scan' ? apiClient.scanProject : apiClient.runDebug;
-    await runner(
+    const result = await runner(
       project.id,
       (step, msg) => {
         setCurrentStep(step);
         setLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), msg }]);
       },
-      ctrl.signal,
     );
+    pendingRunRef.current = false;
 
     setIsRunning(false);
-    setCurrentStep(prev => (prev < 6 ? 6 : prev));
+    if (result.success) setCurrentStep(prev => (prev < 6 ? 6 : prev));
     setLogs(prev => [...prev, {
       time: new Date().toLocaleTimeString(),
-      msg: mode === 'scan' ? 'Scan complete.' : 'Run complete.',
+      msg: result.success
+        ? (mode === 'scan' ? 'Scan complete.' : result.exitCode === 1 ? 'Run completed with P0/P1 findings.' : 'Run complete.')
+        : result.status === 'cancelled' ? (mode === 'scan' ? 'Scan cancelled.' : 'Run cancelled.')
+        : (mode === 'scan' ? 'Scan failed. Check the log above.' : 'Run failed. Check the log above.'),
     }]);
   };
 
-  const stopRun = () => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setIsRunning(false);
-    setLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), msg: `${runMode === 'scan' ? 'Scan' : 'Run'} stopped by user.` }]);
+  const stopRun = async () => {
+    setStopping(true);
+    try {
+      await apiClient.cancelRun(project.id);
+      setLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), msg: 'Cancellation requested.' }]);
+    } catch (err) {
+      setLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), msg: 'Cancellation failed: ' + String(err) }]);
+    } finally {
+      setStopping(false);
+    }
   };
 
   const steps = [
@@ -190,7 +230,7 @@ export function RunCenter() {
               <Terminal size={16} /> Console Output
             </div>
             {isRunning && (
-              <button onClick={stopRun} className="btn btn-ghost text-xs py-1 px-2">
+              <button onClick={() => void stopRun()} disabled={stopping} className="btn btn-ghost text-xs py-1 px-2">
                 <Square size={12} fill="currentColor" /> Stop
               </button>
             )}
@@ -212,6 +252,19 @@ export function RunCenter() {
           </div>
         </div>
       </div>
+      {runSummary && <div className="mt-4"><RunSummaryPanel summary={runSummary} /></div>}
+      {history.length > 0 && (
+        <div className="mt-4 text-sm" aria-label="Recent runs">
+          <h3 className="font-medium mb-2">Recent runs</h3>
+          <div className="flex flex-wrap gap-3 text-secondary">
+            {history.slice(0, 5).map(run => (
+              <span key={run.id} title={new Date(run.startedAt).toLocaleString()}>
+                {run.mode === 'scan' ? 'Scan' : 'Debug'} · {run.status} · {new Date(run.startedAt).toLocaleString()}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

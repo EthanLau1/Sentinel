@@ -25,10 +25,12 @@ import {
   stageFit,
   type CostWeights,
 } from './cost-model.js';
+import { formatEvidence } from './analyst.js';
 
 export interface PlannerConfig {
   stage?: Stage;
   weights?: CostWeights;
+  requireVerified?: boolean;
 }
 
 export function createPlanner(config: PlannerConfig = {}): Subagent {
@@ -40,6 +42,7 @@ export function createPlanner(config: PlannerConfig = {}): Subagent {
 
     register(ctx: KernelContext): void {
       ctx.bus.subscribe<BugFinding>('bug.confirmed', async (event) => {
+        if (config.requireVerified === true && event.source !== 'verifier') return;
         const bug = event.payload;
         let options = await llmPlan(ctx, bug, stage).catch(() => null);
 
@@ -55,10 +58,13 @@ export function createPlanner(config: PlannerConfig = {}): Subagent {
               stageFit: stageFit(stage, o.stageFit),
               effort: o.effort,
               risk: o.risk,
+              runtimeCost: o.runtimeCost,
+              regressionRisk: o.regressionRisk,
+              maintenanceCost: o.maintenanceCost,
             },
             weights,
           );
-          return { ...o, score };
+          return { ...o, score, whyRecommended: `${o.whyRecommended ?? ''} Qualitative cost only; actual monetary price unknown.`.trim() };
         });
         scored.sort((a, b) => b.score - a.score);
 
@@ -168,7 +174,7 @@ function optionTemplate(o: {
 }
 
 async function llmPlan(ctx: KernelContext, bug: BugFinding, stage: Stage): Promise<FixOption[] | null> {
-  const evSummary = bug.evidence.map((e) => `[${e.kind}] ${e.hash}`).join('\n');
+  const evSummary = bug.evidence.map(formatEvidence).join('\n');
 
   // 收集相关文件 evidence 用于生成 patch
   const fileEvidence = bug.evidence

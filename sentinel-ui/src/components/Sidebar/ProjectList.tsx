@@ -8,7 +8,7 @@ export function ProjectList() {
   const handleAddProject = async (): Promise<void> => {
     try {
       // Open macOS system folder picker via backend
-      const res = await fetch('/api/pick-folder');
+      const res = await fetch('/api/pick-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const data = await res.json() as { ok: boolean; path?: string; cancelled?: boolean; error?: string };
 
       if (data.cancelled || !data.ok || !data.path) return;
@@ -43,7 +43,7 @@ export function ProjectList() {
       }}
     >
       {/* Section Header */}
-      <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border-color)' }}>
+      <div className="px-4 py-3 project-section-title" style={{ borderBottom: '1px solid var(--border-color)' }}>
         <h2
           className="text-xs font-semibold"
           style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}
@@ -53,7 +53,7 @@ export function ProjectList() {
       </div>
 
       {/* Project List */}
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="flex-1 overflow-y-auto py-2 project-items">
         {state.projects.length === 0 && (
           <div className="px-4 py-6 text-center">
             <Folder size={24} className="mx-auto mb-2" style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
@@ -66,13 +66,14 @@ export function ProjectList() {
           const hasP0 = project.stats.p0 > 0;
 
           return (
-            <div
+            <button
               key={project.id}
               onClick={() => selectProject(project.id)}
-              className={`px-3 py-3 mx-2 mb-1 cursor-pointer rounded-md transition-colors ${isSelected ? 'accent-bar-left' : ''}`}
+              className={`px-3 py-3 mx-2 mb-1 cursor-pointer rounded-md transition-colors text-left w-[calc(100%-1rem)] ${isSelected ? 'accent-bar-left' : ''}`}
               style={{
                 backgroundColor: isSelected ? 'var(--bg-surface-elevated)' : 'transparent',
                 paddingLeft: isSelected ? '1rem' : '0.75rem',
+                border: '0',
               }}
             >
               <div className="flex items-center gap-2 mb-1">
@@ -108,13 +109,13 @@ export function ProjectList() {
                 </span>
                 <span>{project.provider}</span>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
 
       {/* Navigation */}
-      <div className="px-3 py-3 flex flex-col gap-1" style={{ borderTop: '1px solid var(--border-color)' }}>
+      <div className="px-3 py-3 flex flex-col gap-1 project-nav" style={{ borderTop: '1px solid var(--border-color)' }}>
         {navItems.map(item => {
           const isActive = state.currentView === item.id || (item.id === 'home' && state.currentView === 'overview');
           return (
@@ -131,7 +132,7 @@ export function ProjectList() {
       </div>
 
       {/* Add Project */}
-      <div className="px-3 pb-3">
+      <div className="px-3 pb-3 project-add">
         <button
           className="btn btn-secondary w-full justify-center"
           onClick={handleAddProject}

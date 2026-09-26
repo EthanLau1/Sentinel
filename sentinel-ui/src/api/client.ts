@@ -1,4 +1,4 @@
-import type { Project, Bug, ReportJson } from '../types';
+import type { Project, Bug, ReportJson, UiRunStatus, UiRunRecord, RunSummary } from '../types';
 
 export const apiClient = {
   getProjects: async (): Promise<Project[]> => {
@@ -46,7 +46,7 @@ export const apiClient = {
     projectId: string,
     onProgress: (step: number, log: string) => void,
     signal?: AbortSignal,
-  ): Promise<{ success: boolean }> => {
+  ): Promise<{ success: boolean; exitCode?: number; status?: UiRunRecord['status'] }> => {
     return streamProjectEvent(`/api/projects/${encodeURIComponent(projectId)}/run`, onProgress, signal);
   },
 
@@ -54,8 +54,27 @@ export const apiClient = {
     projectId: string,
     onProgress: (step: number, log: string) => void,
     signal?: AbortSignal,
-  ): Promise<{ success: boolean }> => {
+  ): Promise<{ success: boolean; exitCode?: number; status?: UiRunRecord['status'] }> => {
     return streamProjectEvent(`/api/projects/${encodeURIComponent(projectId)}/scan`, onProgress, signal);
+  },
+
+  getRunSummary: async (projectId: string): Promise<RunSummary | null> => {
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/run/latest`);
+    if (!res.ok) throw new Error('Failed to load run summary');
+    return res.json() as Promise<RunSummary | null>;
+  },
+
+  getRunStatus: async (projectId: string): Promise<UiRunStatus> => {
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/run/status`);
+    if (!res.ok) throw new Error('Failed to load run status');
+    return res.json() as Promise<UiRunStatus>;
+  },
+
+  cancelRun: async (projectId: string): Promise<void> => {
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/run/cancel`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    if (!res.ok) throw new Error('Failed to cancel run');
   },
 };
 
@@ -63,11 +82,12 @@ async function streamProjectEvent(
   endpoint: string,
   onProgress: (step: number, log: string) => void,
   signal?: AbortSignal,
-): Promise<{ success: boolean }> {
+): Promise<{ success: boolean; exitCode?: number; status?: UiRunRecord['status'] }> {
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { Accept: 'text/event-stream' },
+        headers: { Accept: 'text/event-stream', 'Content-Type': 'application/json' },
+        body: '{}',
         signal,
       });
 
@@ -77,6 +97,9 @@ async function streamProjectEvent(
       const reader = res.body.getReader();
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
+      let success = false;
+      let exitCode: number | undefined;
+      let status: UiRunRecord['status'] | undefined;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -93,9 +116,14 @@ async function streamProjectEvent(
 
           if (line.startsWith('data: ')) {
             try {
-              const payload = JSON.parse(line.substring(6)) as { step?: number; message?: string };
+              const payload = JSON.parse(line.substring(6)) as { step?: number; message?: string; type?: string; ok?: boolean; exitCode?: number; status?: UiRunRecord['status'] };
               if (payload.step !== undefined && payload.message) {
                 onProgress(payload.step, payload.message);
+              }
+              if (payload.type === 'done') {
+                success = payload.ok === true;
+                exitCode = payload.exitCode;
+                status = payload.status;
               }
             } catch {
               onProgress(0, line);
@@ -103,7 +131,7 @@ async function streamProjectEvent(
           }
         }
       }
-      return { success: true };
+      return { success, ...(exitCode !== undefined ? { exitCode } : {}), ...(status ? { status } : {}) };
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
         onProgress(0, 'Run stopped by user.');

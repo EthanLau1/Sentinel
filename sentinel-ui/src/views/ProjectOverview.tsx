@@ -1,21 +1,34 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppState';
 import { apiClient } from '../api/client';
-import type { ReportJson } from '../types';
+import type { ReportJson, RunSummary } from '../types';
+import { RunSummaryPanel } from '../components/RunSummaryPanel';
 import { Play, Search, ShieldAlert, Clock, Code, DollarSign, Activity, FileJson, Folder, TrendingUp } from 'lucide-react';
 
 export function ProjectOverview(): React.JSX.Element {
   const { state, navigate } = useApp();
   const project = state.projects.find(p => p.id === state.selectedProjectId);
+  const projectId = project?.id;
+  const projectStatus = project?.status;
   const [report, setReport] = useState<ReportJson | null>(null);
+  const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
 
   useEffect(() => {
-    if (project && (project.status === 'fresh' || project.status === 'possibly_stale' || project.status === 'stale')) {
-      apiClient.getReport(project.id).then(setReport).catch(() => setReport(null));
+    if (projectId && (projectStatus === 'fresh' || projectStatus === 'possibly_stale' || projectStatus === 'stale')) {
+      apiClient.getReport(projectId).then(setReport).catch(() => setReport(null));
     } else {
-      setReport(null);
+      queueMicrotask(() => setReport(null));
     }
-  }, [project?.id, project?.status]);
+  }, [projectId, projectStatus]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    let mounted = true;
+    apiClient.getRunSummary(projectId)
+      .then(summary => { if (mounted) setRunSummary(summary); })
+      .catch(() => { if (mounted) setRunSummary(null); });
+    return () => { mounted = false; };
+  }, [projectId]);
 
   const openReport = (ext: 'md' | 'json'): void => {
     if (!project) return;
@@ -64,6 +77,8 @@ export function ProjectOverview(): React.JSX.Element {
         </div>
         <p className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{project.path}</p>
       </div>
+
+      {runSummary && <div className="mb-6"><RunSummaryPanel summary={runSummary} /></div>}
 
       {hasReport && (
         <div className="card mb-6">

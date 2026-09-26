@@ -8,16 +8,17 @@ import { ShieldAlert } from 'lucide-react';
 export function DebugWorkspace(): React.JSX.Element {
   const { state } = useApp();
   const project = state.projects.find(p => p.id === state.selectedProjectId);
+  const projectId = project?.id;
   
   const [bugs, setBugs] = useState<Bug[]>([]);
   const [selectedBugId, setSelectedBugId] = useState<string | null>(null);
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (project) {
-      apiClient.getBugs(project.id).then(setBugs).catch(() => setBugs([]));
+    if (projectId) {
+      apiClient.getBugs(projectId).then(setBugs).catch(() => setBugs([]));
     }
-  }, [project?.id]);
+  }, [projectId]);
 
   if (!project) {
     return (
@@ -30,11 +31,18 @@ export function DebugWorkspace(): React.JSX.Element {
     );
   }
 
-  const handleCopyPatchCommand = (bugId: string, fixId: string): void => {
-    const cmd = `git apply .sentinel/auto-patches/${bugId}_${fixId}.diff`;
-    navigator.clipboard.writeText(cmd).catch(() => {
-      window.prompt('Copy this command:', cmd);
-    });
+  const handleCopyPatchCommand = async (_bugId: string, fixId: string): Promise<void> => {
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/patch/${encodeURIComponent(fixId)}`);
+      if (!res.ok) throw new Error('Patch file has not been generated.');
+      const data = await res.json() as { path: string };
+      const cmd = `git apply ${data.path}`;
+      await navigator.clipboard.writeText(cmd).catch(() => {
+        window.prompt('Copy this command:', cmd);
+      });
+    } catch (err) {
+      window.alert(String(err));
+    }
   };
 
   const handleSkip = (bugId: string): void => {

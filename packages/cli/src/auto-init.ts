@@ -39,7 +39,7 @@ limits:
 /**
  * 自动初始化目标项目的 .sentinel/ 目录。
  * 如果已存在则跳过。
- * 如果用户有全局 LLM 配置（~/.sentinel/llm.yml），优先复制那份。
+ * 全局 LLM 配置按需读取，不把 API Key 复制进每个项目。
  */
 export async function autoInit(projectRoot: string): Promise<void> {
   const sentinelDir = join(projectRoot, '.sentinel');
@@ -59,17 +59,14 @@ export async function autoInit(projectRoot: string): Promise<void> {
   await mkdir(join(sentinelDir, 'cache'), { recursive: true });
   await mkdir(join(sentinelDir, 'benchmark'), { recursive: true });
 
-  // LLM 配置：优先从全局复制，否则用默认模板
+  // 项目专属配置仅由用户显式保存；全局配置由 loadLlmConfig 读取。
   const globalLlmPath = join(homedir(), '.sentinel', 'llm.yml');
-  let llmContent = DEFAULT_LLM_TEMPLATE;
   if (existsSync(globalLlmPath)) {
-    const { readFile } = await import('node:fs/promises');
-    llmContent = await readFile(globalLlmPath, 'utf8');
     console.log(color.dim('   Using global LLM config from ~/.sentinel/llm.yml'));
+  } else {
+    const llmPath = join(sentinelDir, 'llm.yml');
+    await writeFile(llmPath, DEFAULT_LLM_TEMPLATE, 'utf8');
   }
-
-  const llmPath = join(sentinelDir, 'llm.yml');
-  await writeFile(llmPath, llmContent, 'utf8');
 
   // Budget 配置
   const budgetPath = join(sentinelDir, 'budget.yml');

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { Bus, Budget, Kernel, type Subagent, type BugFinding, type Evidence, type ProviderSet } from '@sentinel/core';
-import { createMapper, createAnalyst, createCritic, createPlanner } from '@sentinel/subagents';
+import { createMapper, createAnalyst, createCritic, createVerifier, createPlanner } from '@sentinel/subagents';
 import { reportToMarkdown, reportToJson } from '@sentinel/reporters';
 
 function fakeProviders(llmContent: string): ProviderSet {
@@ -18,6 +18,8 @@ function fakeProviders(llmContent: string): ProviderSet {
           return {
             content: JSON.stringify({
               shouldReject: false,
+              verifiedRootCause: true,
+              supportingEvidence: ['h1', 'h3'],
               reason: 'evidence supports root cause',
               adjustedConfidence: 0.85,
               ruledOut: ['network down'],
@@ -81,7 +83,8 @@ describe('Integration: end-to-end vertical slice', () => {
         createMapper(),
         createAnalyst(),
         createCritic(),
-        createPlanner({ stage: 'MVP' }),
+        createVerifier(),
+        createPlanner({ stage: 'MVP', requireVerified: true }),
         captureSub,
       ],
     });
@@ -95,6 +98,10 @@ describe('Integration: end-to-end vertical slice', () => {
         kind: 'network', source: 'browser', timestamp: Date.now(), hash: 'h2',
         url: '/api/x', method: 'POST', status: 500, duration_ms: 200, failed: true,
       },
+      {
+        kind: 'file', source: 'fs', timestamp: Date.now(), hash: 'h3',
+        path: 'src/post.ts', snippet: 'const x = undefined; return x.y;',
+      },
     ];
 
     await kernel.kick('flow.failed', { flowId: 'test-flow', error: 'click failed', evidence }, 'test');
@@ -103,7 +110,7 @@ describe('Integration: end-to-end vertical slice', () => {
 
     expect(captured.length).toBe(1);
     const bug = captured[0]!;
-    expect(bug.evidence.length).toBe(2);
+    expect(bug.evidence.length).toBe(3);
     expect(bug.rootCauseStatus).toBe('confirmed');
     expect(bug.fixOptions.length).toBe(3);
     expect(bug.recommendedFixId).toBeDefined();

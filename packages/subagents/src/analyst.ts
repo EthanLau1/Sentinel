@@ -16,6 +16,13 @@ import type {
   Severity,
 } from '@sentinel/core';
 
+export function formatEvidence(e: Evidence): string {
+  const detail = e.kind === 'screenshot'
+    ? { path: e.path.startsWith('data:') ? '[image data; inspect separately]' : e.path }
+    : e;
+  return `[${e.kind}/${e.source} hash=${e.hash}] ${JSON.stringify(detail).slice(0, 4000)}`;
+}
+
 export interface AnalystConfig {
   /** 最小置信度阈值，低于此值标 P3 */
   minConfidence?: number;
@@ -136,26 +143,7 @@ async function llmAnalyse(
   evidence: Evidence[],
   hint: { source: BugSource; severity: Severity; confidence: number },
 ): Promise<{ rootCause: string; confidence: number; reproSteps: string[] } | null> {
-  const evidenceSummary = evidence
-    .map((e) => {
-      switch (e.kind) {
-        case 'console':
-          return `[console.${e.level}] ${e.message}`;
-        case 'network':
-          return `[network] ${e.method} ${e.url} → ${e.status} ${e.failed ? 'FAILED' : ''}`;
-        case 'http':
-          return `[http] ${e.method} ${e.url} → ${e.status}`;
-        case 'screenshot':
-          return `[screenshot] ${e.hash}`;
-        case 'a11y':
-          return `[a11y tree] available`;
-        case 'dom-snapshot':
-          return `[dom snapshot] ${e.html.slice(0, 200)}...`;
-        default:
-          return `[${e.kind}] ${e.hash}`;
-      }
-    })
-    .join('\n');
+  const evidenceSummary = evidence.map(formatEvidence).join('\n');
 
   const prompt = `你是一个谨慎的 Web 应用调试专家。一个用户流程失败了，你只能基于下面提供的 Evidence 给出根因假设。
 

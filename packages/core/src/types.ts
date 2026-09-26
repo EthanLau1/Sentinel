@@ -73,7 +73,11 @@ export type FlowStep =
   | { action: 'fill'; selector: string; value: string }
   | { action: 'click'; selector: string }
   | { action: 'wait'; ms: number }
-  | { action: 'assert'; kind: 'url' | 'text' | 'db' | 'api'; [k: string]: unknown };
+  | { action: 'assert'; kind: 'url'; expected: string }
+  | { action: 'assert'; kind: 'text'; expected: string; selector?: string }
+  | { action: 'assert'; kind: 'visible'; selector: string }
+  | { action: 'assert'; kind: 'api'; method?: ApiSpec['method']; path: string; expectStatus: number | '2xx' | 'not_5xx'; expectedBody?: unknown; bodyContains?: string; body?: string; allowMutation?: true }
+  | { action: 'assert'; kind: 'db'; [k: string]: unknown };
 
 /** 项目风险点 */
 export interface ProjectRisk {
@@ -232,6 +236,7 @@ export type EventType =
   | 'knowledge.cached'
   // 执行
   | 'executor.tier_decided'
+  | 'patch.generated'
   | 'patch.applied'
   | 'pr.created'
   | 'report.ready'

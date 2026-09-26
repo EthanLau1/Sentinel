@@ -2,8 +2,10 @@
  * Mapper subagent — 接收 project.scanned，输出 map.ready (FeatureMap)。
  */
 
-import { basename } from 'node:path';
-import type { Subagent, KernelContext, FeatureMap, Event, FlowSpec, FlowStep, PageSpec, ApiSpec, AuthSpec } from '@sentinel/core';
+import { existsSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import type { Subagent, KernelContext, FeatureMap, Event, FlowSpec, PageSpec, ApiSpec, AuthSpec } from '@sentinel/core';
 import {
   ALL_ADAPTERS,
   createProjectScan,
@@ -25,14 +27,47 @@ export function createMapper(config: MapperConfig = {}): Subagent {
       ctx.bus.subscribe<{ root: string }>('project.scanned', async (event: Event<{ root: string }>) => {
         const scan = await createProjectScan(event.payload.root);
         const map = await buildFeatureMap(scan, adapters);
+        const merged = await applyUserMapOverride(event.payload.root, map);
         await ctx.bus.publish({
           type: 'map.ready',
-          payload: map,
+          payload: merged,
           source: 'mapper',
           traceId: event.traceId,
         });
       });
     },
+  };
+}
+
+async function applyUserMapOverride(root: string, base: FeatureMap): Promise<FeatureMap> {
+  const candidates = [
+    join(root, '.sentinel', 'app.map.ts'),
+    join(root, '.sentinel', 'app.map.js'),
+  ];
+  const file = candidates.find((p) => existsSync(p));
+  if (!file) return base;
+
+  try {
+    const mod = await import(`${pathToFileURL(file).href}?t=${Date.now()}`);
+    const override = (mod.default ?? mod.overrides ?? mod.map) as Partial<FeatureMap> | undefined;
+    if (!override || typeof override !== 'object') return base;
+    return mergeFeatureMap(base, override);
+  } catch {
+    return base;
+  }
+}
+
+function mergeFeatureMap(base: FeatureMap, override: Partial<FeatureMap>): FeatureMap {
+  return {
+    ...base,
+    ...override,
+    project: { ...base.project, ...(override.project ?? {}) },
+    ...(override.auth ? { auth: { ...(base.auth ?? {}), ...override.auth } } : base.auth ? { auth: base.auth } : {}),
+    pages: override.pages ?? base.pages,
+    api: override.api ?? base.api,
+    data: override.data ?? base.data,
+    flows: override.flows ?? base.flows,
+    risks: override.risks ?? base.risks,
   };
 }
 
@@ -52,7 +87,7 @@ async function buildFeatureMap(scan: ProjectScan, adapters: Adapter[]): Promise<
   const data = await aggregateData(scan, detected);
   const risks = await aggregateRisks(scan, detected);
 
-  const flows = generateFlows(pages, api, auth);
+  const flows = generateFlows(pages, api);
 
   return {
     project: profile,
@@ -61,7 +96,7 @@ async function buildFeatureMap(scan: ProjectScan, adapters: Adapter[]): Promise<
     api,
     data,
     flows,
-    risks,
+    risks: [...risks, ...coverageRisks(pages, api, auth)],
   };
 }
 
@@ -162,101 +197,55 @@ async function aggregateRisks(scan: ProjectScan, detected: Adapter[]) {
 }
 
 /**
- * 从检测到的 pages + api 自动生成基础 user flows。
- *
- * 策略：
- * 1. 每个 page → visit flow（验证页面可访问）
- * 2. 每个 API → HTTP 调用 flow（验证不返回 5xx）
- * 3. 如有 auth → 登录 flow
- * 4. 组合流程：首页 → 导航到子页面 → 触发 CTA
+ * Default coverage is read-only. Mutating and authenticated routes need explicit
+ * project flows with fixtures and assertions, not guessed selectors or payloads.
  */
-function generateFlows(pages: PageSpec[], api: ApiSpec[], auth?: AuthSpec): FlowSpec[] {
+function generateFlows(pages: PageSpec[], api: ApiSpec[]): FlowSpec[] {
   const flows: FlowSpec[] = [];
-  let flowIdx = 0;
-
-  // 1. 如果有 auth，生成登录 flow
-  if (auth) {
-    const loginSteps: FlowStep[] = [];
-    const loginUrl = auth.loginEndpoint ?? '/login';
-    loginSteps.push({ action: 'visit', url: loginUrl });
-
-    if (auth.testCredentials) {
-      const entries = Object.entries(auth.testCredentials);
-      if (entries.length >= 1) {
-        loginSteps.push({ action: 'fill', selector: 'input[name="email"], input[type="email"], #email', value: entries[0]?.[1] ?? 'test@test.com' });
-      }
-      if (entries.length >= 2) {
-        loginSteps.push({ action: 'fill', selector: 'input[name="password"], input[type="password"], #password', value: entries[1]?.[1] ?? 'password' });
-      }
-      loginSteps.push({ action: 'click', selector: 'button[type="submit"], button:has-text("Log in"), button:has-text("Sign in")' });
-      loginSteps.push({ action: 'wait', ms: 2000 });
-    }
-
+  for (const page of pages) {
+    if (page.requiresAuth || !isConcretePath(page.path)) continue;
     flows.push({
-      id: `flow_auth_login_${flowIdx++}`,
-      description: 'Login with test credentials',
-      steps: loginSteps,
+      id: `flow_page_${page.id}`,
+      description: `Reach page ${page.path} and verify URL and body visibility`,
+      steps: [
+        { action: 'visit', url: page.path },
+        { action: 'assert', kind: 'url', expected: page.path },
+        { action: 'assert', kind: 'visible', selector: 'body' },
+      ],
     });
   }
-
-  // 2. 每个 page → visit flow (最多 15 个防止太多)
-  const importantPages = pages.slice(0, 15);
-  for (const page of importantPages) {
-    const steps: FlowStep[] = [
-      { action: 'visit', url: page.path },
-      { action: 'wait', ms: 1500 },
-    ];
-
-    // 如果有 CTA，点第一个
-    if (page.criticalCTAs.length > 0) {
-      steps.push({ action: 'click', selector: page.criticalCTAs[0]! });
-      steps.push({ action: 'wait', ms: 1000 });
-    }
-
+  for (const endpoint of api) {
+    if (endpoint.method !== 'GET' || endpoint.requiresAuth || !isConcretePath(endpoint.path)) continue;
     flows.push({
-      id: `flow_page_${flowIdx++}`,
-      description: `Visit page ${page.path} and verify loads`,
-      steps,
+      id: `flow_api_${endpoint.id}`,
+      description: `GET ${endpoint.path} returns 2xx`,
+      steps: [{ action: 'assert', kind: 'api', method: 'GET', path: endpoint.path, expectStatus: '2xx' }],
     });
   }
-
-  // 3. 每个 API → http check (最多 10 个)
-  const importantApi = api.slice(0, 10);
-  for (const endpoint of importantApi) {
-    // API 验证用 visit（对于 GET）或用 assert
-    const steps: FlowStep[] = [
-      { action: 'assert', kind: 'api', method: endpoint.method, path: endpoint.path, expectStatus: 'not_5xx' },
-    ];
-
-    flows.push({
-      id: `flow_api_${flowIdx++}`,
-      description: `${endpoint.method} ${endpoint.path} should not return 5xx`,
-      steps,
-    });
-  }
-
-  // 4. 组合流程：首页 → 导航到有 CTA 的页面 → 点击 CTA
-  const ctaPages = pages.filter(p => p.criticalCTAs.length > 0).slice(0, 3);
-  if (pages.length > 0 && ctaPages.length > 0) {
-    const homePath = pages.find(p => p.path === '/')?.path ?? pages[0]!.path;
-    for (const ctaPage of ctaPages) {
-      if (ctaPage.path === homePath) continue;
-      const steps: FlowStep[] = [
-        { action: 'visit', url: homePath },
-        { action: 'wait', ms: 1000 },
-        { action: 'visit', url: ctaPage.path },
-        { action: 'wait', ms: 1500 },
-        { action: 'click', selector: ctaPage.criticalCTAs[0]! },
-        { action: 'wait', ms: 2000 },
-      ];
-      flows.push({
-        id: `flow_nav_cta_${flowIdx++}`,
-        description: `Navigate from home to ${ctaPage.path} and trigger CTA`,
-        steps,
-      });
-    }
-  }
-
   return flows;
 }
 
+function isConcretePath(path: string): boolean {
+  return path.startsWith('/') && !/\[[^\]]+\]|:[^/]+|\*/.test(path);
+}
+
+function coverageRisks(pages: PageSpec[], api: ApiSpec[], auth?: AuthSpec): FeatureMap['risks'] {
+  const risks: FeatureMap['risks'] = [];
+  if (pages.some(page => !page.requiresAuth && isConcretePath(page.path))) risks.push({ id: 'coverage_ui_content', area: 'ui', severity: 'medium', description: 'Auto page flows check route/status and body visibility only; add expected UI text assertions for business content.' });
+  if (api.some(endpoint => endpoint.method === 'GET' && !endpoint.requiresAuth && isConcretePath(endpoint.path))) risks.push({ id: 'coverage_api_body', area: 'ui', severity: 'medium', description: 'Auto GET flows check 2xx status only; add expectedBody or bodyContains assertions for response semantics.' });
+  if (auth) risks.push({ id: 'coverage_auth', area: 'auth', severity: 'medium', description: 'Auth flow not auto-run; add an explicit project flow with safe test credentials and outcome assertions.' });
+  for (const page of pages) {
+    if (page.requiresAuth || !isConcretePath(page.path)) {
+      risks.push({ id: `coverage_page_${page.id}`, area: 'ui', severity: 'medium', description: `Page ${page.path} not auto-tested (auth or dynamic path); provide an explicit flow.` });
+    }
+    if (page.criticalCTAs.length) {
+      risks.push({ id: `coverage_cta_${page.id}`, area: 'ui', severity: 'medium', description: `CTA on ${page.path} not auto-clicked; add an explicit flow with outcome assertions.` });
+    }
+  }
+  for (const endpoint of api) {
+    if (endpoint.method !== 'GET' || endpoint.requiresAuth || !isConcretePath(endpoint.path)) {
+      risks.push({ id: `coverage_api_${endpoint.id}`, area: 'ui', severity: 'medium', description: `${endpoint.method} ${endpoint.path} not auto-tested (mutation, auth or dynamic path); provide an explicit flow.` });
+    }
+  }
+  return risks;
+}

@@ -6,6 +6,7 @@
  *       + stageFit   × w_stage
  *       − effort     × w_effort
  *       − risk       × w_risk
+ *       − runtimeCost × w_runtime − regressionRisk × w_regression − maintenanceCost × w_maintenance
  */
 
 import type { Cost, Effort, FixOption, Risk, Stage } from '@sentinel/core';
@@ -16,6 +17,9 @@ export interface CostWeights {
   stageFit: number;
   effort: number; // 负向因子，传入应为负值（如 -0.10）
   risk: number; // 同上
+  runtimeCost?: number;
+  regressionRisk?: number;
+  maintenanceCost?: number;
 }
 
 export const DEFAULT_WEIGHTS: CostWeights = {
@@ -24,6 +28,9 @@ export const DEFAULT_WEIGHTS: CostWeights = {
   stageFit: 0.2,
   effort: -0.1,
   risk: -0.1,
+  runtimeCost: -0.04,
+  regressionRisk: -0.04,
+  maintenanceCost: -0.04,
 };
 
 export const PRESETS: Record<Lowercase<Stage>, CostWeights> = {
@@ -67,6 +74,9 @@ export interface ScoreInput {
   stageFit: number; // 0-1, 默认 0.5
   effort: Effort;
   risk: Risk;
+  runtimeCost?: Cost;
+  regressionRisk?: Risk;
+  maintenanceCost?: Cost;
 }
 
 export function computeScore(input: ScoreInput, weights: CostWeights): number {
@@ -77,7 +87,10 @@ export function computeScore(input: ScoreInput, weights: CostWeights): number {
     input.impact * weights.impact +
     input.stageFit * weights.stageFit +
     e * weights.effort + // weights.effort 是负数
-    r * weights.risk
+    r * weights.risk +
+    COST_MAP[input.runtimeCost ?? 'none'] * (weights.runtimeCost ?? -0.04) +
+    RISK_MAP[input.regressionRisk ?? 'low'] * (weights.regressionRisk ?? -0.04) +
+    COST_MAP[input.maintenanceCost ?? 'none'] * (weights.maintenanceCost ?? -0.04)
   );
 }
 

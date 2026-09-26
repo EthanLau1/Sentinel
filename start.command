@@ -6,6 +6,10 @@
 set -e
 cd "$(dirname "$0")"
 
+if [ -d "/opt/homebrew/opt/node@20/bin" ]; then
+  export PATH="/opt/homebrew/opt/node@20/bin:$PATH"
+fi
+
 PORT=4317
 
 # 检查 bun
@@ -20,7 +24,7 @@ fi
 [ -d "node_modules" ] || bun install
 
 # 首次：构建 UI
-[ -f "sentinel-ui/dist/index.html" ] || npm --workspace sentinel-ui run build
+[ -f "sentinel-ui/dist/index.html" ] || bun run build
 
 # 检查是否已在运行
 if curl -s "http://127.0.0.1:$PORT/api/bootstrap" > /dev/null 2>&1; then

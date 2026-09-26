@@ -49,32 +49,32 @@ export function ConsoleLayout({ children }: ConsoleLayoutProps) {
               border: '1px solid var(--border-color)',
             }}
           >
-            v0.1
+            v0.2
           </span>
         </div>
 
         <div className="flex items-center gap-4 text-sm">
-          <div className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+          <div className="flex items-center gap-2 console-header-provider" style={{ color: 'var(--text-secondary)' }}>
             <Cpu size={14} style={{ color: 'var(--accent-blue)' }} />
             <span className="status-dot status-dot-green" />
             <span style={{ fontSize: '0.75rem' }}>{providerLabel}</span>
           </div>
-          <button onClick={() => navigate('settings')} className="btn btn-ghost" style={{ padding: '0.25rem 0.5rem' }}>
+          <button aria-label="Open settings" onClick={() => navigate('settings')} className="btn btn-ghost" style={{ padding: '0.25rem 0.5rem' }}>
             <Settings size={16} />
           </button>
         </div>
       </header>
 
       {/* Main Layout */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden console-body">
         {/* Sidebar */}
-        <aside style={{ width: 'var(--sidebar-width)', flexShrink: 0 }}>
+        <aside className="console-sidebar" style={{ width: 'var(--sidebar-width)', flexShrink: 0 }}>
           <ProjectList />
         </aside>
 
         {/* Main Content */}
         <main
-          className="flex-1 overflow-y-auto p-6 relative"
+          className="flex-1 overflow-y-auto p-6 relative console-main"
           style={{ backgroundColor: 'var(--bg-base)' }}
         >
           {children}

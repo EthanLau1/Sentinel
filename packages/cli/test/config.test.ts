@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSimpleYaml, expandEnv } from '../src/config.js';
+import { parseSimpleYaml, expandEnv, publicLlmSettings, llmConfigToYaml } from '../src/config.js';
 
 describe('parseSimpleYaml', () => {
   it('键值对 + 嵌套', () => {
@@ -52,5 +52,51 @@ describe('expandEnv', () => {
   it('未设置的 var → 空串', () => {
     delete process.env['SENTINEL_NEVER_SET_XYZ'];
     expect(expandEnv('a${SENTINEL_NEVER_SET_XYZ}b')).toBe('ab');
+  });
+});
+
+describe('LLM settings helpers', () => {
+  it('publicLlmSettings returns the active provider fields without leaking apiKey', () => {
+    const settings = publicLlmSettings({
+      default: 'cloud',
+      providers: {
+        local: {
+          type: 'ollama-native',
+          baseUrl: 'http://localhost:11434',
+          model: 'qwen3:7b',
+        },
+        cloud: {
+          type: 'openai-compatible',
+          baseUrl: 'https://api.example.com/v1',
+          apiKey: '<test-api-key>',
+          model: 'gpt-4o',
+        },
+      },
+    });
+
+    expect(settings.providerName).toBe('cloud');
+    expect(settings.baseUrl).toBe('https://api.example.com/v1');
+    expect(settings.apiKeyConfigured).toBe(true);
+    expect(settings.apiKey).not.toContain('test-api-key');
+    expect(settings.apiKey).not.toContain('sk-');
+    expect(settings.model).toBe('gpt-4o');
+  });
+
+  it('llmConfigToYaml writes only the selected provider', () => {
+    const yaml = llmConfigToYaml({
+      default: 'lmstudio',
+      providers: {
+        lmstudio: {
+          type: 'openai-compatible',
+          baseUrl: 'http://localhost:1234/v1',
+          apiKey: 'lm-studio',
+          model: 'local-model',
+        },
+      },
+    });
+
+    expect(yaml).toContain('default: lmstudio');
+    expect(yaml).toContain('baseUrl: http://localhost:1234/v1');
+    expect(yaml).toContain('apiKey: lm-studio');
   });
 });

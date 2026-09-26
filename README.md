@@ -1,8 +1,8 @@
 # Sentinel
 
-Autonomous debug agent for web apps. Scans your project, runs user flows with Playwright, collects runtime evidence, diagnoses bugs with LLM, and generates patches.
+Local debug agent for web apps. It discovers safe read-only routes, runs browser flows, records evidence and coverage gaps, and proposes reviewable fixes when a root cause is supported.
 
-`v0.2.0` · 48 tests · 8 workspaces · MIT
+`v0.2.0` · 8 workspaces · MIT
 
 > **Work in progress** — This project is not feature-complete. Feel free to fork, modify, and build on top of it.
 
@@ -28,14 +28,36 @@ Browser opens automatically → http://127.0.0.1:4317
 2. **Step 1: Settings** → Configure your LLM provider (API key, model)
 3. **Step 2: Add Project** → Select your web project folder
 4. **Step 3: Run** → Click Run. Sentinel will:
-   - Auto-initialize `.sentinel/` config in your project
-   - Auto-detect and start the dev server
-   - Scan routes, generate user flows
-   - Execute flows with Playwright
-   - Analyze failures with LLM
-   - Generate bug reports + patches
+   - Initialize project-local `.sentinel/` data and start a detected dev server
+   - Discover public pages and safe GET endpoints, then run browser/API assertions
+   - Save evidence, findings, coverage gaps, and a run summary in that project
+   - Propose fixes only when available evidence supports a root cause
 
-No manual commands needed. Everything happens in the UI.
+Add explicit project flows for login, publishing, comments, settings, dynamic URLs and permission checks. Sentinel does not guess business outcomes or automatically click write actions.
+
+### Project-specific checks
+
+Create `.sentinel/app.map.ts` in the target project to define outcomes the project expects. For example:
+
+```ts
+export default {
+  flows: [
+    {
+      id: 'save-settings',
+      description: 'A changed setting remains after reload',
+      steps: [
+        { action: 'visit', url: '/settings' },
+        { action: 'fill', selector: '[name="displayName"]', value: 'Sentinel test' },
+        { action: 'click', selector: 'button[type="submit"]' },
+        { action: 'visit', url: '/settings' },
+        { action: 'assert', kind: 'text', expected: 'Sentinel test' },
+      ],
+    },
+  ],
+};
+```
+
+Use a staging environment and a disposable test account for flows that change data. Explicit `flows` replace generated baseline flows; the run summary reports what was and was not executed.
 
 ---
 
@@ -73,37 +95,37 @@ providers:
 ```
 
 Supported:
-- **openai-compatible** — OpenAI, MiniMax, DeepSeek, Groq, Together AI, etc.
-- **ollama-native** — Local Ollama or LM Studio (free, no API key)
+- **openai-compatible** — Compatible API services and LM Studio (`http://localhost:1234/v1`)
+- **ollama-native** — Local Ollama (`http://localhost:11434`)
 
 ---
 
 ## How It Works
 
 ```
-Mapper → Sensor → Runner → Analyst → Critic → Planner → Enhancer → Executor
-  │         │         │         │         │         │           │         │
-  ▼         ▼         ▼         ▼         ▼         ▼           ▼         ▼
-FeatureMap Probes   Evidence  Hypothesis Confirm  FixOption Enriched  Patch
+Mapper → Runner + Browser/HTTP → Analyst → Critic → Verifier → Planner → Enhancer → Executor
 ```
 
 1. **Mapper** — Detects frameworks, routes, data models; auto-generates user flows
-2. **Sensor** — Probes runtime state (file system, network, MCP) to collect targeted evidence per request
-3. **Runner** — Auto-starts dev server, executes flows with Playwright; emits flow.passed / flow.failed with evidence
-4. **Analyst** — LLM diagnoses root cause from collected evidence
-5. **Critic** — Validates hypothesis against evidence (confirm/reject)
-6. **Planner** — Generates fix options with cost scoring
-7. **Enhancer** — Augments fix options with external knowledge when confidence is low or 3rd-party SDK / security / version-bump is involved (skippable via `--no-enhance`)
-8. **Executor** — Writes patches to `.sentinel/auto-patches/` (never modifies source directly)
+2. **Runner** — Executes safe browser/API assertions and captures failure evidence; targeted Sensor requests are available separately
+3. **Analyst** — Suggests a root-cause hypothesis from evidence
+4. **Critic** — Checks whether runtime and source evidence actually support that hypothesis
+5. **Verifier** — Rejects conclusions without sufficient supporting evidence
+6. **Planner** — Ranks three fix options by confidence, impact, stage, effort and risk
+7. **Enhancer** — Optionally searches external knowledge; `--no-enhance` skips search without breaking reporting
+8. **Executor** — Writes valid generated patches to `.sentinel/auto-patches/` for review; generating a patch does not apply or verify it
+9. **Reporter** — Saves findings and run coverage to the target project
 
 ---
 
 ## Automation Features
 
-- **Auto-init** — First run on a new project automatically creates `.sentinel/` config
+- **Auto-init** — First run creates project-local directories and budget; global LLM secrets are not copied into projects
 - **Auto dev server** — Detects `dev`/`start`/`serve` scripts and starts the server for you
 - **Global config** — LLM settings saved once apply to all future projects
 - **Auto cleanup** — Dev server stops automatically after debug completes
+
+The global project list and default LLM connection live under `~/.sentinel/`. Each project's flow overrides and run history live in its own `.sentinel/`; reports live in that project's `reports/`. The WebUI loads the latest saved result when reopened. A project-specific `.sentinel/llm.yml` overrides the global provider.
 
 ---
 
@@ -114,7 +136,7 @@ Sentinel/
 ├── start.command       ← Double-click to install + launch
 ├── packages/
 │   ├── core/           Microkernel (Bus / Budget / Kernel)
-│   ├── subagents/      8 agents (mapper/sensor/runner/analyst/critic/planner/enhancer/executor)
+│   ├── subagents/      Mapper, runner, analyst, critic, verifier, planner, enhancer and executor
 │   ├── adapters/       13 framework detectors
 │   ├── providers/      LLM / Memory / Skills / MCP / Knowledge providers
 │   ├── reporters/      Markdown + JSON report generators + CLI printer

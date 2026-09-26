@@ -112,14 +112,27 @@ export async function runDoctor(): Promise<number> {
 
   // 5. Playwright
   try {
-    await import('playwright');
-    checks.push({ name: 'Playwright', status: 'ok', message: 'installed' });
-  } catch {
+    const { chromium } = await import('playwright');
+    let browser;
+    try {
+      browser = await chromium.launch({ headless: true });
+    } catch (err) {
+      if (!(err instanceof Error) || !err.message.includes("Executable doesn't exist")) throw err;
+      browser = await chromium.launch({ headless: true, channel: 'chrome' });
+    }
+    try {
+      const page = await browser.newPage();
+      await page.locator('body').ariaSnapshot();
+    } finally {
+      await browser.close();
+    }
+    checks.push({ name: 'Playwright', status: 'ok', message: 'Chromium/Chrome launched and closed' });
+  } catch (e) {
     checks.push({
       name: 'Playwright',
-      status: 'warn',
-      message: 'not installed (browser MCP disabled)',
-      suggestion: 'bun add -D playwright && bun playwright install chromium',
+      status: 'fail',
+      message: `browser not ready: ${(e as Error).message}`,
+      suggestion: 'install Playwright Chromium or Google Chrome',
     });
   }
 

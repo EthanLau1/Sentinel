@@ -74,6 +74,7 @@
 |---|---|---|---|
 | `executor.tier_decided` | executor | (内部) | `{ fixId: string, tier: 0 \| 1 \| 2 \| 3 }` |
 | `patch.applied` | executor | reporter | `{ fixId: string, files: string[] }` |
+| `patch.generated` | executor | reporter | `{ fixId: string, files: string[] }` (created for review, not applied) |
 | `pr.created` | executor | reporter | `{ url: string }` |
 | `report.ready` | reporter | cli | `{ path: string }` |
 

@@ -10,6 +10,7 @@ import {
   Budget,
   Kernel,
   type BugFinding,
+  type FeatureMap,
   type FixOption,
   type Subagent,
 } from '@sentinel/core';
@@ -31,6 +32,7 @@ import {
   createRunner,
   createAnalyst,
   createCritic,
+  createVerifier,
   createPlanner,
   createEnhancer,
   createExecutor,
@@ -120,26 +122,38 @@ export async function runRun(): Promise<number> {
   // 3. 自动启动 dev server（如果需要）
   let devServer: DevServerHandle | null = null;
   devServer = await startDevServer(root);
+  if (!devServer) {
+    console.error(color.red('No reachable project dev server. Check package.json scripts and run sentinel doctor.'));
+    return 2;
+  }
+  const baseUrl = `http://127.0.0.1:${devServer.port}`;
 
   // 4. 构建 providers
   const llm = buildLlm(llmCfg);
   const memory = createNoneMemory();
   const skills = createMarkdownSkills({ root: join(root, '.sentinel/skills') });
   const mcp = createMCPRegistry();
-  mcp.register(createHttpMCPServer({}));
+  mcp.register(createHttpMCPServer({ ...(baseUrl ? { baseUrl } : {}) }));
   mcp.register(createFsMCPServer({ root }));
-  // browser 是可选的（Playwright 未装时不注册）
+  const browser = createBrowserMCPServer({ detailed: opts.detailed === true, baseUrl });
   try {
-    mcp.register(createBrowserMCPServer({ detailed: opts.detailed === true }));
-  } catch {
-    // 静默
+    await browser.call('visit', { url: baseUrl });
+  } catch (err) {
+    try { await browser.call('close', {}); } catch { /* preserve the preflight error */ }
+    devServer.stop();
+    console.error(color.red(`Browser preflight failed: ${(err as Error).message}`));
+    return 2;
   }
+  mcp.register(browser);
   const knowledge = [createGithubKnowledge({}), createStackOverflowKnowledge()];
 
-  // 3. 构建 budget
+  // 未配置模型价格时仍限制 tokens 与时长，不把未知 API 费用当作 $0。
+  const activeProvider = llmCfg.providers[llmCfg.default];
+  const costKnown = activeProvider?.type === 'ollama-native' || Boolean(activeProvider?.pricing);
+  if (!costKnown) console.log(color.yellow('API price unknown: USD budget cannot be enforced; token limit remains active.'));
   const budget = new Budget({
     ...(budgetCfg.limits.maxTokensPerRun !== undefined && { maxTokens: budgetCfg.limits.maxTokensPerRun }),
-    ...(budgetCfg.limits.maxCostUsdPerRun !== undefined && { maxUsd: budgetCfg.limits.maxCostUsdPerRun }),
+    ...(costKnown && budgetCfg.limits.maxCostUsdPerRun !== undefined && { maxUsd: budgetCfg.limits.maxCostUsdPerRun }),
     ...(budgetCfg.limits.maxDurationSecPerRun !== undefined && {
       maxDurationMs: budgetCfg.limits.maxDurationSecPerRun * 1000,
     }),
@@ -147,20 +161,43 @@ export async function runRun(): Promise<number> {
 
   // 4. 收集 BugFinding（带 fixOptions）的捕获器
   const bugs: BugFinding[] = [];
+  let unresolvedFailures = 0;
+  let plannedFlows = 0;
+  let passedFlows = 0;
+  let failedFlows = 0;
+  const coverage = { map: null as FeatureMap | null };
   const captureSub: Subagent = {
     name: 'capture',
     register(ctx) {
-      // 先捕获 critic 出的 confirmed（无 fixOptions），用作占位
+      ctx.bus.subscribe<FeatureMap>('map.ready', (event) => {
+        plannedFlows = event.payload.flows.length;
+        coverage.map = event.payload;
+      });
+      ctx.bus.subscribe('flow.passed', () => {
+        passedFlows += 1;
+      });
+      ctx.bus.subscribe('flow.failed', () => {
+        failedFlows += 1;
+        unresolvedFailures += 1;
+      });
+      ctx.bus.subscribe('bug.insufficient_evidence', () => {
+        if (unresolvedFailures === 0) unresolvedFailures = 1;
+      });
+      // 未确认根因也保留可复现症状与证据，供用户查看与补充诊断。
+      ctx.bus.subscribe<BugFinding>('bug.draft', (e) => {
+        if (!bugs.some((b) => b.id === e.payload.id)) bugs.push(e.payload);
+      });
       ctx.bus.subscribe<BugFinding>('bug.confirmed', (e) => {
-        if (!bugs.find((b) => b.id === e.payload.id)) {
-          bugs.push(e.payload);
-        }
+        const idx = bugs.findIndex((b) => b.id === e.payload.id);
+        if (idx >= 0) bugs[idx] = e.payload;
+        else bugs.push(e.payload);
       });
       // 再捕获 enhancer 出的最终版本（含 fixOptions + sources）
       ctx.bus.subscribe<{ bug: BugFinding; options: FixOption[] }>('fix.enhanced', (e) => {
         const idx = bugs.findIndex((b) => b.id === e.payload.bug.id);
         if (idx >= 0) bugs[idx] = e.payload.bug;
         else bugs.push(e.payload.bug);
+        unresolvedFailures = Math.max(0, unresolvedFailures - 1);
       });
     },
   };
@@ -172,9 +209,10 @@ export async function runRun(): Promise<number> {
     createRunner(),
     createAnalyst(),
     createCritic(),
-    createPlanner({ stage, weights }),
+    createVerifier(),
+    createPlanner({ stage, weights, requireVerified: true }),
   ];
-  if (!opts.noEnhance) subagents.push(createEnhancer());
+  subagents.push(createEnhancer({ skipSearch: opts.noEnhance === true }));
   subagents.push(createExecutor({ maxTier: opts.maxTier ?? 1 }));
   subagents.push(captureSub);
 
@@ -186,12 +224,22 @@ export async function runRun(): Promise<number> {
 
   // 6. 启动
   const startMs = Date.now();
+  let failed = false;
   try {
     await kernel.kick('project.scanned', { root }, 'cli');
   } catch (err) {
+    failed = true;
     console.error(color.red(`✗ run failed: ${(err as Error).message}`));
+  } finally {
+    try {
+      await kernel.stop();
+    } finally {
+      try { await browser.call('close', {}); } finally {
+        devServer.stop();
+        console.log(color.dim('   Dev server stopped.'));
+      }
+    }
   }
-  await kernel.stop();
   const dur = Date.now() - startMs;
 
   // 7. 输出报告
@@ -207,15 +255,20 @@ export async function runRun(): Promise<number> {
   // 8. 总结
   const usage = budget.snapshot();
   console.log('');
-  console.log(color.dim(`tokens: ${usage.tokens}  cost: $${usage.usd.toFixed(4)}  duration: ${dur}ms`));
+  console.log(color.dim(`flows: ${passedFlows} passed / ${failedFlows} failed / ${Math.max(0, plannedFlows - passedFlows - failedFlows)} not run; tokens: ${usage.tokens}  cost: ${costKnown ? `$${usage.usd.toFixed(4)}` : 'unknown'}  duration: ${dur}ms`));
   console.log(color.dim(`reports/sentinel-latest.{md,json}`));
 
-  // 9. 关闭 dev server（如果是我们启动的）
-  if (devServer) {
-    devServer.stop();
-    console.log(color.dim('   Dev server stopped.'));
-  }
-
+  const incomplete = failed || unresolvedFailures > 0 || plannedFlows === 0 || passedFlows + failedFlows < plannedFlows;
+  await writeFile(join(root, 'reports', 'sentinel-run-status.json'), JSON.stringify({
+    status: incomplete ? 'incomplete' : 'complete',
+    plannedFlows, passedFlows, failedFlows,
+    untestedFlows: Math.max(0, plannedFlows - passedFlows - failedFlows),
+    bugCount: bugs.length, costUsd: costKnown ? usage.usd : null, durationMs: dur,
+    discoveredPages: coverage.map?.pages.length ?? 0,
+    discoveredApi: coverage.map?.api.length ?? 0,
+    coverageRisks: coverage.map?.risks.filter((risk) => risk.id.startsWith('coverage_')) ?? [],
+  }, null, 2), 'utf8');
+  if (incomplete) return 2;
   return bugs.some((b) => b.severity === 'P0' || b.severity === 'P1') ? 1 : 0;
 }
 
@@ -227,6 +280,7 @@ function buildLlm(llmCfg: NonNullable<Awaited<ReturnType<typeof loadLlmConfig>>>
       baseUrl: cfg.baseUrl ?? '',
       apiKey: cfg.apiKey ?? '',
       model: cfg.model,
+      ...(cfg.pricing ? { pricing: cfg.pricing } : {}),
     });
   }
   return createOllamaNativeProvider({

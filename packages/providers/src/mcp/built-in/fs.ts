@@ -8,8 +8,8 @@
  */
 
 import { readFile, readdir, stat, writeFile, mkdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { join, resolve, relative } from 'node:path';
+import { existsSync, realpathSync } from 'node:fs';
+import { dirname, resolve, relative, sep } from 'node:path';
 import type { MCPServer } from '@sentinel/core';
 
 export interface FsMCPConfig {
@@ -20,7 +20,7 @@ export interface FsMCPConfig {
 }
 
 export function createFsMCPServer(config: FsMCPConfig): MCPServer {
-  const root = resolve(config.root);
+  const root = realpathSync(resolve(config.root));
   const writable = (config.writableSubdirs ?? ['.sentinel', 'reports', 'benchmarks']).map((p) =>
     resolve(root, p),
   );
@@ -28,14 +28,22 @@ export function createFsMCPServer(config: FsMCPConfig): MCPServer {
   function ensureInRoot(path: string): string {
     const abs = resolve(root, path);
     const rel = relative(root, abs);
-    if (rel.startsWith('..') || rel.includes(`..${join('')}`)) {
+    if (rel === '..' || rel.startsWith(`..${sep}`)) {
       throw new Error(`Path escapes root: ${path}`);
+    }
+    // Resolve the nearest existing ancestor so a symlink cannot escape the project.
+    let ancestor = abs;
+    while (!existsSync(ancestor)) ancestor = dirname(ancestor);
+    const actual = realpathSync(ancestor);
+    const actualRel = relative(root, actual);
+    if (actualRel === '..' || actualRel.startsWith(`..${sep}`)) {
+      throw new Error(`Path escapes root through symlink: ${path}`);
     }
     return abs;
   }
 
   function ensureWritable(absPath: string): void {
-    const allowed = writable.some((w) => absPath.startsWith(w));
+    const allowed = writable.some((w) => absPath === w || absPath.startsWith(`${w}${sep}`));
     if (!allowed) throw new Error(`Path not in writable sandbox: ${absPath}`);
   }
 

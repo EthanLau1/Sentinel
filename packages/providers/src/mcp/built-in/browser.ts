@@ -60,7 +60,12 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
         );
       }
     }
-    _browser = await _playwright!.chromium.launch({ headless: true });
+    try {
+      _browser = await _playwright.chromium.launch({ headless: true });
+    } catch (err) {
+      if (!(err instanceof Error) || !err.message.includes("Executable doesn't exist")) throw err;
+      _browser = await _playwright.chromium.launch({ headless: true, channel: 'chrome' });
+    }
     const ctx = await _browser.newContext();
     _page = await ctx.newPage();
 
@@ -102,9 +107,7 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
 
     const domSnapshot = redact(await page.content());
 
-    const a11yTree = await (page as unknown as { accessibility: { snapshot(opts: { interestingOnly: boolean }): Promise<unknown> } }).accessibility.snapshot({
-      interestingOnly: true,
-    });
+    const a11yTree = redact(await page.locator('body').ariaSnapshot());
 
     const result: BrowserResult = {
       url,
@@ -145,10 +148,12 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
       { name: 'click', description: 'Click element', inputSchema: { type: 'object', required: ['selector'], properties: { selector: { type: 'string' } } } },
       { name: 'fill', description: 'Fill input', inputSchema: { type: 'object', required: ['selector', 'value'], properties: { selector: { type: 'string' }, value: { type: 'string' } } } },
       { name: 'snapshot', description: 'Collect Evidence', inputSchema: { type: 'object', properties: { detailed: { type: 'boolean' } } } },
+      { name: 'assert', description: 'Assert browser URL, text or visibility', inputSchema: { type: 'object', required: ['kind'], properties: { kind: { type: 'string' }, expected: { type: 'string' }, selector: { type: 'string' } } } },
       { name: 'close', description: 'Close browser', inputSchema: { type: 'object' } },
     ],
 
     async call(toolName: string, args: Record<string, unknown>): Promise<unknown> {
+      if (toolName === 'close') return close().then(() => ({ closed: true }));
       await ensureBrowser();
       const page = _page!;
 
@@ -160,7 +165,8 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
             : target;
           state.console = [];
           state.network = [];
-          await page.goto(full, { waitUntil: 'domcontentloaded', timeout: 15000 });
+          const response = await page.goto(full, { waitUntil: 'domcontentloaded', timeout: 15000 });
+          if (response && response.status() >= 400) throw new Error(`Page ${full} returned HTTP ${response.status()}`);
           return { url: page.url(), title: await page.title() };
         }
         case 'click': {
@@ -174,9 +180,30 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
         case 'snapshot': {
           return snapshot(Boolean(args['detailed'] ?? config.detailed));
         }
-        case 'close': {
-          await close();
-          return { closed: true };
+        case 'assert': {
+          const kind = args['kind'];
+          if (kind === 'url') {
+            const expected = args['expected'];
+            if (typeof expected !== 'string' || !expected) throw new Error('URL assertion requires expected');
+            const actual = page.url();
+            const matches = expected.startsWith('/')
+              ? new URL(actual).pathname + new URL(actual).search === expected
+              : actual === expected;
+            if (!matches) throw new Error(`Expected URL ${expected}, got ${actual}`);
+          } else if (kind === 'text') {
+            const expected = args['expected'];
+            if (typeof expected !== 'string' || !expected) throw new Error('Text assertion requires expected');
+            const selector = args['selector'];
+            if (selector !== undefined && (typeof selector !== 'string' || !selector)) throw new Error('Invalid text selector');
+            await (typeof selector === 'string' ? page.locator(selector).getByText(expected) : page.getByText(expected)).first().waitFor({ state: 'visible', timeout: 5000 });
+          } else if (kind === 'visible') {
+            const selector = args['selector'];
+            if (typeof selector !== 'string' || !selector) throw new Error('Visibility assertion requires selector');
+            await page.locator(selector).first().waitFor({ state: 'visible', timeout: 5000 });
+          } else {
+            throw new Error(`Unsupported browser assertion: ${String(kind)}`);
+          }
+          return { passed: true };
         }
         default:
           throw new Error(`Unknown browser tool: ${toolName}`);

@@ -6,6 +6,7 @@
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { homedir } from 'node:os';
 
 export interface LlmConfig {
   default: string;
@@ -16,6 +17,7 @@ export interface LlmConfig {
       baseUrl?: string;
       apiKey?: string;
       model: string;
+      pricing?: { input: number; output: number };
     }
   >;
   agents?: Record<string, string>;
@@ -112,6 +114,10 @@ function parseScalar(raw: string): unknown {
 
 export async function loadLlmConfig(projectRoot: string): Promise<LlmConfig | null> {
   const path = join(projectRoot, '.sentinel', 'llm.yml');
+  return (await loadLlmConfigFile(path)) ?? loadLlmConfigFile(join(homedir(), '.sentinel', 'llm.yml'));
+}
+
+export async function loadLlmConfigFile(path: string): Promise<LlmConfig | null> {
   if (!existsSync(path)) return null;
   const text = await readFile(path, 'utf8');
   const parsed = parseSimpleYaml(text);
@@ -140,4 +146,49 @@ export function projectRoot(): string {
   const arg = process.argv.find((a) => a.startsWith('--project='));
   if (arg) return resolve(arg.slice('--project='.length));
   return resolve(process.cwd());
+}
+
+export function activeLlmProvider(config: LlmConfig): LlmConfig['providers'][string] {
+  const provider = config.providers[config.default];
+  if (!provider) throw new Error(`provider ${config.default} not found`);
+  return provider;
+}
+
+export function maskSecret(value?: string): string {
+  if (!value) return '';
+  if (value.startsWith('${')) return value;
+  if (value.length <= 10) return '<configured>';
+  return `<configured:••••${value.slice(-4)}>`;
+}
+
+export function llmConfigToYaml(config: LlmConfig): string {
+  const provider = activeLlmProvider(config);
+  let yml = `default: ${config.default}\n\nproviders:\n`;
+  yml += `  ${config.default}:\n`;
+  yml += `    type: ${provider.type}\n`;
+  if (provider.baseUrl) yml += `    baseUrl: ${provider.baseUrl}\n`;
+  if (provider.apiKey) yml += `    apiKey: ${provider.apiKey}\n`;
+  yml += `    model: ${provider.model}\n`;
+  return yml;
+}
+
+export function publicLlmSettings(config: LlmConfig): {
+  configured: true;
+  providerName: string;
+  type: 'openai-compatible' | 'ollama-native';
+  baseUrl: string;
+  apiKeyConfigured: boolean;
+  apiKey: string;
+  model: string;
+} {
+  const provider = activeLlmProvider(config);
+  return {
+    configured: true,
+    providerName: config.default,
+    type: provider.type,
+    baseUrl: provider.baseUrl ?? '',
+    apiKeyConfigured: Boolean(provider.apiKey),
+    apiKey: maskSecret(provider.apiKey),
+    model: provider.model,
+  };
 }

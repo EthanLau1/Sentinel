@@ -22,8 +22,8 @@ function AppContent(): React.JSX.Element {
   return (
     <ConsoleLayout>
       {state.currentView === 'home' && <Home />}
-      {state.currentView === 'overview' && <ProjectOverview />}
-      {state.currentView === 'run' && <RunCenter />}
+      {state.currentView === 'overview' && <ProjectOverview key={state.selectedProjectId ?? 'none'} />}
+      {state.currentView === 'run' && <RunCenter key={state.selectedProjectId ?? 'none'} />}
       {state.currentView === 'debug' && <DebugWorkspace />}
       {state.currentView === 'settings' && <Settings />}
     </ConsoleLayout>

@@ -14,6 +14,7 @@ import type {
   BugFinding,
   Evidence,
 } from '@sentinel/core';
+import { formatEvidence } from './analyst.js';
 
 export interface CriticConfig {
   /** 最低 confidence 阈值，低于此 → reject */
@@ -30,10 +31,10 @@ export function createCritic(config: CriticConfig = {}): Subagent {
       ctx.bus.subscribe<BugFinding>('bug.draft', async (event) => {
         const draft = event.payload;
 
-        if (draft.evidence.length === 0) {
+        if (draft.evidence.length === 0 || !draft.rootCause?.trim()) {
           await ctx.bus.publish({
             type: 'bug.rejected',
-            payload: { bugId: draft.id, reason: 'no evidence' },
+            payload: { bugId: draft.id, reason: 'missing evidence or root-cause hypothesis' },
             source: 'critic',
             traceId: event.traceId,
           });
@@ -78,52 +79,38 @@ interface CriticVerdict {
 }
 
 async function criticReview(ctx: KernelContext, draft: BugFinding): Promise<CriticVerdict> {
-  // 启发式 critic：检查 evidence 是否真的支持 rootCause
-  const heuristic = heuristicCriticism(draft);
-
+  // Require cited source and runtime evidence before confirming.
   // LLM critic：找反证、判断假设是否过强
   try {
     const llm = await llmCriticism(ctx, draft);
+    const citedCode = draft.evidence.some((e) => e.kind === 'file' && e.snippet.trim() && llm.supportingEvidence.includes(e.hash));
+    const citedRuntime = draft.evidence.some((e) => llm.supportingEvidence.includes(e.hash) && (
+      (e.kind === 'console' && e.level === 'error') || (e.kind === 'network' && e.failed) ||
+      (e.kind === 'http' && e.status >= 400) || (e.kind === 'log' && e.level === 'error') || e.kind === 'trace'
+    ));
+    const verified = llm.verifiedRootCause && citedCode && citedRuntime && !llm.shouldReject;
     return {
-      action: llm.shouldReject ? 'reject' : 'confirm',
-      reason: llm.reason,
+      action: verified ? 'confirm' : 'reject',
+      reason: verified ? llm.reason : 'root cause remains a hypothesis; code and runtime evidence must both be cited',
       adjustedConfidence: Math.min(draft.confidence, llm.adjustedConfidence),
-      counterEvidence: heuristic.counterEvidence,
+      counterEvidence: [],
     };
   } catch {
     return {
-      action: heuristic.shouldReject ? 'reject' : 'confirm',
-      reason: heuristic.reason,
-      adjustedConfidence: draft.confidence,
-      counterEvidence: heuristic.counterEvidence,
-    };
-  }
-}
-
-function heuristicCriticism(draft: BugFinding): {
-  shouldReject: boolean;
-  reason: string;
-  counterEvidence: Evidence[];
-} {
-  // 启发式：
-  // 1. evidence 多样性低（只有一种 kind）→ 警告
-  const kinds = new Set(draft.evidence.map((e) => e.kind));
-  if (kinds.size === 1 && draft.confidence > 0.7) {
-    return {
-      shouldReject: false,
-      reason: 'low evidence diversity, confidence capped',
+      action: 'reject',
+      reason: 'critic verification unavailable; hypothesis not confirmed',
+      adjustedConfidence: 0,
       counterEvidence: [],
     };
   }
-  return { shouldReject: false, reason: 'heuristic ok', counterEvidence: [] };
 }
 
 async function llmCriticism(
   ctx: KernelContext,
   draft: BugFinding,
-): Promise<{ shouldReject: boolean; reason: string; adjustedConfidence: number }> {
+): Promise<{ shouldReject: boolean; verifiedRootCause: boolean; supportingEvidence: string[]; reason: string; adjustedConfidence: number }> {
   const evidenceSummary = draft.evidence
-    .map((e) => `[${e.kind}/${e.source}] hash=${e.hash}`)
+    .map(formatEvidence)
     .join('\n');
 
   const prompt = `你是 Sentinel 调试系统的 Critic 子代理。
@@ -142,6 +129,8 @@ ${evidenceSummary}
 请回答以下问题（用 JSON）：
 {
   "shouldReject": false,
+  "verifiedRootCause": false,
+  "supportingEvidence": ["实际代码证据的 hash"],
   "reason": "为什么 confirm 或 reject 的简短理由",
   "adjustedConfidence": 0.0-1.0,
   "ruledOut": ["排除掉的其他可能根因 1", "..."],
@@ -150,6 +139,7 @@ ${evidenceSummary}
 
 红线：
 - 如果 evidence 完全不支持 rootCause，shouldReject = true
+- 只有代码证据与独立运行时证据共同定位根因、并引用各自 hash 时 verifiedRootCause = true；否则保留 hypothesis
 - 即使 analyst confidence 很高，如果 evidence 单一（只有 1 条或 1 类），adjustedConfidence ≤ 0.6
 - 不要编造证据中没有的事实`;
 
@@ -167,11 +157,15 @@ ${evidenceSummary}
     .trim();
   const parsed = JSON.parse(cleaned) as {
     shouldReject?: boolean;
+    verifiedRootCause?: boolean;
+    supportingEvidence?: string[];
     reason?: string;
     adjustedConfidence?: number;
   };
   return {
     shouldReject: parsed.shouldReject === true,
+    verifiedRootCause: parsed.verifiedRootCause === true && parsed.shouldReject === false,
+    supportingEvidence: Array.isArray(parsed.supportingEvidence) ? parsed.supportingEvidence.filter((x): x is string => typeof x === 'string') : [],
     reason: parsed.reason ?? '(no reason given)',
     adjustedConfidence: Math.max(0, Math.min(1, parsed.adjustedConfidence ?? 0.3)),
   };

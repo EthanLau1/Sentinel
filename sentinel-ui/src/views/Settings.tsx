@@ -19,18 +19,23 @@ interface LoadedSettings {
   type?: string;
   baseUrl?: string;
   apiKey?: string;
+  apiKeyConfigured?: boolean;
   model?: string;
 }
 
 export function Settings(): React.JSX.Element {
   const { state, navigate } = useApp();
   const project = state.projects.find(p => p.id === state.selectedProjectId);
+  const projectId = project?.id;
 
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<SaveResult | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const [scope, setScope] = useState<'global' | 'project'>('global');
+  const scopeKey = scope + ':' + (projectId ?? '');
+  const [loadedKey, setLoadedKey] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   // Form state
   const [providerType, setProviderType] = useState('openai-compatible');
@@ -39,26 +44,32 @@ export function Settings(): React.JSX.Element {
   const [model, setModel] = useState('');
   const [hasExistingKey, setHasExistingKey] = useState(false);
 
-  // Load saved settings on mount
   useEffect(() => {
-    fetch('/api/settings')
-      .then(res => res.json())
-      .then((data: LoadedSettings) => {
-        if (data.configured) {
-          if (data.type) setProviderType(data.type);
-          if (data.baseUrl) setBaseUrl(data.baseUrl);
-          if (data.model) setModel(data.model);
-          // Don't fill masked apiKey into the input — just mark that one exists
-          if (data.apiKey && data.apiKey.includes('••')) {
-            setHasExistingKey(true);
-          } else if (data.apiKey) {
-            setApiKey(data.apiKey);
-          }
-        }
-        setLoaded(true);
+    if (scope === 'project' && !projectId) return;
+    const controller = new AbortController();
+    const query = new URLSearchParams({ scope, ...(scope === 'project' && projectId ? { projectId } : {}) });
+    fetch('/api/settings?' + query, { signal: controller.signal })
+      .then(res => {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json() as Promise<LoadedSettings>;
       })
-      .catch(() => setLoaded(true));
-  }, []);
+      .then(data => {
+        setProviderType(data.type ?? 'openai-compatible');
+        setBaseUrl(data.baseUrl ?? '');
+        setModel(data.model ?? '');
+        setApiKey('');
+        setHasExistingKey(data.apiKeyConfigured === true);
+        setLoadError('');
+        setLoadedKey(scopeKey);
+      })
+      .catch(err => {
+        if (!controller.signal.aborted) {
+          setLoadError(String(err));
+          setLoadedKey(scopeKey);
+        }
+      });
+    return () => controller.abort();
+  }, [scope, projectId, scopeKey]);
 
   const runConnectivityTest = async (): Promise<void> => {
     setTesting(true);
@@ -67,7 +78,7 @@ export function Settings(): React.JSX.Element {
       const res = await fetch('/api/provider/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baseUrl, apiKey, model }),
+        body: JSON.stringify({ baseUrl, apiKey, model, scope, projectId }),
       });
       const data = await res.json() as TestResult;
       setTestResult(data);
@@ -89,7 +100,8 @@ export function Settings(): React.JSX.Element {
           baseUrl,
           apiKey,
           model,
-          projectId: state.selectedProjectId,
+          scope,
+          ...(scope === 'project' ? { projectId } : {}),
         }),
       });
       const data = await res.json() as SaveResult;
@@ -101,11 +113,13 @@ export function Settings(): React.JSX.Element {
   };
 
   useEffect(() => {
-    setTestResult(null);
-    setSaveResult(null);
-  }, [project?.id]);
+    queueMicrotask(() => {
+      setTestResult(null);
+      setSaveResult(null);
+    });
+  }, [projectId, scope]);
 
-  if (!loaded) {
+  if (loadedKey !== scopeKey) {
     return (
       <div className="max-w-2xl mx-auto flex items-center justify-center" style={{ paddingTop: '4rem' }}>
         <Loader size={20} className="animate-spin" style={{ color: 'var(--accent-blue)' }} />
@@ -121,6 +135,13 @@ export function Settings(): React.JSX.Element {
           Configure your LLM provider. Sentinel uses AI to analyze bugs and generate fixes.
         </p>
       </div>
+
+      <div className="flex gap-2 mb-4" role="group" aria-label="Configuration scope">
+        <button className={`btn ${scope === 'global' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setScope('global')}>Global default</button>
+        <button className={`btn ${scope === 'project' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setScope('project')} disabled={!projectId}>Project override</button>
+      </div>
+      {scope === 'project' && <p className="text-sm text-secondary mb-4">{project?.name}: settings saved here override the global default. Leave unconfigured to use the global default.</p>}
+      {loadError && <p role="alert" className="text-accent-red mb-4">Unable to load settings: {loadError}</p>}
 
       {/* LLM Configuration Form */}
       <div className="card mb-6">
@@ -194,7 +215,7 @@ export function Settings(): React.JSX.Element {
             <button
               className="btn btn-primary"
               onClick={saveSettings}
-              disabled={saving}
+              disabled={saving || Boolean(loadError)}
             >
               {saving ? <Loader size={14} className="animate-spin" /> : <Save size={14} />}
               {saving ? 'Saving…' : 'Save'}

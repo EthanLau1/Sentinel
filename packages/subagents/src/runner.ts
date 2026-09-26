@@ -4,6 +4,8 @@
  * 触发：map.ready
  * 产出：flow.started / flow.passed / flow.failed
  */
+import { collectSourceEvidence } from './source-evidence.js';
+import { isDeepStrictEqual } from 'node:util';
 
 import type {
   Subagent,
@@ -98,33 +100,43 @@ async function executeStep(ctx: KernelContext, step: FlowStep): Promise<void> {
       return;
     }
     case 'assert': {
-      // API assertion: make actual HTTP request to verify
+      if (step.kind === 'url' || step.kind === 'text' || step.kind === 'visible') {
+        const browser = ctx.providers.mcp.get('browser');
+        if (!browser) throw new Error('browser MCP not registered');
+        const result = await browser.call('assert', step) as { passed?: unknown };
+        if (result?.passed !== true) throw new Error(`Browser ${step.kind} assertion did not pass`);
+        return;
+      }
       if (step.kind === 'api') {
         const http = ctx.providers.mcp.get('http');
-        if (http) {
-          const method = (step as Record<string, unknown>)['method'] as string ?? 'GET';
-          const path = (step as Record<string, unknown>)['path'] as string ?? '/';
-          try {
-            const result = (await http.call('request', { method, path })) as { status: number };
-            const expectStatus = (step as Record<string, unknown>)['expectStatus'] as string;
-            if (expectStatus === 'not_5xx' && result.status >= 500) {
-              throw new Error(`API ${method} ${path} returned ${result.status} (expected non-5xx)`);
-            }
-          } catch (err) {
-            if (err instanceof Error && err.message.includes('returned')) throw err;
-            // HTTP call failed entirely
-            throw new Error(`API ${method} ${path} request failed: ${(err as Error).message}`);
-          }
+        if (!http) throw new Error('http MCP not registered');
+        const method = step.method ?? 'GET';
+        if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) throw new Error(`Unsupported API method: ${method}`);
+        if (method !== 'GET' && (step.allowMutation !== true || typeof step.body !== 'string')) {
+          throw new Error(`API ${method} requires explicit allowMutation and body`);
         }
+        if (!step.path || !step.path.startsWith('/')) throw new Error('API assertion requires a relative path');
+        if (step.expectStatus === undefined) throw new Error('API assertion requires expectStatus');
+        const result = await http.call('request', { method, path: step.path, ...(step.body !== undefined ? { body: step.body } : {}) }) as { status?: unknown; body?: unknown };
+        if (typeof result?.status !== 'number' || !Number.isInteger(result.status)) throw new Error('API response has no valid status');
+        const passed = step.expectStatus === '2xx'
+          ? result.status >= 200 && result.status < 300
+          : step.expectStatus === 'not_5xx'
+            ? result.status >= 100 && result.status < 500
+            : result.status === step.expectStatus;
+        if (!passed) throw new Error(`API ${method} ${step.path} returned ${result.status} (expected ${step.expectStatus})`);
+        if ('expectedBody' in step && !isDeepStrictEqual(result.body, step.expectedBody)) throw new Error(`API ${method} ${step.path} body mismatch`);
+        if (step.bodyContains !== undefined && !JSON.stringify(result.body).includes(step.bodyContains)) throw new Error(`API ${method} ${step.path} body missing expected text`);
+        return;
       }
-      return;
+      throw new Error(`Unsupported assertion kind: ${step.kind}`);
     }
   }
 }
 
 async function collectFailureEvidence(
   ctx: KernelContext,
-  _flow: FlowSpec,
+  flow: FlowSpec,
   err: Error,
 ): Promise<Evidence[]> {
   const out: Evidence[] = [];
@@ -205,5 +217,7 @@ async function collectFailureEvidence(
     }
   }
 
+  const source = await collectSourceEvidence(ctx, flow);
+  if (source) out.push(source);
   return out;
 }

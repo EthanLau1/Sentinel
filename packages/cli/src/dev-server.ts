@@ -30,7 +30,6 @@ interface PackageJson {
 }
 
 const COMMON_DEV_SCRIPTS = ['dev', 'start', 'serve', 'dev:start', 'start:dev'];
-const COMMON_PORTS = [3000, 3001, 5173, 5174, 4000, 8000, 8080, 4173];
 
 /**
  * 检测包管理器
@@ -96,16 +95,6 @@ async function waitForPort(port: number, timeoutMs = 30000): Promise<boolean> {
 }
 
 /**
- * 尝试找到一个正在监听的端口（可能 dev server 已经在跑了）
- */
-async function findRunningPort(): Promise<number | null> {
-  for (const port of COMMON_PORTS) {
-    if (await checkPort(port)) return port;
-  }
-  return null;
-}
-
-/**
  * 自动启动 dev server。
  *
  * 返回 null 如果：
@@ -116,19 +105,6 @@ async function findRunningPort(): Promise<number | null> {
  * 如果 dev server 已在跑（端口已占用），返回一个 noop handle。
  */
 export async function startDevServer(projectRoot: string): Promise<DevServerHandle | null> {
-  // 先检查是否已有 server 在跑
-  const existingPort = await findRunningPort();
-  if (existingPort) {
-    console.log(color.dim(`   Dev server already running on port ${existingPort}`));
-    // 返回一个 noop handle
-    const noopProcess = spawn('true', [], { stdio: 'ignore' });
-    return {
-      process: noopProcess,
-      port: existingPort,
-      stop() { /* noop — 不杀用户已有的 server */ },
-    };
-  }
-
   // 读 package.json
   const pkgPath = join(projectRoot, 'package.json');
   if (!existsSync(pkgPath)) {
@@ -166,6 +142,17 @@ export async function startDevServer(projectRoot: string): Promise<DevServerHand
     else port = 3000;
   }
 
+  // 只信任当前项目脚本推断出的端口，避免误连其他项目的 3000/5173。
+  if (await checkPort(port)) {
+    console.log(color.dim(`   Dev server already running on inferred port ${port}`));
+    const noopProcess = spawn('true', [], { stdio: 'ignore' });
+    return {
+      process: noopProcess,
+      port,
+      stop() { /* noop — 不杀用户已有的 server */ },
+    };
+  }
+
   // 启动
   const pm = detectPM(projectRoot);
   const cmd = pm === 'bun' ? 'bun' : pm;
@@ -200,9 +187,11 @@ export async function startDevServer(projectRoot: string): Promise<DevServerHand
       const retry = await waitForPort(detectedPort, 5000);
       if (!retry) {
         console.log(color.yellow(`⚠  Dev server may not be ready (port ${detectedPort} not responding)`));
+        child.kill('SIGTERM'); return null;
       }
     } else {
       console.log(color.yellow(`⚠  Dev server may not be ready (port ${port} not responding after 20s)`));
+      child.kill('SIGTERM'); return null;
     }
   } else {
     console.log(color.green(`✓ Dev server ready on port ${detectedPort}`));
@@ -215,7 +204,7 @@ export async function startDevServer(projectRoot: string): Promise<DevServerHand
       if (!child.killed) {
         child.kill('SIGTERM');
         setTimeout(() => {
-          if (!child.killed) child.kill('SIGKILL');
+          if (child.exitCode === null) child.kill('SIGKILL');
         }, 3000);
       }
     },

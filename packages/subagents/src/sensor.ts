@@ -206,7 +206,8 @@ async function collectFileEvidence(
     const filePath = parts[0]!;
     const lineHint = parts[1] ? parseInt(parts[1], 10) : undefined;
 
-    const content = (await fs.call('read', { path: filePath })) as string;
+    const result = await fs.call('read', { path: filePath }) as { exists?: boolean; content?: unknown } | string;
+    const content = typeof result === 'string' ? result : result?.exists && typeof result.content === 'string' ? result.content : null;
     if (!content) return null;
 
     const lines = content.split('\n');
@@ -266,8 +267,7 @@ async function collectGitEvidence(
         const result = (await fs.call('exec', { command: `git blame --line-porcelain -L 1,50 "${filePath}"` })) as string;
         data = result?.slice(0, 3000) ?? '';
       } catch {
-        // fallback: just note that blame was requested
-        data = `(git blame unavailable for ${filePath})`;
+        return null;
       }
     } else if (target === 'diff' || target.startsWith('diff')) {
       subject = 'diff';
@@ -276,7 +276,7 @@ async function collectGitEvidence(
         const result = (await fs.call('exec', { command: 'git diff HEAD~3..HEAD --stat' })) as string;
         data = result?.slice(0, 3000) ?? '';
       } catch {
-        data = '(git diff unavailable)';
+        return null;
       }
     } else {
       // Default: git log
@@ -285,7 +285,7 @@ async function collectGitEvidence(
         const result = (await fs.call('exec', { command: 'git log --oneline -20' })) as string;
         data = result?.slice(0, 2000) ?? '';
       } catch {
-        data = '(git log unavailable)';
+        return null;
       }
     }
 
@@ -319,7 +319,8 @@ async function collectLogEvidence(
 
   try {
     // Try to read log file or recent output
-    const content = (await fs.call('read', { path: target })) as string;
+    const result = await fs.call('read', { path: target }) as { exists?: boolean; content?: unknown } | string;
+    const content = typeof result === 'string' ? result : result?.exists && typeof result.content === 'string' ? result.content : null;
     if (!content) return null;
 
     // Take last 50 lines of log

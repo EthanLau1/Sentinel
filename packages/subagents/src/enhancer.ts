@@ -29,6 +29,7 @@ import type {
 } from '@sentinel/core';
 
 export interface EnhancerConfig {
+  skipSearch?: boolean;
   /** 缓存目录（默认 .sentinel/cache/knowledge） */
   cacheDir?: string;
   /** 缓存 TTL（小时） */
@@ -51,7 +52,7 @@ export function createEnhancer(config: EnhancerConfig = {}): Subagent {
         const { bug, options } = event.payload;
 
         // 决定是否搜
-        const shouldSearch = decideSearch(options, config.alwaysSearch ?? false);
+        const shouldSearch = !config.skipSearch && decideSearch(options, config.alwaysSearch ?? false);
         if (!shouldSearch) {
           await ctx.bus.publish({
             type: 'fix.enhanced',

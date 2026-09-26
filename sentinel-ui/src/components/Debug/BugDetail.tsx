@@ -9,10 +9,10 @@ interface BugDetailProps {
 }
 
 function tierLabel(tier: FixOption['tier']): string {
-  if (tier === 0) return 'Tier 0 — Fully Auto';
-  if (tier === 1) return 'Tier 1 — Auto';
-  if (tier === 2) return 'Tier 2 — Needs Approval';
-  return 'Tier 3 — Advice Only';
+  if (tier === 0) return 'Tier 0 — Report only';
+  if (tier === 1) return 'Tier 1 — Patch proposal';
+  if (tier === 2) return 'Tier 2 — Needs approval';
+  return 'Tier 3 — Advice only';
 }
 
 function tierBadgeClass(tier: FixOption['tier']): string {
@@ -133,6 +133,7 @@ export function BugDetail({ bug, onClose, onApplyFix, onSkip }: BugDetailProps) 
             )}
             <div className="flex flex-wrap gap-2 mb-3 text-xs">
               <span className={`badge ${tierBadgeClass(recommendedFix.tier)}`}>{tierLabel(recommendedFix.tier)}</span>
+              <span className="badge badge-blue">Apply status unverified</span>
               <span className="badge badge-blue">effort: {recommendedFix.effort}</span>
               <span className="badge badge-blue">risk: {recommendedFix.risk}</span>
               <span className="text-muted">score: {(recommendedFix.score * 100).toFixed(0)}</span>
@@ -142,12 +143,14 @@ export function BugDetail({ bug, onClose, onApplyFix, onSkip }: BugDetailProps) 
             )}
 
             <div className="flex gap-2">
-              <button
-                className="btn btn-primary flex-1"
-                onClick={() => onApplyFix?.(bug.id, recommendedFix.id)}
-              >
-                Copy Patch Cmd
-              </button>
+              {recommendedFix.patch && (recommendedFix.tier === 1 || recommendedFix.tier === 2) && (
+                <button
+                  className="btn btn-primary flex-1"
+                  onClick={() => onApplyFix?.(bug.id, recommendedFix.id)}
+                >
+                  Copy Patch Cmd
+                </button>
+              )}
               <button
                 className="btn btn-secondary flex-1"
                 onClick={() => { onSkip?.(bug.id); onClose(); }}

@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Project } from '../types';
 
@@ -26,14 +26,44 @@ const initialState: AppState = {
   currentView: 'home',
 };
 
+const STORAGE_KEY = 'sentinel.ui.state.v1';
+
+function loadInitialState(): AppState {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return initialState;
+    const saved = JSON.parse(raw) as Partial<AppState>;
+    return {
+      ...initialState,
+      selectedProjectId: typeof saved.selectedProjectId === 'string' ? saved.selectedProjectId : null,
+      currentView: saved.currentView ?? 'home',
+      sidebarCollapsed: saved.sidebarCollapsed === true,
+    };
+  } catch {
+    return initialState;
+  }
+}
+
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AppState>(initialState);
+  const [state, setState] = useState<AppState>(loadInitialState);
 
-  const setProjects = (projects: Project[]) => {
-    setState(prev => ({ ...prev, projects }));
-  };
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      selectedProjectId: state.selectedProjectId,
+      currentView: state.currentView,
+      sidebarCollapsed: state.sidebarCollapsed,
+    }));
+  }, [state.selectedProjectId, state.currentView, state.sidebarCollapsed]);
+
+  const setProjects = useCallback((projects: Project[]) => {
+    setState(prev => {
+      const selectedStillExists = projects.some((p) => p.id === prev.selectedProjectId);
+      const selectedProjectId = selectedStillExists ? prev.selectedProjectId : projects[0]?.id ?? null;
+      return { ...prev, projects, selectedProjectId };
+    });
+  }, []);
 
   const selectProject = (id: string) => {
     setState(prev => ({ ...prev, selectedProjectId: id, currentView: 'overview' }));

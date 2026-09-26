@@ -92,3 +92,41 @@ export interface GlobalProviders {
   lmStudio: ProviderConfig;
   customApi: ProviderConfig;
 }
+
+export interface UiRunEvent {
+  step: number;
+  message: string;
+  type?: 'done';
+  ok?: boolean;
+  exitCode?: number;
+  status?: UiRunRecord['status'];
+}
+
+export interface UiRunRecord {
+  id: string;
+  mode: 'run' | 'scan';
+  status: 'running' | 'completed' | 'findings' | 'failed' | 'cancelled' | 'interrupted';
+  startedAt: string;
+  endedAt?: string;
+  exitCode?: number;
+  events: UiRunEvent[];
+}
+
+export interface UiRunStatus {
+  active: UiRunRecord | null;
+  history: UiRunRecord[];
+}
+
+export interface RunSummary {
+  status: string;
+  plannedFlows: number;
+  passedFlows: number;
+  failedFlows: number;
+  untestedFlows: number;
+  bugCount: number;
+  costUsd: number | null;
+  durationMs: number;
+  discoveredPages?: number;
+  discoveredApi?: number;
+  coverageRisks?: Array<{ id: string; area: string; severity: string; description: string }>;
+}
