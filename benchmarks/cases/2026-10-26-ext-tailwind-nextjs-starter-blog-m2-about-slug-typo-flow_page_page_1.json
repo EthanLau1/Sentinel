@@ -7,8 +7,8 @@
   "realRootCause": "app/about/page.tsx 找作者时把 slug 写成了 'defualt'（正确是 'default'），allAuthors.find 返回 undefined → 随后 coreContent(author) 读 undefined 的属性抛错 → /about 返回 HTTP 500。",
   "sentinelJudgment": {
     "rootCauseStatus": "confirmed",
-    "rootCause": "app/about/page.tsx 使用了错误拼写的作者 slug“defualt”，导致 allAuthors.find 返回 undefined，随后 coreContent(author) 触发服务端异常，使 /about/ 返回 HTTP 500。",
-    "confidence": 0.86,
+    "rootCause": "app/about/page.tsx 使用了拼写错误的作者 slug “defualt”，allAuthors.find 返回 undefined，随后将 undefined 传给 coreContent，导致服务端渲染抛出异常并返回 HTTP 500。",
+    "confidence": 0.92,
     "evidenceCount": 7,
     "evidenceKinds": [
       "console",
@@ -20,15 +20,15 @@
   },
   "hit": true,
   "recommendedFix": {
-    "id": "fix-about-default-slug",
-    "title": "将 About 页作者 slug 从 defualt 修正为 default",
+    "id": "fix-about-default-slug-typo",
+    "title": "修正 About 页面中的默认作者 slug 拼写",
     "tier": 1,
     "effort": "low",
     "risk": "low",
-    "score": 0.7489999999999999
+    "score": 0.7389999999999999
   },
   "fixAdopted": true,
-  "fixPassedVerification": false,
+  "fixPassedVerification": true,
   "replayExpectation": {
     "rootCauseContains": [
       "defualt",
@@ -41,7 +41,7 @@
     "patchValid": true,
     "note": "字符串字面量拼写错误 → 查不到记录 → undefined 解引用"
   },
-  "notes": "真值来源：公开仓库 https://github.com/timlrx/tailwind-nextjs-starter-blog.git 注入已知缺陷 m2-about-slug-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"defualt\",\"slug\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中低风险规则「拼写」→ 可自动修\n采纳：Tier 1 自动应用（fix-about-default-slug → [\"app/about/page.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 500（/about）\nrun 状态：failedFlows=6 passedFlows=1 appliedPatches=[{\"fixId\":\"fix-about-default-slug\",\"files\":[\"app/about/page.tsx\"],\"flowId\":\"flow_page_page_1\",\"status\":\"reverted\",\"reason\":\"修复后重跑仍失败（Expected URL /about, got http://127.0.0.1:3104/about/）→ 已回滚\"},{\"fixId\":\"fix-about-default-slug\",\"files\":[\"app/about/page.tsx\"],\"flowId\":\"flow_page_page_1\",\"status\":\"applied\"}]",
-  "createdAt": "2026-10-26T11:00:08.155Z",
+  "notes": "真值来源：公开仓库 https://github.com/timlrx/tailwind-nextjs-starter-blog.git 注入已知缺陷 m2-about-slug-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"defualt\",\"slug\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中低风险规则「拼写」→ 可自动修\n采纳：Tier 1 自动应用（fix-about-default-slug-typo → [\"app/about/page.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/about）\nrun 状态：failedFlows=2 passedFlows=5 appliedPatches=[{\"fixId\":\"fix-about-default-slug-typo\",\"files\":[\"app/about/page.tsx\"],\"flowId\":\"flow_page_page_1\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T11:14:33.290Z",
   "sentinelVersion": "v1.2-batch"
 }
