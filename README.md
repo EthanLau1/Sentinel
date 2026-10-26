@@ -1,60 +1,125 @@
 # Sentinel
 
-## 它到底是什么（先读这一段就够了）
-
-**Sentinel 是一个帮你给网站项目做自动体检的工具。**
-
-你把正在开发的项目文件夹交给它，它自己把项目跑起来、用浏览器把页面一个个点开、把接口一个个调一遍，最后写出一份报告：**哪里坏了、为什么会坏、怎么修**。
-
-它跟你平时用的"把报错贴给 AI 问一句"最大的区别是：
-
-| | 贴报错给 AI | Sentinel |
-|---|---|---|
-| 复现 | 你得自己描述怎么坏的 | 它自己去跑一遍，把现场抓下来 |
-| 结论 | AI 猜一个原因 | 有证据才敢下结论，没证据就写"证据不足" |
-| 有人把关 | 没有 | 有个"反方"专门挑刺，防止它一本正经地胡说 |
-| 改代码 | 你自己动手 | 小改动它可以自动改（改完不行会自己还原） |
-
-**它替你做的四件事：**
-
-1. **看懂你的项目** —— 扫出你有哪些页面、哪些接口、用什么框架搭的
-2. **跑一遍，看哪里真的坏了** —— 自动开浏览器点页面、发请求，把报错现场都记下来
-3. **找到真正的原因** —— 报错只是症状，它去找坏掉的那行代码
-4. **给出能落地的修法** —— 一次给 3 个方案，按"改动小 / 风险低 / 见效快"排序告诉你推荐哪个
-
-**它能做什么、不能做什么：**
-
-| ✅ 它能干 | ❌ 它不干 |
-|---|---|
-| 找 bug，定位到具体代码位置 | 不判断业务对错（"这个按钮该不该出现"它不知道） |
-| 小改动自动改，改完不行会自己还原 | 大改动只给建议，绝不自己动你的代码 |
-| 告诉你哪些地方根本没测到 | 不替你决定产品该做什么 |
-| 每个结论都附带能核对的证据 | 证据不够时宁可说"不知道"，也不编一个根因 |
-
-**术语对照表**（文档里的黑话 ↔ 人话，第一次看只需要这一张）：
-
-| 文档里写的 | 人话 | 属于哪一步 |
-|---|---|---|
-| FeatureMap（功能地图） | 你的项目长什么样：有哪些页面、哪些接口 | 1 看懂项目 |
-| Evidence（证据） | 真跑起来抓到的现场：500 报错、控制台红字 | 2 跑一遍 |
-| root cause（根因） | 真正坏掉的那行代码，不是表面那个报错 | 3 找原因 |
-| hypothesis（假设） | 还不够证据，只能叫"猜测" | 3 找原因 |
-| critic / verifier（反方 / 复核） | 专门挑刺的复核环节，防止 AI 胡说 | 3 找原因 |
-| cost model（成本模型） | 比较 3 个修法的"改动小 / 风险低 / 见效快" | 4 给修法 |
-| Tier（自动修复等级） | 分 4 档：只报告 → 自动改 → 写补丁待你确认 → 只给建议 | 4 给修法 |
-
----
-
-> 下面这段是英文的技术描述，给开发者看；上面那段是给第一次接触它的人看的。
-> Local debug agent for web apps. It discovers safe read-only routes, runs browser flows, records evidence and coverage gaps, and proposes reviewable fixes when a root cause is supported.
+> **一个帮你给网站项目做自动体检的工具**
+> **A local debug agent that health-checks your web app for you.**
 
 `v0.2.0` · 8 workspaces · MIT
 
+> Local debug agent for web apps. It discovers safe read-only routes, runs browser flows, records evidence and coverage gaps, and proposes reviewable fixes when a root cause is supported.
+
 > **Work in progress** — This project is not feature-complete. Feel free to fork, modify, and build on top of it.
+> **项目进行中** —— 尚未功能完备，欢迎 fork、修改、或在它之上继续构建。
 
 ---
 
-## 30 秒看看它长什么样（不需要任何 API Key）
+## 📖 双语说明 / How to read this README
+
+**中文 / Chinese**
+
+本文档每一节都是**中英对照**，有两种排法，全文统一：
+
+- **段落**：中文段落在前，紧接着是对应的英文段落（用 **中文** / **English** 小标题标出）
+- **表格、列表、目录树、命令**：**逐行对照** —— 同一格里中文在前、英文在后，用 ` / ` 分隔
+  （内容与语言无关，重复写两份反而容易写歪，所以只写一份）
+
+第一遍看只读中文即可；需要英文原话时，往下翻半屏就是对应段落。
+
+**English**
+
+Every section of this README is **bilingual**, in exactly two layouts, used consistently throughout:
+
+- **Prose**: the Chinese passage comes first, immediately followed by its English counterpart
+  (marked with the **中文** / **English** labels)
+- **Tables, lists, directory trees, commands**: **paired line by line** — Chinese first, English
+  after it in the same cell, separated by ` / `. The content is language-neutral, so writing it
+  twice would only let the two copies drift apart.
+
+Read the Chinese if you prefer; if you need the English wording, it is always half a screen below.
+
+### 章节对照表 / Section map
+
+| # | 中文 | English |
+|---|---|---|
+| 1 | [它到底是什么](#1-它到底是什么--what-it-is) | What It Is |
+| 2 | [30 秒看看它长什么样](#2-30-秒看看它长什么样--30-second-preview-demo) | 30-Second Preview (Demo) |
+| 3 | [5 分钟上手（Web 控制台）](#3-5-分钟上手web-控制台--5-minute-setup-web-console) | 5-Minute Setup (Web Console) |
+| 4 | [自定义要测的流程](#4-自定义要测的流程--defining-your-own-flows) | Defining Your Own Flows |
+| 5 | [对真实项目调试](#5-对真实项目调试--debugging-a-real-project) | Debugging a Real Project |
+| 6 | [CLI 命令](#6-cli-命令--cli-commands) | CLI Commands |
+| 7 | [`run` 的全部选项](#7-run-的全部选项--options-for-run) | Options for `run` |
+| 8 | [支持的技术栈](#8-支持的技术栈--supported-stack) | Supported Stack |
+| 9 | [完整工作流程](#9-完整工作流程--how-it-works) | How It Works |
+| 10 | [它会往你项目里写什么](#10-它会往你项目里写什么--what-it-writes-to-your-project) | What It Writes to Your Project |
+| 11 | [自动修复的 4 个 Tier](#11-自动修复的-4-个-tier--the-four-auto-fix-tiers) | The Four Auto-Fix Tiers |
+| 12 | [报告的 11 个字段](#12-报告的-11-个字段--the-11-report-fields) | The 11 Report Fields |
+| 13 | [当前状态（诚实版）](#13-当前状态诚实版--current-status-honest-version) | Current Status (Honest Version) |
+| 14 | [常见报错](#14-常见报错--common-errors) | Common Errors |
+| 15 | [开发者](#15-开发者--for-developers) | For Developers |
+| 16 | [Requirements / License](#16-requirements--license) | Requirements / License |
+
+---
+
+## 1. 它到底是什么 / What It Is
+
+**Sentinel 是一个帮你给网站项目做自动体检的工具。**
+**Sentinel is a tool that health-checks your web app for you.**
+
+你把正在开发的项目文件夹交给它，它自己把项目跑起来、用浏览器把页面一个个点开、把接口一个个调一遍，最后写出一份报告：**哪里坏了、为什么会坏、怎么修**。
+
+You hand it the folder of the project you are working on. It runs the project itself, opens every page
+in a real browser, calls every API endpoint, and writes a report: **what is broken, why it is broken,
+and how to fix it**.
+
+它跟你平时用的"把报错贴给 AI 问一句"最大的区别是：
+
+The biggest difference from your usual "paste the error into an AI and ask" workflow:
+
+| | 贴报错给 AI / Paste the error into an AI chat | Sentinel |
+|---|---|---|
+| 复现 / Reproduce | 你得自己描述怎么坏的 / You have to describe how it breaks | 它自己去跑一遍，把现场抓下来 / It runs the app and captures the scene itself |
+| 结论 / Conclusion | AI 猜一个原因 / The AI guesses a cause | 有证据才敢下结论，没证据就写"证据不足" / It only concludes with evidence; otherwise it writes "insufficient evidence" |
+| 有人把关 / Review | 没有 / None | 有个"反方"专门挑刺，防止它一本正经地胡说 / A built-in critic looks for holes in the conclusion |
+| 改代码 / Changing code | 你自己动手 / You do it yourself | 小改动它可以自动改（改完不行会自己还原）/ Small fixes can be applied automatically, with auto-revert if the re-check fails |
+
+**它替你做的四件事 / The four things it does for you**
+
+1. **看懂你的项目** —— 扫出你有哪些页面、哪些接口、用什么框架搭的
+   **Understand your project** — it maps out your pages, your API endpoints, and your framework.
+2. **跑一遍，看哪里真的坏了** —— 自动开浏览器点页面、发请求，把报错现场都记下来
+   **Run it and see what is actually broken** — it drives a real browser, issues real requests, and records every failure.
+3. **找到真正的原因** —— 报错只是症状，它去找坏掉的那行代码
+   **Find the real cause** — the error is only a symptom; it locates the line that is actually broken.
+4. **给出能落地的修法** —— 一次给 3 个方案，按"改动小 / 风险低 / 见效快"排序告诉你推荐哪个
+   **Propose a fix you can actually ship** — three options, ranked by "small change / low risk / fast to apply", with one recommendation.
+
+**它能做什么、不能做什么 / What it does and does not do**
+
+| ✅ 它能干 / It can | ❌ 它不干 / It does not |
+|---|---|
+| 找 bug，定位到具体代码位置 / Find bugs and point at the exact code | 不判断业务对错（"这个按钮该不该出现"它不知道）/ Judge business correctness — it does not know whether a button *should* be there |
+| 小改动自动改，改完不行会自己还原 / Apply small fixes automatically, reverting if the re-check fails | 大改动只给建议，绝不自己动你的代码 / Touch large changes — it only suggests, it never edits them |
+| 告诉你哪些地方根本没测到 / Tell you which parts were never exercised | 不替你决定产品该做什么 / Decide what your product should do |
+| 每个结论都附带能核对的证据 / Attach checkable evidence to every conclusion | 证据不够时宁可说"不知道"，也不编一个根因 / Rather say "I don't know" than invent a root cause |
+
+**术语对照表 / Glossary**（第一次看只需要这一张 / this is the only table you need to read first）
+
+| 文档里写的 / Term | 人话 / Plain meaning | 属于哪一步 / Step |
+|---|---|---|
+| FeatureMap（功能地图）/ Feature map | 你的项目长什么样：有哪些页面、哪些接口 / What your project looks like: which pages, which endpoints | 1 看懂项目 / Understand |
+| Evidence（证据）/ Evidence | 真跑起来抓到的现场：500 报错、控制台红字 / The captured scene: a 500, a red console line | 2 跑一遍 / Run |
+| root cause（根因）/ Root cause | 真正坏掉的那行代码，不是表面那个报错 / The line that is really broken, not the error you saw | 3 找原因 / Diagnose |
+| hypothesis（假设）/ Hypothesis | 还不够证据，只能叫"猜测" / Not enough evidence yet — a guess, nothing more | 3 找原因 / Diagnose |
+| critic / verifier（反方 / 复核）/ Critic, verifier | 专门挑刺的复核环节，防止 AI 胡说 / The step that tries to break the conclusion | 3 找原因 / Diagnose |
+| cost model（成本模型）/ Cost model | 比较 3 个修法的"改动小 / 风险低 / 见效快" / Ranks the three options by effort, risk, and payoff | 4 给修法 / Fix |
+| Tier（自动修复等级）/ Tier | 分 4 档：只报告 → 自动改 → 写补丁待你确认 → 只给建议 / Four levels: report only → auto-fix → patch for review → suggestion only | 4 给修法 / Fix |
+
+---
+
+## 2. 30 秒看看它长什么样 / 30-Second Preview (Demo)
+
+**中文**
+
+不需要任何 API Key：
 
 ```bash
 git clone https://github.com/EthanLau1/Sentinel.git
@@ -66,7 +131,25 @@ bun packages/cli/src/index.ts run --demo
 > ⚠️ **`--demo` 输出的是 3 个硬编码的示例报告，不是真的在找 bug。**
 > 它只用来让你预览报告长什么样。真正的检测必须配 LLM。
 
-## 5 分钟上手（Web 控制台，推荐第一次用这个）
+**English**
+
+No API key required:
+
+```bash
+git clone https://github.com/EthanLau1/Sentinel.git
+cd Sentinel
+bun install
+bun packages/cli/src/index.ts run --demo
+```
+
+> ⚠️ **`--demo` prints 3 hardcoded sample reports — it does not detect anything real.**
+> It exists so you can preview the report format. Real detection requires an LLM.
+
+---
+
+## 3. 5 分钟上手（Web 控制台）/ 5-Minute Setup (Web Console)
+
+**中文**
 
 **双击仓库根目录的 `start.command`** → 浏览器自动打开 http://127.0.0.1:4317
 
@@ -83,7 +166,30 @@ bun packages/cli/src/index.ts run --demo
    - **只有证据支持根因时**才提修复建议
 4. **看结果** —— bug 列表 → 点开看详情 → 看推荐修复和它的证据
 
-### 建议自己定义要测的流程
+**English**
+
+**Double-click `start.command` in the repository root** → your browser opens http://127.0.0.1:4317
+
+The script handles the rest: on first run it installs dependencies and builds the frontend; it runs the
+console in the background (closing the terminal does not stop it); and if the console is already
+running it just opens the browser instead of starting a second copy. **To stop it: double-click `stop.command`.**
+
+In the web console:
+
+1. **Settings** — set up your LLM provider (API key + model name). You can save it as the global default, shared by all projects.
+2. **Add Project** — pick your project folder.
+3. **Run** — one click, and Sentinel will:
+   - create the `.sentinel/` directory in your project and **start your dev server for you** (bun, pnpm, yarn, and npm are all recognised)
+   - discover public pages and safe GET endpoints, then run browser and API assertions
+   - write evidence, findings, coverage gaps, and a run summary back into your project
+   - **only propose a fix when the evidence supports a root cause**
+4. **Read the result** — bug list → open a bug for details → see the recommended fix and the evidence behind it.
+
+---
+
+## 4. 自定义要测的流程 / Defining Your Own Flows
+
+**中文**
 
 自动发现的流程只覆盖公开页面。想测登录、发布、评论、设置这类真实业务，在你的项目里建 `.sentinel/app.map.ts`：
 
@@ -108,7 +214,39 @@ export default {
 显式写的 `flows` 会**替换**自动生成的基线流程；运行摘要里会写清楚哪些跑了、哪些没跑。
 会改数据的流程请用**测试环境和一次性测试账号**。Sentinel 不会猜业务结果，也不会自动点"提交/删除"这类写操作。
 
-## 对真实项目调试（命令行完整流程）
+**English**
+
+Auto-discovered flows only cover public pages. To exercise real business flows — login, publishing,
+comments, settings — create `.sentinel/app.map.ts` in your project:
+
+```ts
+export default {
+  flows: [
+    {
+      id: 'save-settings',
+      description: 'A changed setting remains after reload',
+      steps: [
+        { action: 'visit', url: '/settings' },
+        { action: 'fill', selector: '[name="displayName"]', value: 'Sentinel test' },
+        { action: 'click', selector: 'button[type="submit"]' },
+        { action: 'visit', url: '/settings' },
+        { action: 'assert', kind: 'text', expected: 'Sentinel test' },
+      ],
+    },
+  ],
+};
+```
+
+Explicit `flows` **replace** the generated baseline flows, and the run summary states exactly which
+flows were executed and which were not. Use a **staging environment and a disposable test account**
+for flows that change data. Sentinel does not guess business outcomes, and it never clicks
+write actions such as "submit" or "delete" on its own.
+
+---
+
+## 5. 对真实项目调试 / Debugging a Real Project
+
+**中文**
 
 **跑之前，你的目标项目需要满足 3 个条件：**
 
@@ -140,102 +278,156 @@ bun packages/cli/src/index.ts run --project=/path/to/your-app
 cat /path/to/your-app/reports/sentinel-latest.md
 ```
 
+**English**
+
+**Before you run, your target project needs three things:**
+
+1. Dependencies installed (the project has a `node_modules` directory)
+2. A `dev` / `start` / `serve` / `dev:start` / `start:dev` script in `package.json`
+   — Sentinel starts it for you; **and if the server is already running, it reuses it without killing your process**
+3. An LLM API key, or a local Ollama install (free)
+
+```bash
+# 1) Initialize (creates .sentinel/ in the target project)
+bun packages/cli/src/index.ts init --project=/path/to/your-app
+
+# 2) Configure the LLM: edit /path/to/your-app/.sentinel/llm.yml
+#    default: my-provider
+#    providers:
+#      my-provider:
+#        type: openai-compatible
+#        baseUrl: https://api.example.com/v1
+#        apiKey: your-key-here
+#        model: model-name
+
+# 3) Self-check: environment, config, LLM connectivity, Playwright, budget guard…
+bun packages/cli/src/index.ts doctor --project=/path/to/your-app
+
+# 4) Run the full debug pipeline
+bun packages/cli/src/index.ts run --project=/path/to/your-app
+
+# 5) Read the result
+cat /path/to/your-app/reports/sentinel-latest.md
+```
+
 ---
 
-## CLI 命令
+## 6. CLI 命令 / CLI Commands
 
-| 命令 | 说明 |
+| 命令 / Command | 说明 / Description |
 |---|---|
-| `sentinel run` | 跑完整调试流程（主入口） |
-| `sentinel doctor` | 自检：环境、配置、LLM 是否可用、预算护栏是否可执行 |
-| `sentinel map` | 只生成 FeatureMap（功能地图），不做诊断 |
-| `sentinel hello` | 只测 LLM 能不能连通 |
-| `sentinel init` | 在目标项目里生成 `.sentinel/` |
-| `sentinel ui` | 启动本地 Web 控制台（默认 http://127.0.0.1:4317） |
-| `sentinel update` | 自更新 —— **目前是占位（M8.5 stub），还没真实现** |
+| `sentinel run` | 跑完整调试流程（主入口）/ Run the full debug pipeline (main entry point) |
+| `sentinel doctor` | 自检：环境、配置、LLM 是否可用、预算护栏是否可执行 / Self-check: environment, config, LLM availability, whether the budget guard is executable |
+| `sentinel map` | 只生成 FeatureMap（功能地图），不做诊断 / Generate the FeatureMap only, no diagnosis |
+| `sentinel hello` | 只测 LLM 能不能连通 / Verify LLM connectivity only |
+| `sentinel init` | 在目标项目里生成 `.sentinel/` / Create `.sentinel/` in the target project |
+| `sentinel ui` | 启动本地 Web 控制台（默认 http://127.0.0.1:4317）/ Start the local web console (default http://127.0.0.1:4317) |
+| `sentinel update` | 自更新 —— **目前是占位（M8.5 stub），还没真实现** / Self-update — **still a stub (M8.5), not implemented yet** |
 
-### `run` 的全部选项
+---
 
-| 选项 | 说明 |
+## 7. `run` 的全部选项 / Options for `run`
+
+| 选项 / Option | 说明 / Description |
 |---|---|
-| `--project <path>` | 目标项目根目录（默认当前目录） |
-| `--demo` | 无 key 的演示流程，输出硬编码示例报告 |
-| `--detailed` | 把敏感证据（cookie / storage 等）也写进报告 |
-| `--no-enhance` | 跳过外部知识检索（跳过不影响出报告） |
-| `--tier <0\|1\|2\|3>` | 最高处理到哪一档（默认 3） |
-| `--auto-fix` | 允许 Tier 1 真正修改你的源代码（**默认关**） |
-| `--create-pr` | 为 Tier 2 修复建分支、提交、推送并开 PR（需要 `gh` CLI，**默认关**） |
-| `--report <markdown\|json\|both>` | 报告格式，默认两种都出 |
+| `--project <path>` | 目标项目根目录（默认当前目录）/ Target project root (defaults to the current directory) |
+| `--demo` | 无 key 的演示流程，输出硬编码示例报告 / Keyless demo flow that prints hardcoded sample reports |
+| `--detailed` | 把敏感证据（cookie / storage 等）也写进报告 / Include sensitive evidence (cookies, storage, …) in the report |
+| `--no-enhance` | 跳过外部知识检索（跳过不影响出报告）/ Skip external knowledge search (reporting still works) |
+| `--tier <0\|1\|2\|3>` | 最高处理到哪一档（默认 3）/ Highest tier to process (default 3) |
+| `--auto-fix` | 允许 Tier 1 真正修改你的源代码（**默认关**）/ Allow Tier 1 to actually modify your source code (**off by default**) |
+| `--create-pr` | 为 Tier 2 修复建分支、提交、推送并开 PR（需要 `gh` CLI，**默认关**）/ Branch, commit, push, and open a PR for Tier 2 fixes (requires the `gh` CLI, **off by default**) |
+| `--report <markdown\|json\|both>` | 报告格式，默认两种都出 / Report format; both by default |
 
 > **默认它不会改你的代码。** 即使不加 `--auto-fix`，Tier 1 也只是把补丁写到 `.sentinel/auto-patches/` 里等你审阅。
 > `--auto-fix` 打开后，改完会**重新验证一次**，验证不过自动还原。
 > `--create-pr` 是**外部动作**（真的推分支、开 PR），只在显式加这个开关时才会发生。
+>
+> **By default it does not touch your code.** Even without `--auto-fix`, Tier 1 only writes a patch file
+> to `.sentinel/auto-patches/` for you to review. With `--auto-fix`, the change is **re-verified
+> afterwards** and automatically reverted if the re-check fails. `--create-pr` performs **real external
+> actions** (pushing a branch, opening a PR) and only happens when you pass the flag explicitly.
 
 ---
 
-## 支持的技术栈
+## 8. 支持的技术栈 / Supported Stack
+
+**中文**
 
 范围以 `packages/adapters/src/` 里**真实存在的 13 个 adapter** 为准 —— 没有 adapter 的栈不在服务范围内。
 
-| 层 | 已支持 |
+**English**
+
+The supported scope is defined by the **13 adapters that actually exist** in `packages/adapters/src/`
+— a stack without an adapter is out of scope.
+
+| 层 / Layer | 已支持 / Supported |
 |---|---|
-| 前端 | Next.js · React · Vue · Svelte |
-| 后端 | Express · Hono · NestJS · tRPC |
-| 数据 | Prisma · Drizzle · Supabase |
-| LLM 应用 | Vercel AI SDK · LangChain |
+| 前端 / Frontend | Next.js · React · Vue · Svelte |
+| 后端 / Backend | Express · Hono · NestJS · tRPC |
+| 数据 / Data | Prisma · Drizzle · Supabase |
+| LLM 应用 / LLM app | Vercel AI SDK · LangChain |
 
-**不服务**：iOS / Android 原生、嵌入式与硬件、桌面应用（Electron 仅基本支持）、游戏引擎、操作系统与驱动。
+**不服务 / Not covered**：iOS / Android 原生 / native apps、嵌入式与硬件 / embedded and hardware、桌面应用（Electron 仅基本支持）/ desktop apps (Electron only basic support)、游戏引擎 / game engines、操作系统与驱动 / operating systems and drivers。
 
-## 完整工作流程
+---
+
+## 9. 完整工作流程 / How It Works
 
 ```
 Mapper → Runner + Browser/HTTP → Analyst → Critic → Verifier → Planner → Enhancer → Executor
 ```
 
-对着人话看这 9 步（每一步只干一件事）：
+对着人话看这 9 步（每一步只干一件事）/ The nine steps in plain language (each one does a single job):
 
-| 步骤 | 人话 |
+| 步骤 / Step | 人话 / Plain meaning |
 |---|---|
-| Mapper | 先把你的项目读一遍：有哪些页面、哪些接口、用什么框架搭的 |
-| Runner | 真的去点页面、发请求，把出错的现场抓下来当证据 |
-| Analyst | 看证据，猜一个"可能是这里坏了" |
-| Critic | 反方：证据真的支持这个猜测吗？ |
-| Verifier | 复核：证据够不够下结论？不够就退回"假设" |
-| Planner | 给 3 个修法，按"改动小 / 风险低 / 见效快"排序 |
-| Enhancer | 必要时去查官方文档补充外部知识（`--no-enhance` 可关掉） |
-| Executor | 写补丁文件供你审阅（**只写补丁，不直接改你的代码**） |
+| Mapper | 先把你的项目读一遍：有哪些页面、哪些接口、用什么框架搭的 / Read your project first: which pages, which endpoints, which framework |
+| Runner | 真的去点页面、发请求，把出错的现场抓下来当证据 / Really click the pages, send the requests, capture the failure as evidence |
+| Analyst | 看证据，猜一个"可能是这里坏了" / Look at the evidence, propose what may be broken |
+| Critic | 反方：证据真的支持这个猜测吗？ / The adversary: does the evidence really support that guess? |
+| Verifier | 复核：证据够不够下结论？不够就退回"假设" / The check: is the evidence enough to conclude? If not, it stays a hypothesis |
+| Planner | 给 3 个修法，按"改动小 / 风险低 / 见效快"排序 / Propose three fixes, ranked by effort, risk, and payoff |
+| Enhancer | 必要时去查官方文档补充外部知识（`--no-enhance` 可关掉）/ Optionally consult official docs for extra knowledge (`--no-enhance` turns it off) |
+| Executor | 写补丁文件供你审阅（**只写补丁，不直接改你的代码**）/ Write the patch file for your review (**writes a patch, never edits your code directly**) |
 
-## 它会往你项目里写什么
+---
+
+## 10. 它会往你项目里写什么 / What It Writes to Your Project
 
 ```
 your-app/
-├── .sentinel/                       ← 项目自己的配置与中间产物
-│   ├── llm.yml                      ← LLM 配置（可覆盖全局设置）
-│   ├── budget.yml                   ← 预算与护栏上限
-│   ├── app.map.ts                   ← 你手写的项目映射（可选）
-│   ├── app.map.generated.json       ← 自动生成的 FeatureMap
-│   ├── auto-patches/                ← Tier 1 补丁（.diff）
-│   └── cache/                       ← 证据缓存
+├── .sentinel/                       ← 项目自己的配置与中间产物 / this project's own config and intermediates
+│   ├── llm.yml                      ← LLM 配置（可覆盖全局设置）/ LLM config (overrides the global one)
+│   ├── budget.yml                   ← 预算与护栏上限 / budget and guard limits
+│   ├── app.map.ts                   ← 你手写的项目映射（可选）/ your hand-written project map (optional)
+│   ├── app.map.generated.json       ← 自动生成的 FeatureMap / the generated FeatureMap
+│   ├── auto-patches/                ← Tier 1 补丁（.diff）/ Tier 1 patches (.diff)
+│   └── cache/                       ← 证据缓存 / evidence cache
 ├── reports/
-│   ├── sentinel-latest.md           ← Markdown 报告
-│   ├── sentinel-latest.json         ← JSON 报告
-│   ├── patches/                     ← Tier 2 补丁（.patch）
-│   └── suggestions/                 ← Tier 3 建议（.md）
-└── .sentinel/runs/webui.json        ← Web 控制台的运行历史
+│   ├── sentinel-latest.md           ← Markdown 报告 / Markdown report
+│   ├── sentinel-latest.json         ← JSON 报告 / JSON report
+│   ├── patches/                     ← Tier 2 补丁（.patch）/ Tier 2 patches (.patch)
+│   └── suggestions/                 ← Tier 3 建议（.md）/ Tier 3 suggestions (.md)
+└── .sentinel/runs/webui.json        ← Web 控制台的运行历史 / web console run history
 ```
 
 全局配置（项目列表 + 默认 LLM 连接）在 `~/.sentinel/` 下，**不会被复制进你的项目**。
+The global config (project list and default LLM connection) lives under `~/.sentinel/` and is
+**never copied into your project**.
 
-## 自动修复的 4 个 Tier
+---
 
-| Tier | 含义 | 实际行为 | 落盘位置 |
+## 11. 自动修复的 4 个 Tier / The Four Auto-Fix Tiers
+
+| Tier | 含义 / Meaning | 实际行为 / Actual behaviour | 落盘位置 / Where it lands |
 |---|---|---|---|
-| 0 | 只观察 | 只记录，不生成补丁 | — |
-| 1 | 自动修 | 改代码**需要** `--auto-fix`；否则只写补丁等你审阅 | `.sentinel/auto-patches/<id>.diff` |
-| 2 | 待你确认 | 写补丁；加 `--create-pr` 会真的建 PR | `reports/patches/<id>.patch` |
-| 3 | 仅建议 | 只出建议文档，绝不动代码 | `reports/suggestions/<id>.md` |
+| 0 | 只观察 / Observe only | 只记录，不生成补丁 / Records only, generates no patch | — |
+| 1 | 自动修 / Auto-fix | 改代码**需要** `--auto-fix`；否则只写补丁等你审阅 / Modifying code **requires** `--auto-fix`; otherwise it only writes a patch for review | `.sentinel/auto-patches/<id>.diff` |
+| 2 | 待你确认 / Needs review | 写补丁；加 `--create-pr` 会真的建 PR / Writes a patch; with `--create-pr` it opens a real PR | `reports/patches/<id>.patch` |
+| 3 | 仅建议 / Suggestion only | 只出建议文档，绝不动代码 / Writes a suggestion document, never touches code | `reports/suggestions/<id>.md` |
 
-手动应用 Tier 1 补丁：
+手动应用 Tier 1 补丁 / Apply a Tier 1 patch by hand：
 
 ```bash
 cd /path/to/your-app
@@ -243,55 +435,83 @@ git apply .sentinel/auto-patches/<fixId>.diff
 ```
 
 哪一档由**硬规则**决定，不靠模型自己说。
+The tier is decided by **hard rules**, not by whatever the model claims.
 
-## 报告的 11 个字段
+---
 
-每份 bug 报告固定包含：Bug ID · 严重级别（P0–P3）· 影响功能 · 复现步骤 · 证据引用 ·
-根因判断（假设 / 已确认）· **推荐方案** · 备选方案 ×2 · 风险评估 · 验证命令 · 是否可自动修（Tier）。
+## 12. 报告的 11 个字段 / The 11 Report Fields
+
+每份 bug 报告固定包含 / Every bug report always contains these eleven fields:
+
+Bug ID · 严重级别（P0–P3）/ Severity (P0–P3) · 影响功能 / Affected feature · 复现步骤 / Reproduction steps ·
+证据引用 / Evidence references · 根因判断（假设 / 已确认）/ Root cause status (hypothesis / confirmed) ·
+**推荐方案** / **Recommended fix** · 备选方案 ×2 / Two alternatives · 风险评估 / Risk assessment ·
+验证命令 / Verification command · 是否可自动修（Tier）/ Whether it can be auto-fixed (tier).
 
 字段内容为空时也会照样输出标题并写明"待产出"，不会整段跳过 —— 跳过会让"没产出"看起来像"不需要"。
+When a field has no content, the heading is still printed with an explicit "not produced yet"
+note rather than the whole section being dropped — dropping it would make "not produced" look
+like "not needed".
 
-## 当前状态（诚实版）
+---
 
-**已经能用：**
+## 13. 当前状态（诚实版）/ Current Status (Honest Version)
+
+**已经能用 / Working today**
 
 - 完整跑通"发现 → 取证 → 诊断 → 复核 → 给方案 → 出报告"这条链路
+  The whole chain works: discover → capture evidence → diagnose → review → propose → report.
 - Markdown + JSON 两种报告格式，11 个字段齐全
+  Markdown and JSON reports, all eleven fields present.
 - Tier 1 自动修复（需 `--auto-fix`，带验证与自动还原）
+  Tier 1 auto-fix (requires `--auto-fix`, with verification and auto-revert).
 - Tier 2 建 PR（需 `--create-pr` + `gh` CLI）
+  Tier 2 pull request (requires `--create-pr` plus the `gh` CLI).
 - Web 控制台：项目列表、设置、运行、报告查看
+  Web console: project list, settings, run, report viewer.
 - 自检门禁：配置坏了直接拒绝启动；外部服务不通则降级但不阻塞
+  Self-check gate: a broken configuration blocks the run outright; an unreachable external
+  service degrades instead of blocking.
 
-**还没有 / 只是占位：**
+**还没有 / 只是占位 / Not there yet**
 
 - **HTML 报告未实现** —— 目前只有 Markdown 和 JSON，文档里不宣称"三格式已满足"
+  **No HTML report** — only Markdown and JSON today; the docs do not claim three formats.
 - **`sentinel update` 是占位** —— 自更新（skills / adapters / 缓存）还没真做
+  **`sentinel update` is a stub** — skills / adapters / cache self-update is not implemented.
 - **`--demo` 是硬编码假数据** —— 不做任何真实检测
+  **`--demo` is hardcoded fake data** — it performs no real detection.
 - 知识增强每次 run 最多触发 30% 的流程（避免噪音淹没权威来源）
+  Knowledge enhancement fires on at most 30% of flows per run, so noise does not drown out
+  authoritative sources.
 
-## 常见报错
+---
+
+## 14. 常见报错 / Common Errors
 
 **`No reachable project dev server`**
 目标项目没有可识别的 `dev`/`start`/`serve` 脚本，或者依赖没装。装好依赖、加个 `dev` 脚本即可。
+The target project has no recognisable `dev`/`start`/`serve` script, or its dependencies are not
+installed. Install the dependencies and add a `dev` script.
 
 **`browser MCP not registered`**
-Playwright 没装：
+Playwright 没装 / Playwright is not installed:
 
 ```bash
 npx playwright install chromium
 ```
 
-**LLM 返回 404 / 连不上**
-`baseUrl` 填错了。常见正确值：
+**LLM 返回 404 / 连不上 / LLM returns 404 or refuses to connect**
+`baseUrl` 填错了 / the `baseUrl` is wrong. 常见正确值 / Common correct values:
 
 - MiniMax：`https://api.minimaxi.com/v1`
 - OpenAI：`https://api.openai.com/v1`
 - Ollama：`http://localhost:11434/v1`
 
-注意末尾要有 `/v1`。
+注意末尾要有 `/v1` / Note the trailing `/v1`.
 
 **Budget exceeded**
-默认每次 run 上限 $0.5。调 `.sentinel/budget.yml`：
+默认每次 run 上限 $0.5 / The default cap is $0.50 per run. 调 `.sentinel/budget.yml` / edit `.sentinel/budget.yml`:
 
 ```yaml
 limits:
@@ -301,57 +521,75 @@ limits:
 
 > 美元护栏只有在 provider 配了 `pricing`（USD / 每百万 token）时才真正可执行。
 > 没配的话 `sentinel doctor` 会明确告诉你护栏没生效，而不是只打一句"警告"。
+>
+> The dollar guard is only executable once the provider defines `pricing` (USD per million tokens).
+> Without it, `sentinel doctor` states plainly that the guard is inert, instead of printing a
+> token "warning".
 
-**doctor 报 fail，怎么处理**
+**doctor 报 fail，怎么处理 / doctor reports a failure — what now**
 分两类：配置本身坏了（blocking）→ `run` 拒绝启动并打印修复命令；外部服务暂时不通（比如 LLM 挂了，非 blocking）→ 不阻塞，降级成启发式分析并在输出里说明降级了。
+There are two kinds: a broken configuration (blocking) makes `run` refuse to start and prints the
+fix command; a temporarily unreachable external service (non-blocking, e.g. the LLM is down) does
+not block — the analysis degrades to heuristics and the output says so.
 
-## 开发者
+---
 
-### 项目结构
+## 15. 开发者 / For Developers
+
+### 项目结构 / Project structure
 
 ```
 Sentinel/
-├── start.command         ← 双击启动 Web 控制台（后台）
-├── stop.command          ← 双击停止
+├── start.command         ← 双击启动 Web 控制台（后台）/ double-click to start the web console (background)
+├── stop.command          ← 双击停止 / double-click to stop
 ├── packages/
 │   ├── core/             Microkernel（Bus / Budget / Kernel / types）
 │   ├── subagents/        mapper, runner, analyst, critic, verifier, planner, enhancer, executor
-│   ├── adapters/         13 个框架检测器
+│   ├── adapters/         13 个框架检测器 / 13 framework detectors
 │   ├── providers/        LLM / Memory / Skills / MCP / Knowledge
-│   ├── reporters/        Markdown + JSON 报告生成 + CLI 打印
-│   ├── sensors/          证据类型 + 去重
-│   └── cli/              CLI 入口
-├── sentinel-ui/          React 19 + Vite Web 控制台
-├── benchmarks/           真实案例库（cases / replay）
-├── examples/nextjs-blog  示例项目
-└── docs/                 宪法、架构、路线图、规范
+│   ├── reporters/        Markdown + JSON 报告生成 + CLI 打印 / Markdown + JSON report generators + CLI printer
+│   ├── sensors/          证据类型 + 去重 / evidence types + dedupe helpers
+│   └── cli/              CLI 入口 / CLI entry point
+├── sentinel-ui/          React 19 + Vite Web 控制台 / React 19 + Vite web console
+├── benchmarks/           真实案例库（cases / replay）/ real case library (cases / replay)
+├── examples/nextjs-blog  示例项目 / sample project
+└── docs/                 宪法、架构、路线图、规范 / constitution, architecture, roadmap, specs
 ```
 
-### 守卫与测试
+### 守卫与测试 / Guards and tests
 
 ```bash
-bun run lint:core     # core/ 纯度：不许依赖具体框架/平台
-bun run lint:lines    # core/ 行数 ≤ 500
-bun run lint:spec     # 规范 ↔ 实现 ↔ 运行时 三方对账
-bun run test          # 全量单测 + 集成测试
-bun run test:replay   # 用录制的真实案例回放，验证没有退化
+bun run lint:core     # core/ 纯度：不许依赖具体框架/平台 / core purity: no framework or platform dependencies
+bun run lint:lines    # core/ 行数 ≤ 500 / core line count ≤ 500
+bun run lint:spec     # 规范 ↔ 实现 ↔ 运行时 三方对账 / three-way reconciliation of spec, implementation, runtime
+bun run test          # 全量单测 + 集成测试 / full unit and integration test suite
+bun run test:replay   # 用录制的真实案例回放，验证没有退化 / replay recorded real cases to prove no regression
 ```
 
-### 文档
+### 文档 / Documentation
 
-- [QUICK-START.md](./QUICK-START.md) —— 最短路径跑起来
-- [docs/CONSTITUTION.md](./docs/CONSTITUTION.md) —— 宪法（开头有白话版）：红线、边界、原则
-- [docs/INDEX.md](./docs/INDEX.md) —— 全部文档索引
-- [docs/REMEDIATION-PLAN-v1.md](./docs/REMEDIATION-PLAN-v1.md) —— 当前实际进度与待办
-- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) —— 分层与事件流
+- [QUICK-START.md](./QUICK-START.md) —— 最短路径跑起来 / shortest path to a running setup
+- [docs/CONSTITUTION.md](./docs/CONSTITUTION.md) —— 宪法（开头有白话版）：红线、边界、原则 / the constitution (plain-language version first): red lines, boundaries, principles
+- [docs/INDEX.md](./docs/INDEX.md) —— 全部文档索引 / index of every document
+- [docs/REMEDIATION-PLAN-v1.md](./docs/REMEDIATION-PLAN-v1.md) —— 当前实际进度与待办 / current status and remaining work
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) —— 分层与事件流 / layering and event flow
 
-## Requirements
+---
+
+## 16. Requirements / License
+
+**中文**
 
 - [bun](https://bun.sh)（安装：`curl -fsSL https://bun.sh/install | bash`）
 - macOS / Linux
 - 一个 LLM API Key，或本机装 Ollama（免费）
 - 目标项目：依赖装好 + 有 dev/start 类脚本
 
-## License
+**English**
 
-MIT
+- [bun](https://bun.sh) (install: `curl -fsSL https://bun.sh/install | bash`)
+- macOS / Linux
+- An LLM API key, or a local Ollama install (free)
+- Your target project: dependencies installed, plus a `dev`/`start` style script
+
+**License：MIT**
