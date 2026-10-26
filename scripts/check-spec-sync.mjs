@@ -275,10 +275,21 @@ const addBlocked = (dimension, id, detail) => blocked.push({ dimension, id, deta
       add('benchmark', `schema:${f}`, `案例缺字段：${missing.join(', ')}`);
     }
   }
+  // 调用点要连**测试**一起找：validateCase 的作用是校验案例文件格式，
+  // 真正调用它的就是测试（packages/cli/test/benchmarks.test.ts）——
+  // 只搜 src 会把它误报成"没人用"。
   const callers = list('packages').flatMap((pkg) =>
     list(join('packages', pkg, 'src')).filter((f) => f.endsWith('.ts')),
   );
-  const used = callers.some((f) => read(join('packages', pkgOf(f), 'src', f)).includes('validateCase'));
+  const testCallers = list('packages').flatMap((pkg) =>
+    list(join('packages', pkg, 'test')).filter((f) => f.endsWith('.ts')),
+  );
+  const used =
+    callers.some((f) => read(join('packages', pkgOf(f), 'src', f)).includes('validateCase')) ||
+    testCallers.some((f) => {
+      const pkg = list('packages').find((p) => list(join('packages', p, 'test')).includes(f));
+      return pkg ? read(join('packages', pkg, 'test', f)).includes('validateCase') : false;
+    });
   if (!used) add('benchmark', 'validateCase-unused', 'validateCase 没有任何调用点 —— 案例格式不会被校验');
 }
 

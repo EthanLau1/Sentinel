@@ -3,33 +3,9 @@
   "items": [
     {
       "dimension": "events",
-      "id": "map.failed",
-      "since": "0.2.0",
-      "expect": "事件 map.failed 只在类型定义里出现，运行时不产生"
-    },
-    {
-      "dimension": "events",
       "id": "evidence.collected",
       "since": "0.2.0",
       "expect": "事件 evidence.collected 只在类型定义里出现，运行时不产生"
-    },
-    {
-      "dimension": "events",
-      "id": "knowledge.requested",
-      "since": "0.2.0",
-      "expect": "事件 knowledge.requested 只在类型定义里出现，运行时不产生"
-    },
-    {
-      "dimension": "events",
-      "id": "knowledge.received",
-      "since": "0.2.0",
-      "expect": "事件 knowledge.received 只在类型定义里出现，运行时不产生"
-    },
-    {
-      "dimension": "events",
-      "id": "knowledge.cached",
-      "since": "0.2.0",
-      "expect": "事件 knowledge.cached 只在类型定义里出现，运行时不产生"
     },
     {
       "dimension": "events",
@@ -56,106 +32,28 @@
       "expect": "成本模型有 maintenanceCost 维度，但 budget.yml 的 weights 无法配置它"
     },
     {
-      "dimension": "adapters",
-      "id": "untested:express",
-      "since": "0.2.0",
-      "expect": "adapter express 没有分支测试"
-    },
-    {
-      "dimension": "adapters",
-      "id": "untested:hono",
-      "since": "0.2.0",
-      "expect": "adapter hono 没有分支测试"
-    },
-    {
-      "dimension": "adapters",
-      "id": "untested:nest",
-      "since": "0.2.0",
-      "expect": "adapter nest 没有分支测试"
-    },
-    {
-      "dimension": "adapters",
-      "id": "untested:trpc",
-      "since": "0.2.0",
-      "expect": "adapter trpc 没有分支测试"
-    },
-    {
-      "dimension": "adapters",
-      "id": "untested:drizzle",
-      "since": "0.2.0",
-      "expect": "adapter drizzle 没有分支测试"
-    },
-    {
-      "dimension": "adapters",
-      "id": "untested:supabase",
-      "since": "0.2.0",
-      "expect": "adapter supabase 没有分支测试"
-    },
-    {
-      "dimension": "adapters",
-      "id": "untested:react",
-      "since": "0.2.0",
-      "expect": "adapter react 没有分支测试"
-    },
-    {
-      "dimension": "adapters",
-      "id": "untested:svelte",
-      "since": "0.2.0",
-      "expect": "adapter svelte 没有分支测试"
-    },
-    {
-      "dimension": "adapters",
-      "id": "untested:vue",
-      "since": "0.2.0",
-      "expect": "adapter vue 没有分支测试"
-    },
-    {
-      "dimension": "adapters",
-      "id": "untested:langchain",
-      "since": "0.2.0",
-      "expect": "adapter langchain 没有分支测试"
-    },
-    {
-      "dimension": "adapters",
-      "id": "untested:vercel-ai-sdk",
-      "since": "0.2.0",
-      "expect": "adapter vercel-ai-sdk 没有分支测试"
-    },
-    {
-      "dimension": "coverage",
-      "id": "unguarded:adapters",
-      "since": "0.2.0",
-      "expect": "packages/adapters 没有整包覆盖率门槛（全仓库 7 个包，2 个设门槛，5 个没有）"
-    },
-    {
       "dimension": "coverage",
       "id": "unguarded:cli",
       "since": "0.2.0",
-      "expect": "packages/cli 没有整包覆盖率门槛（全仓库 7 个包，2 个设门槛，5 个没有）"
+      "expect": "packages/cli 没有整包覆盖率门槛（全仓库 7 个包，3 个设门槛，4 个没有）"
     },
     {
       "dimension": "coverage",
       "id": "unguarded:providers",
       "since": "0.2.0",
-      "expect": "packages/providers 没有整包覆盖率门槛（全仓库 7 个包，2 个设门槛，5 个没有）"
+      "expect": "packages/providers 没有整包覆盖率门槛（全仓库 7 个包，3 个设门槛，4 个没有）"
     },
     {
       "dimension": "coverage",
       "id": "unguarded:sensors",
       "since": "0.2.0",
-      "expect": "packages/sensors 没有整包覆盖率门槛（全仓库 7 个包，2 个设门槛，5 个没有）"
+      "expect": "packages/sensors 没有整包覆盖率门槛（全仓库 7 个包，3 个设门槛，4 个没有）"
     },
     {
       "dimension": "coverage",
       "id": "unguarded:subagents",
       "since": "0.2.0",
-      "expect": "packages/subagents 没有整包覆盖率门槛（全仓库 7 个包，2 个设门槛，5 个没有）"
-    },
-    {
-      "dimension": "benchmark",
-      "id": "validateCase-unused",
-      "since": "0.2.0",
-      "expect": "validateCase 没有任何调用点 —— 案例格式不会被校验"
+      "expect": "packages/subagents 没有整包覆盖率门槛（全仓库 7 个包，3 个设门槛，4 个没有）"
     },
     {
       "dimension": "startup",

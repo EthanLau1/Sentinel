@@ -65,7 +65,7 @@ export function createEnhancer(config: EnhancerConfig = {}): Subagent {
 
         // 用 option 标题做查询
         const query = buildQuery(options);
-        const results = await searchAll(ctx, query, cacheDir, ttlMs);
+        const results = await searchAll(ctx, query, cacheDir, ttlMs, event.traceId);
 
         // 给每个 option 附加 sources（取 top 3）
         const sorted = results
@@ -137,21 +137,52 @@ async function searchAll(
   query: string,
   cacheDir: string,
   ttlMs: number,
+  traceId: string,
 ): Promise<SearchResult[]> {
   if (!query.trim()) return [];
   const cached = await readCache(cacheDir, query, ttlMs);
-  if (cached) return cached;
+  if (cached) {
+    // 命中缓存也要有事件 —— 否则"这次没联网"与"这次搜了但没结果"分不清
+    await ctx.bus.publish({
+      type: 'knowledge.cached',
+      payload: { key: hash(query), ttl: ttlMs },
+      source: 'enhancer',
+      traceId,
+    });
+    return cached;
+  }
+
+  // 检索过程必须可观测：M6 之前是完全黑盒的
+  await ctx.bus.publish({
+    type: 'knowledge.requested',
+    payload: { query, sources: ctx.providers.knowledge.map((p) => p.name) },
+    source: 'enhancer',
+    traceId,
+  });
 
   const sorted = [...ctx.providers.knowledge].sort((a, b) => a.priority - b.priority);
   const all: SearchResult[] = [];
+  const failed: string[] = [];
   for (const provider of sorted) {
     try {
       const results = await provider.search(query, { limit: 3 });
       all.push(...results);
-    } catch {
-      // 单源失败不阻塞
+    } catch (err) {
+      // 单源失败不阻塞其它源，但**必须说出来** ——
+      // 静默吞掉的话，"检索到 0 条"会被误读成"网上没有这回事"（E27）
+      failed.push(`${provider.name}: ${(err as Error).message}`);
     }
   }
+  if (failed.length > 0) {
+    console.warn(`[sentinel] enhancer: 知识检索部分来源失败 —— ${failed.join('；')}`);
+  }
+
+  await ctx.bus.publish({
+    type: 'knowledge.received',
+    payload: all,
+    source: 'enhancer',
+    traceId,
+  });
 
   await writeCache(cacheDir, query, all);
   return all;

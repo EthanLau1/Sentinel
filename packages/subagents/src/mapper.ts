@@ -25,15 +25,27 @@ export function createMapper(config: MapperConfig = {}): Subagent {
     name: 'mapper',
     register(ctx: KernelContext): void {
       ctx.bus.subscribe<{ root: string }>('project.scanned', async (event: Event<{ root: string }>) => {
-        const scan = await createProjectScan(event.payload.root);
-        const map = await buildFeatureMap(scan, adapters);
-        const merged = await applyUserMapOverride(event.payload.root, map);
-        await ctx.bus.publish({
-          type: 'map.ready',
-          payload: merged,
-          source: 'mapper',
-          traceId: event.traceId,
-        });
+        try {
+          const scan = await createProjectScan(event.payload.root);
+          const map = await buildFeatureMap(scan, adapters);
+          const merged = await applyUserMapOverride(event.payload.root, map);
+          await ctx.bus.publish({
+            type: 'map.ready',
+            payload: merged,
+            source: 'mapper',
+            traceId: event.traceId,
+          });
+        } catch (err) {
+          // 项目理解失败必须说出来 —— 不接住的话，异常会冒到总线，
+          // 用户只看到 "bus handler errors for project.scanned"，
+          // 既不知道真实原因，也不知道"没扫出任何流程"意味着什么（E26）。
+          await ctx.bus.publish({
+            type: 'map.failed',
+            payload: { error: (err as Error).message },
+            source: 'mapper',
+            traceId: event.traceId,
+          });
+        }
       });
     },
   };
@@ -94,24 +106,36 @@ function pickOverride<T>(base: T[], override: T[] | undefined): T[] {
 }
 
 async function buildFeatureMap(scan: ProjectScan, adapters: Adapter[]): Promise<FeatureMap> {
+  // adapter 失败不能静默 —— 失败意味着"这个栈没被完整识别"，
+  // 而结果看起来是"扫完了但没发现什么"（E28）
+  const errors: string[] = [];
   const detected: Adapter[] = [];
   for (const a of adapters) {
     try {
       if (await a.detect(scan)) detected.push(a);
-    } catch {
-      // 单个 adapter 失败不影响其他
+    } catch (err) {
+      errors.push(`adapter ${a.name} 的 detect 失败：${(err as Error).message}`);
     }
   }
 
-  const profile = await aggregateProfile(scan, detected);
-  const { pages, api } = await aggregateRoutes(scan, detected);
-  const auth = await firstAuth(scan, detected);
-  const data = await aggregateData(scan, detected);
-  const risks = await aggregateRisks(scan, detected);
+  const profile = await aggregateProfile(scan, detected, errors);
+  const { pages, api } = await aggregateRoutes(scan, detected, errors);
+  const auth = await firstAuth(scan, detected, errors);
+  const data = await aggregateData(scan, detected, errors);
+  const risks = await aggregateRisks(scan, detected, errors);
 
   const flows = generateFlows(pages, api);
 
   const mapRisks: FeatureMap['risks'] = [...risks, ...coverageRisks(pages, api, auth)];
+  // 识别不完整必须出现在报告里 —— 否则"没发现任何问题"会被误读成"项目没问题"
+  for (const [i, msg] of errors.entries()) {
+    mapRisks.push({
+      id: `coverage_adapter_failed_${i}`,
+      area: 'ui',
+      severity: 'medium',
+      description: `框架识别不完整 —— ${msg}`,
+    });
+  }
   // 扫不到任何页面或接口 —— 后面所有流程都会是 0，必须显式说出来
   if (pages.length === 0 && api.length === 0) {
     mapRisks.push({
@@ -133,7 +157,7 @@ async function buildFeatureMap(scan: ProjectScan, adapters: Adapter[]): Promise<
   };
 }
 
-async function aggregateProfile(scan: ProjectScan, detected: Adapter[]) {
+async function aggregateProfile(scan: ProjectScan, detected: Adapter[], errors: string[]) {
   const name = scan.packageJson?.['name'] as string | undefined;
   const frameworks: string[] = [];
   const stack: string[] = [];
@@ -143,8 +167,8 @@ async function aggregateProfile(scan: ProjectScan, detected: Adapter[]) {
         const p = await a.profile(scan);
         if (p.frameworks) frameworks.push(...p.frameworks);
         if (p.stack) stack.push(...p.stack);
-      } catch {
-        // 忽略
+      } catch (err) {
+        errors.push(`adapter ${a.name} 的 profile 失败：${(err as Error).message}`);
       }
     }
   }
@@ -170,7 +194,7 @@ function detectPM(scan: ProjectScan): string {
   return 'npm';
 }
 
-async function aggregateRoutes(scan: ProjectScan, detected: Adapter[]) {
+async function aggregateRoutes(scan: ProjectScan, detected: Adapter[], errors: string[]) {
   const allPages: FeatureMap['pages'] = [];
   const allApi: FeatureMap['api'] = [];
   for (const a of detected) {
@@ -179,50 +203,50 @@ async function aggregateRoutes(scan: ProjectScan, detected: Adapter[]) {
         const r = await a.routes(scan);
         if (r.pages) allPages.push(...r.pages);
         if (r.api) allApi.push(...r.api);
-      } catch {
-        // 忽略
+      } catch (err) {
+        errors.push(`adapter ${a.name} 的 routes 失败：${(err as Error).message}`);
       }
     }
   }
   return { pages: allPages, api: allApi };
 }
 
-async function firstAuth(scan: ProjectScan, detected: Adapter[]) {
+async function firstAuth(scan: ProjectScan, detected: Adapter[], errors: string[]) {
   for (const a of detected) {
     if (a.auth) {
       try {
         const v = await a.auth(scan);
         if (v) return v;
-      } catch {
-        // 忽略
+      } catch (err) {
+        errors.push(`adapter ${a.name} 的 auth 失败：${(err as Error).message}`);
       }
     }
   }
   return undefined;
 }
 
-async function aggregateData(scan: ProjectScan, detected: Adapter[]) {
+async function aggregateData(scan: ProjectScan, detected: Adapter[], errors: string[]) {
   const out: FeatureMap['data'] = [];
   for (const a of detected) {
     if (a.data) {
       try {
         out.push(...(await a.data(scan)));
-      } catch {
-        // 忽略
+      } catch (err) {
+        errors.push(`adapter ${a.name} 的 data 失败：${(err as Error).message}`);
       }
     }
   }
   return out;
 }
 
-async function aggregateRisks(scan: ProjectScan, detected: Adapter[]) {
+async function aggregateRisks(scan: ProjectScan, detected: Adapter[], errors: string[]) {
   const out: FeatureMap['risks'] = [];
   for (const a of detected) {
     if (a.risks) {
       try {
         out.push(...(await a.risks(scan)));
-      } catch {
-        // 忽略
+      } catch (err) {
+        errors.push(`adapter ${a.name} 的 risks 失败：${(err as Error).message}`);
       }
     }
   }

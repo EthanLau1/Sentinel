@@ -35,6 +35,14 @@ export default defineConfig({
           functions: 70,
           branches: 70,
         },
+        // adapters —— 11 个框架 adapter 的检测口径必须被钉住
+        // （口径漂移会让 mapper 静默漏掉项目，代价是"什么都没发现"）
+        'packages/adapters/src/**/*.ts': {
+          lines: 70,
+          statements: 70,
+          functions: 70,
+          branches: 60,
+        },
       },
     },
   },

@@ -25,7 +25,7 @@
 |---|---|---|---|
 | `project.scanned` | cli | mapper | `{ root: string }` |
 | `map.ready` | mapper | sensor / runner | `FeatureMap` |
-| `map.failed` | mapper | reporter | `{ error: string }` |
+| `map.failed` | mapper | cli（报告层） | `{ error: string }`（项目理解失败 —— 没有 map 就跑不了流程，原因必须留档） |
 
 ### 感知阶段（M2）
 
@@ -64,9 +64,9 @@
 
 | 事件 | 发起者 | 订阅者 | payload |
 |---|---|---|---|
-| `knowledge.requested` | enhancer | knowledge providers | `{ query: string, sources: string[] }` |
-| `knowledge.received` | knowledge providers | enhancer | `SearchResult[]` |
-| `knowledge.cached` | enhancer | (内部) | `{ key: string, ttl: number }` |
+| `knowledge.requested` | enhancer | cli | `{ query: string, sources: string[] }` |
+| `knowledge.received` | enhancer | cli | `SearchResult[]` |
+| `knowledge.cached` | enhancer | cli | `{ key: string, ttl: number }` |
 
 ### 执行阶段（M7）
 

@@ -276,12 +276,34 @@ export async function runRun(): Promise<number> {
       fixOptions: [],
     });
   }
+  // 过程状态：map 失败 / 知识检索过程 —— 都必须有出口
+  const mapFailures: Array<{ error: string }> = [];
+  const knowledgeRequests: Array<{ query: string; sources: string[] }> = [];
+  const knowledgeResults: Array<{ count: number }> = [];
+  const knowledgeCacheHits: Array<{ key: string; ttl: number }> = [];
+
   const captureSub: Subagent = {
     name: 'capture',
     register(ctx) {
       ctx.bus.subscribe<FeatureMap>('map.ready', (event) => {
         plannedFlows = event.payload.flows.length;
         coverage.map = event.payload;
+      });
+      // 项目理解失败：没有 map 就跑不了任何流程 —— 原因必须留在状态里
+      ctx.bus.subscribe<{ error: string }>('map.failed', (e) => {
+        mapFailures.push({ error: e.payload.error });
+        console.error(color.red(`✗ 项目理解失败：${e.payload.error}`));
+        console.error(color.dim('   没有 FeatureMap 就无法生成流程 —— 报告会是空的，这不是"项目没问题"。'));
+      });
+      // 知识检索过程：之前 M6 是完全黑盒的（搜没搜、搜到几条、是不是缓存，全查不到）
+      ctx.bus.subscribe<{ query: string; sources: string[] }>('knowledge.requested', (e) => {
+        knowledgeRequests.push({ query: e.payload.query, sources: e.payload.sources });
+      });
+      ctx.bus.subscribe<unknown[]>('knowledge.received', (e) => {
+        knowledgeResults.push({ count: e.payload.length });
+      });
+      ctx.bus.subscribe<{ key: string; ttl: number }>('knowledge.cached', (e) => {
+        knowledgeCacheHits.push({ key: e.payload.key, ttl: e.payload.ttl });
       });
       ctx.bus.subscribe('flow.passed', () => {
         passedFlows += 1;
@@ -522,6 +544,12 @@ export async function runRun(): Promise<number> {
     maxTotalTokensObserved: llmStats.maxTotalTokens,
     maxTokensPerRequestConfigured: budgetCfg.limits.maxTokensPerRequest ?? null,
     tokenUpperBound: llmStats.requests * llmStats.maxTotalTokens,
+    // 项目理解失败（有 map 失败时，后面这些数字全是 0，报告会是空的）
+    mapFailures,
+    // 知识检索过程：搜了什么、搜到几条、是不是缓存
+    knowledgeRequests,
+    knowledgeResults,
+    knowledgeCacheHits,
     discoveredPages: coverage.map?.pages.length ?? 0,
     discoveredApi: coverage.map?.api.length ?? 0,
     coverageRisks: coverage.map?.risks.filter((risk) => risk.id.startsWith('coverage_')) ?? [],
