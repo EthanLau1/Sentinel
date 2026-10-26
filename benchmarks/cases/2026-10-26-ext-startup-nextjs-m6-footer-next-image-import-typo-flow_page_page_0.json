@@ -1,0 +1,46 @@
+{
+  "id": "2026-10-26-ext-startup-nextjs-m6-footer-next-image-import-typo-flow_page_page_0",
+  "project": "startup-nextjs",
+  "feature": "flow_page_page_0",
+  "stage": "MVP",
+  "symptom": "访问 /contact 时：Page http://127.0.0.1:3102/contact returned HTTP 500",
+  "realRootCause": "src/components/Footer/index.tsx 里 next/image 的 import 路径写成 'next/imageX'（next 包里没有 imageX）→ 模块解析失败 → 根布局引用的 Footer 组件编译失败 → 所有路由返回 HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "src/components/Footer/index.tsx 第 2 行错误地从不存在的新 Next.js 模块 `next/imageX` 导入 `Image`，该 Footer 又经由 src/app/layout.tsx 引入全局布局，导致 Next.js 构建失败并使 `/contact` 返回 HTTP 500。",
+    "confidence": 0.98,
+    "evidenceCount": 7,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "fix-footer-image-import",
+    "title": "修正 Footer 的 next/imageX 导入路径",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7489999999999999
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "imageX"
+    ],
+    "recommendedTitleContains": [
+      "Footer"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "note": "布局级共享组件的 next/image import 写错 → 全站 500"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/NextJSTemplates/startup-nextjs.git 注入已知缺陷 m6-footer-next-image-import-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"imageX\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中补丁形状规则「单文件单 hunk 且仅标识符不同（拼写/重命名类）」→ 可自动修\n采纳：Tier 1 自动应用（fix-footer-image-import → [\"src/components/Footer/index.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/contact）\nrun 状态：failedFlows=1 passedFlows=9 appliedPatches=[{\"fixId\":\"fix-footer-image-import\",\"files\":[\"src/components/Footer/index.tsx\"],\"flowId\":\"flow_page_page_0\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T10:39:16.936Z",
+  "sentinelVersion": "v1.2-batch"
+}

@@ -1,0 +1,443 @@
+{
+  "$comment": "批量真实外部项目 benchmark 清单。真值（realRootCause / expectRootCauseContains）由人工读源码写定，不参考 Sentinel 产出。devPort 是并行隔离用的端口（只改 dev 脚本端口，不改被测代码）。",
+  "projects": [
+    {
+      "id": "ts-nextjs-tailwind-starter",
+      "repo": "https://github.com/theodorusclarence/ts-nextjs-tailwind-starter.git",
+      "ref": "HEAD",
+      "install": "pnpm install --ignore-scripts",
+      "dev": "pnpm dev",
+      "devPort": 3101,
+      "mutations": [
+        {
+          "id": "m1-home-arrowlink-typo",
+          "file": "src/app/page.tsx",
+          "find": "<ArrowLink href='https://github.com/theodorusclarence/ts-nextjs-tailwind-starter'>",
+          "replace": "<ArrowLinks href='https://github.com/theodorusclarence/ts-nextjs-tailwind-starter'>",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问首页 / 时页面渲染崩溃，返回 HTTP 500，首页内容完全不可见。",
+          "realRootCause": "src/app/page.tsx 第 36 行的开标签被写成 <ArrowLinks>，而第 38 行的闭标签仍是 </ArrowLink>，JSX 开闭标签不匹配构成语法错误，Next.js 编译该路由失败，因此 / 以及共用同一编译产物的其它路由都返回 HTTP 500。",
+          "expectRootCauseContains": [
+            "ArrowLink"
+          ],
+          "expectTitleContains": [
+            "ArrowLink"
+          ],
+          "note": "JSX 开标签拼写错误导致标签不匹配 → 语法错误 → 整站编译失败。（初版真值写成『组件未导入』，读源码后作废：闭标签仍是 ArrowLink，真因是标签不匹配）"
+        },
+        {
+          "id": "m2-api-hello-500",
+          "file": "src/app/api/hello/route.ts",
+          "find": "return NextResponse.json({ hello: 'Next.js' });",
+          "replace": "return NextResponse.json({ hello: 'Next.js' }, { status: 500 });",
+          "route": "/api/hello",
+          "routeType": "api",
+          "symptom": "调用 GET /api/hello 返回 HTTP 500，而不是预期的 200 与 JSON {\"hello\":\"Next.js\"}。",
+          "realRootCause": "src/app/api/hello/route.ts 的 GET 处理器调用 NextResponse.json 时显式传入了 { status: 500 }，把本来该是 200 的响应改成了 500。",
+          "expectRootCauseContains": [
+            "status"
+          ],
+          "expectTitleContains": [
+            "status"
+          ],
+          "note": "响应状态码被写死为 500"
+        },
+        {
+          "id": "m3-components-import-path-typo",
+          "file": "src/app/components/page.tsx",
+          "find": "import ArrowLink from '@/components/links/ArrowLink';",
+          "replace": "import ArrowLink from '@/components/links/Arrowlinks';",
+          "route": "/components",
+          "routeType": "page",
+          "symptom": "访问 /components 时该路由编译失败，返回 HTTP 500，组件示例页不可见。",
+          "realRootCause": "src/app/components/page.tsx 里的 import 路径写成了 '@/components/links/Arrowlinks'（目录里实际是 ArrowLink.tsx），模块解析失败导致该路由编译报错并返回 HTTP 500。",
+          "expectRootCauseContains": [
+            "Arrowlink"
+          ],
+          "expectTitleContains": [
+            "Arrowlink"
+          ],
+          "note": "import 路径大小写错误 → 模块解析失败。（初版用 TS 字面量类型错误，已作废：Next dev 用 SWC 只剥类型不做检查，dev 模式下不会 500）"
+        },
+        {
+          "id": "m4-components-toggle-noop",
+          "file": "src/app/components/page.tsx",
+          "find": "  function toggleMode() {\n    return mode === 'dark' ? setMode('light') : setMode('dark');\n  }",
+          "replace": "  function toggleMode() {\n    return setMode('light');\n  }",
+          "route": "/components",
+          "routeType": "page",
+          "symptom": "在 /components 页点击「Set to dark」按钮后主题不切换，页面仍是浅色；HTTP 状态正常（200），没有报错。",
+          "realRootCause": "src/app/components/page.tsx 的 toggleMode 变成无条件 setMode('light')，丢掉了按当前 mode 取反的逻辑，所以点击按钮永远切不到 dark 主题。",
+          "expectRootCauseContains": [
+            "toggleMode"
+          ],
+          "expectTitleContains": [
+            "toggleMode"
+          ],
+          "note": "无 HTTP 错误的行为缺陷 —— 用来测 Sentinel 能不能查功能性问题（自动 flow 只看路由/状态码，预期可能查不到）"
+        },
+        {
+          "id": "m5-layout-style-import-typo",
+          "file": "src/app/layout.tsx",
+          "find": "import '@/styles/colors.css';",
+          "replace": "import '@/styles/color.css';",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问任何页面都返回 HTTP 500，站点整体不可用。",
+          "realRootCause": "src/app/layout.tsx 引入的样式模块路径写成 '@/styles/color.css'，而实际文件是 src/styles/colors.css（多了一个 s）→ 模块解析失败 → 根布局编译失败 → 所有路由都返回 HTTP 500。",
+          "expectRootCauseContains": [
+            "color.css",
+            "colors.css"
+          ],
+          "expectTitleContains": [
+            "layout"
+          ],
+          "note": "根布局的样式 import 路径拼写错误 → 全站 500（一个缺陷影响多条路由 → 归档多条案例）"
+        },
+        {
+          "id": "m6-arrowlink-fallback-typo",
+          "file": "src/components/links/ArrowLink.tsx",
+          "find": "  const Component = as || UnderlineLink;",
+          "replace": "  const Component = as || UnderlineLinks;",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问首页与组件页都返回 HTTP 500，页面完全不可见。",
+          "realRootCause": "src/components/links/ArrowLink.tsx 里 fallback 组件写成 UnderlineLinks，而文件顶部 import 的是 UnderlineLink（少一个 s）→ 组件未定义 → 渲染用到 ArrowLink 的页面（/ 与 /components）时 React 抛错 → HTTP 500。",
+          "expectRootCauseContains": [
+            "UnderlineLink"
+          ],
+          "expectTitleContains": [
+            "ArrowLink"
+          ],
+          "note": "共享组件里的 fallback 组件名拼错 → 多页同时 500"
+        },
+        {
+          "id": "m7-utils-tailwind-merge-import-typo",
+          "file": "src/lib/utils.ts",
+          "find": "import { twMerge } from 'tailwind-merge';",
+          "replace": "import { twMerge } from 'tailwind-mergeX';",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问首页与组件页都返回 HTTP 500。",
+          "realRootCause": "src/lib/utils.ts 里 tailwind-merge 的 import 路径写成 'tailwind-mergeX'（包里没有这个模块）→ 模块解析失败 → 依赖 cn() 的所有组件编译失败 → 页面返回 HTTP 500。",
+          "expectRootCauseContains": [
+            "tailwind-mergeX",
+            "tailwind-merge"
+          ],
+          "expectTitleContains": [
+            "utils"
+          ],
+          "note": "底层工具库的依赖 import 写错 → 多页同时 500"
+        }
+      ]
+    },
+    {
+      "id": "startup-nextjs",
+      "repo": "https://github.com/NextJSTemplates/startup-nextjs.git",
+      "ref": "HEAD",
+      "install": "npm install --no-audit --no-fund",
+      "dev": "npm run dev",
+      "devPort": 3102,
+      "mutations": [
+        {
+          "id": "m1-blog-data-typo",
+          "file": "src/app/blog/page.tsx",
+          "find": "{blogData.map((blog) => (",
+          "replace": "{blogDatax.map((blog) => (",
+          "route": "/blog",
+          "routeType": "page",
+          "symptom": "访问 /blog 时页面渲染崩溃，返回 HTTP 500，博客列表页不可见。",
+          "realRootCause": "src/app/blog/page.tsx 里遍历用的是 blogDatax，但该文件 import 的名字是 blogData（来自 @/components/Blog/blogData），blogDatax 未定义 → 渲染时抛 ReferenceError → /blog 返回 HTTP 500。",
+          "expectRootCauseContains": [
+            "blogData"
+          ],
+          "expectTitleContains": [
+            "blogData"
+          ],
+          "note": "变量名拼写错误 → ReferenceError"
+        },
+        {
+          "id": "m2-contact-undefined-component",
+          "file": "src/app/contact/page.tsx",
+          "find": "      <Contact />",
+          "replace": "      <ContactForm />",
+          "route": "/contact",
+          "routeType": "page",
+          "symptom": "访问 /contact 时页面渲染崩溃，返回 HTTP 500，联系页不可见。",
+          "realRootCause": "src/app/contact/page.tsx 的 JSX 写了 <ContactForm />，但文件顶部 import 的是 Contact（@/components/Contact），没有 ContactForm → React 拿到 undefined 的元素类型 → 渲染 /contact 抛错 → HTTP 500。",
+          "expectRootCauseContains": [
+            "Contact"
+          ],
+          "expectTitleContains": [
+            "Contact"
+          ],
+          "note": "组件名写错（未导入）→ undefined 元素类型"
+        },
+        {
+          "id": "m3-about-undefined-section",
+          "file": "src/app/about/page.tsx",
+          "find": "      <AboutSectionOne />",
+          "replace": "      <AboutSectionOneX />",
+          "route": "/about",
+          "routeType": "page",
+          "symptom": "访问 /about 时页面渲染崩溃，返回 HTTP 500，关于页不可见。",
+          "realRootCause": "src/app/about/page.tsx 的 JSX 写了 <AboutSectionOneX />，但 import 的是 AboutSectionOne → 组件未定义 → 渲染 /about 时 React 抛错 → HTTP 500。",
+          "expectRootCauseContains": [
+            "AboutSectionOne"
+          ],
+          "expectTitleContains": [
+            "AboutSectionOne"
+          ],
+          "note": "组件名多写一个字母 → undefined 元素类型"
+        },
+        {
+          "id": "m4-layout-footer-import-typo",
+          "file": "src/app/layout.tsx",
+          "find": "import Footer from \"@/components/Footer\";",
+          "replace": "import Footer from \"@/components/FooterX\";",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问任何页面都返回 HTTP 500，整个站点不可用。",
+          "realRootCause": "src/app/layout.tsx 里 import 的 Footer 组件路径写成 '@/components/FooterX'，而 components 目录下只有 Footer.tsx → 模块解析失败 → 根布局编译失败 → 所有路由都返回 HTTP 500。",
+          "expectRootCauseContains": [
+            "FooterX"
+          ],
+          "expectTitleContains": [
+            "layout"
+          ],
+          "note": "根布局的组件 import 路径多写一个字母 → 全站 500（9 条路由 → 最多 9 条案例）"
+        },
+        {
+          "id": "m5-breadcrumb-next-link-typo",
+          "file": "src/components/Common/Breadcrumb.tsx",
+          "find": "import Link from \"next/link\";",
+          "replace": "import Link from \"next/linkX\";",
+          "route": "/about",
+          "routeType": "page",
+          "symptom": "访问 /about、/blog、/contact 等带面包屑的页面都返回 HTTP 500。",
+          "realRootCause": "src/components/Common/Breadcrumb.tsx 里 next/link 的 import 路径写成 'next/linkX'（next 包里没有 linkX）→ 模块解析失败 → 所有使用 Breadcrumb 的页面编译失败 → HTTP 500。",
+          "expectRootCauseContains": [
+            "linkX"
+          ],
+          "expectTitleContains": [
+            "Breadcrumb"
+          ],
+          "note": "共享组件的 next/link import 路径写错 → 多页同时 500"
+        },
+        {
+          "id": "m6-footer-next-image-import-typo",
+          "file": "src/components/Footer/index.tsx",
+          "find": "import Image from \"next/image\";",
+          "replace": "import Image from \"next/imageX\";",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问任何页面都返回 HTTP 500，站点整体不可用。",
+          "realRootCause": "src/components/Footer/index.tsx 里 next/image 的 import 路径写成 'next/imageX'（next 包里没有 imageX）→ 模块解析失败 → 根布局引用的 Footer 组件编译失败 → 所有路由返回 HTTP 500。",
+          "expectRootCauseContains": [
+            "imageX"
+          ],
+          "expectTitleContains": [
+            "Footer"
+          ],
+          "note": "布局级共享组件的 next/image import 写错 → 全站 500"
+        }
+      ]
+    },
+    {
+      "id": "virtual-event-starter-kit",
+      "repo": "https://github.com/vercel/virtual-event-starter-kit.git",
+      "ref": "HEAD",
+      "install": "pnpm install --ignore-scripts",
+      "dev": "npx next dev",
+      "devPort": 3103,
+      "mutations": [
+        {
+          "id": "m1-home-conf-content-typo",
+          "file": "pages/index.tsx",
+          "find": "      <ConfContent\n",
+          "replace": "      <ConfContentX\n",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问首页 / 时页面渲染崩溃，返回 HTTP 500，活动首页不可见。",
+          "realRootCause": "pages/index.tsx 里 JSX 写的是 <ConfContentX>，但顶部 import 的是 ConfContent（来自 @components/index）→ 组件未定义 → 渲染首页时 React 抛错 → HTTP 500。",
+          "expectRootCauseContains": [
+            "ConfContent"
+          ],
+          "expectTitleContains": [
+            "ConfContent"
+          ],
+          "note": "组件名拼写错误 → undefined 元素类型"
+        },
+        {
+          "id": "m2-api-stages-503",
+          "file": "pages/api/stages.ts",
+          "find": "    return res.status(200).json(allStages);",
+          "replace": "    return res.status(503).json(allStages);",
+          "route": "/api/stages",
+          "routeType": "api",
+          "symptom": "调用 GET /api/stages 返回 HTTP 503，而不是预期的 200 与议程数据。",
+          "realRootCause": "pages/api/stages.ts 的成功分支把状态码写成了 503（原本是 res.status(200).json(allStages)），所以正常取到议程数据时也返回 503。",
+          "expectRootCauseContains": [
+            "503"
+          ],
+          "expectTitleContains": [
+            "503"
+          ],
+          "note": "响应状态码被写死为 503"
+        },
+        {
+          "id": "m3-ticket-image-undefined",
+          "file": "pages/ticket-image.tsx",
+          "find": "  return <TicketImage />;",
+          "replace": "  return <TicketImageX />;",
+          "route": "/ticket-image",
+          "routeType": "page",
+          "symptom": "访问 /ticket-image 时页面渲染崩溃，返回 HTTP 500，票券图页不可见。",
+          "realRootCause": "pages/ticket-image.tsx 里写的是 <TicketImageX />，但 import 的是 TicketImage（@components/ticket-image）→ 组件未定义 → 渲染时 React 抛错 → HTTP 500。",
+          "expectRootCauseContains": [
+            "TicketImage"
+          ],
+          "expectTitleContains": [
+            "TicketImage"
+          ],
+          "note": "组件名拼写错误 → undefined 元素类型"
+        },
+        {
+          "id": "m4-app-global-style-import-typo",
+          "file": "pages/_app.tsx",
+          "find": "import '@styles/global.css';",
+          "replace": "import '@styles/global2.css';",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问任何页面都返回 HTTP 500，整个活动站点不可用。",
+          "realRootCause": "pages/_app.tsx 引入的全局样式模块路径写成 '@styles/global2.css'，而实际文件是 styles/global.css → 模块解析失败 → 应用入口编译失败 → 所有路由都返回 HTTP 500。",
+          "expectRootCauseContains": [
+            "global2.css",
+            "global.css"
+          ],
+          "expectTitleContains": [
+            "_app"
+          ],
+          "note": "Pages Router 应用入口的全局样式 import 路径错误 → 全站 500"
+        },
+        {
+          "id": "m5-header-css-import-typo",
+          "file": "components/header.tsx",
+          "find": "import styles from './header.module.css';",
+          "replace": "import styles from './header.moduleX.css';",
+          "route": "/schedule",
+          "routeType": "page",
+          "symptom": "访问 /schedule 等带页头的页面返回 HTTP 500。",
+          "realRootCause": "components/header.tsx 里 CSS module 的 import 路径写成 './header.moduleX.css'，实际文件是 header.module.css → 模块解析失败 → 使用 Header 的页面编译失败 → HTTP 500。",
+          "expectRootCauseContains": [
+            "header.moduleX.css",
+            "header.module.css"
+          ],
+          "expectTitleContains": [
+            "header"
+          ],
+          "note": "CSS module import 路径写错 → 用到该组件的页面 500"
+        }
+      ]
+    },
+    {
+      "id": "tailwind-nextjs-starter-blog",
+      "repo": "https://github.com/timlrx/tailwind-nextjs-starter-blog.git",
+      "ref": "HEAD",
+      "install": "bun install --ignore-scripts",
+      "dev": "npx next dev",
+      "devPort": 3104,
+      "mutations": [
+        {
+          "id": "m1-home-main-undefined",
+          "file": "app/page.tsx",
+          "find": "  return <Main posts={posts} />",
+          "replace": "  return <MainX posts={posts} />",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问首页 / 时页面渲染崩溃，返回 HTTP 500，博客首页不可见。",
+          "realRootCause": "app/page.tsx 里 JSX 写的是 <MainX>，但顶部 import 的是 Main（./Main）→ 组件未定义 → 渲染首页时 React 抛错 → HTTP 500。",
+          "expectRootCauseContains": [
+            "Main"
+          ],
+          "expectTitleContains": [
+            "Main"
+          ],
+          "note": "组件名拼写错误 → undefined 元素类型"
+        },
+        {
+          "id": "m2-about-slug-typo",
+          "file": "app/about/page.tsx",
+          "find": "  const author = allAuthors.find((p) => p.slug === 'default') as Authors",
+          "replace": "  const author = allAuthors.find((p) => p.slug === 'defualt') as Authors",
+          "route": "/about",
+          "routeType": "page",
+          "symptom": "访问 /about 时页面渲染崩溃，返回 HTTP 500，关于页不可见。",
+          "realRootCause": "app/about/page.tsx 找作者时把 slug 写成了 'defualt'（正确是 'default'），allAuthors.find 返回 undefined → 随后 coreContent(author) 读 undefined 的属性抛错 → /about 返回 HTTP 500。",
+          "expectRootCauseContains": [
+            "defualt",
+            "slug"
+          ],
+          "expectTitleContains": [
+            "about"
+          ],
+          "note": "字符串字面量拼写错误 → 查不到记录 → undefined 解引用"
+        },
+        {
+          "id": "m3-tags-sort-broken",
+          "file": "app/tags/page.tsx",
+          "find": "  const sortedTags = tagKeys.sort((a, b) => tagCounts[b] - tagCounts[a])",
+          "replace": "  const sortedTags = tagKeys.sort((a, b) => tagCounts[a] - tagCounts[b])",
+          "route": "/tags",
+          "routeType": "page",
+          "symptom": "访问 /tags 页面正常返回 200，但标签按数量从少到多排列，与预期（从多到少）相反。",
+          "realRootCause": "app/tags/page.tsx 的 sort 比较函数把 tagCounts[b] 与 tagCounts[a] 写反了，导致标签按数量升序排列而不是降序。",
+          "expectRootCauseContains": [
+            "sort"
+          ],
+          "expectTitleContains": [
+            "tag"
+          ],
+          "note": "无 HTTP 错误的排序逻辑缺陷 —— 预期可能查不到（自动 flow 只看路由/状态码/正文可见性）"
+        },
+        {
+          "id": "m4-layout-tailwind-import-typo",
+          "file": "app/layout.tsx",
+          "find": "import 'css/tailwind.css'",
+          "replace": "import 'css/tailwind2.css'",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问任何页面都返回 HTTP 500，博客站点整体不可用。",
+          "realRootCause": "app/layout.tsx 引入的样式模块路径写成 'css/tailwind2.css'，而实际文件是 css/tailwind.css → 模块解析失败 → 根布局编译失败 → 所有路由都返回 HTTP 500。",
+          "expectRootCauseContains": [
+            "tailwind2.css",
+            "tailwind.css"
+          ],
+          "expectTitleContains": [
+            "layout"
+          ],
+          "note": "根布局的样式 import 路径错误 → 全站 500"
+        },
+        {
+          "id": "m5-header-sitemetadata-import-typo",
+          "file": "components/Header.tsx",
+          "find": "import siteMetadata from '@/data/siteMetadata'",
+          "replace": "import siteMetadata from '@/data/siteMetadataX'",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问任何页面都返回 HTTP 500，博客站点整体不可用。",
+          "realRootCause": "components/Header.tsx 里站点元数据的 import 路径写成 '@/data/siteMetadataX'，实际文件是 data/siteMetadata.ts → 模块解析失败 → 根布局引用的 Header 组件编译失败 → 所有路由返回 HTTP 500。",
+          "expectRootCauseContains": [
+            "siteMetadataX",
+            "siteMetadata"
+          ],
+          "expectTitleContains": [
+            "Header"
+          ],
+          "note": "共享 Header 组件的数据 import 写错 → 全站 500"
+        }
+      ]
+    }
+  ]
+}

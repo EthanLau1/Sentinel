@@ -1,0 +1,45 @@
+{
+  "id": "2026-10-26-ext-virtual-event-starter-kit-m2-api-stages-503-flow_api_api_10",
+  "project": "virtual-event-starter-kit",
+  "feature": "flow_api_api_10",
+  "stage": "MVP",
+  "symptom": "API GET /api/stages returned 503 (expected 2xx)\n   （已合并 1 条同源问题）",
+  "realRootCause": "pages/api/stages.ts 的成功分支把状态码写成了 503（原本是 res.status(200).json(allStages)），所以正常取到议程数据时也返回 503。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "hypothesis",
+    "rootCause": "/api/stages 的部署运行时或前置网关不可用，在请求进入 pages/api/stages.ts 的业务逻辑前直接返回了 503。",
+    "confidence": 0.3,
+    "evidenceCount": 8,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "file"
+    ]
+  },
+  "hit": false,
+  "recommendedFix": {
+    "id": "none",
+    "title": "未产出修复方案",
+    "tier": 3,
+    "effort": "S",
+    "risk": "S",
+    "score": 0
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": false,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "503"
+    ],
+    "recommendedTitleContains": [
+      "503"
+    ],
+    "hardTier": 3,
+    "patchValid": true,
+    "note": "响应状态码被写死为 503"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/vercel/virtual-event-starter-kit.git 注入已知缺陷 m2-api-stages-503；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=hypothesis 且根因文本含真值关键词 [\"503\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：未记录硬规则判定\n采纳：Tier 1 自动应用（stages-explicit-200 → [\"pages/api/stages.ts\"]）\n验证：修复前 HTTP 503 → 修复后 HTTP 503（/api/stages）\nrun 状态：failedFlows=5 passedFlows=7 appliedPatches=[{\"fixId\":\"stages-explicit-200\",\"files\":[\"pages/api/stages.ts\"],\"flowId\":\"flow_api_api_10\",\"status\":\"reverted\",\"reason\":\"修复后重跑仍失败（API GET /api/stages returned 503 (expected 2xx)）→ 已回滚\"},{\"fixId\":\"stages-explicit-200\",\"files\":[\"pages/api/stages.ts\"],\"flowId\":\"flow_api_api_10\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T10:28:19.135Z",
+  "sentinelVersion": "v1.2-batch"
+}

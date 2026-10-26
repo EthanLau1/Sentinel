@@ -1,0 +1,46 @@
+{
+  "id": "2026-10-26-ext-startup-nextjs-m4-layout-footer-import-typo-flow_page_page_1",
+  "project": "startup-nextjs",
+  "feature": "flow_page_page_1",
+  "stage": "MVP",
+  "symptom": "访问 /signup 时：Page http://127.0.0.1:3102/signup returned HTTP 500",
+  "realRootCause": "src/app/layout.tsx 里 import 的 Footer 组件路径写成 '@/components/FooterX'，而 components 目录下只有 Footer.tsx → 模块解析失败 → 根布局编译失败 → 所有路由都返回 HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "全局布局文件 src/app/layout.tsx 引用了不存在的模块 @/components/FooterX，导致 Next.js 构建失败并使 /signup 返回 HTTP 500。",
+    "confidence": 0.98,
+    "evidenceCount": 7,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "fix-01-correct-footer-import",
+    "title": "将全局布局的 FooterX 导入改为规范的 Footer 组件",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7389999999999999
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "FooterX"
+    ],
+    "recommendedTitleContains": [
+      "layout"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "note": "根布局的组件 import 路径多写一个字母 → 全站 500（9 条路由 → 最多 9 条案例）"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/NextJSTemplates/startup-nextjs.git 注入已知缺陷 m4-layout-footer-import-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"FooterX\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中补丁形状规则「单文件单 hunk 且仅标识符不同（拼写/重命名类）」→ 可自动修\n采纳：Tier 1 自动应用（fix-01-correct-footer-import → [\"src/app/layout.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/signup）\nrun 状态：failedFlows=2 passedFlows=8 appliedPatches=[{\"fixId\":\"fix-01-correct-footer-import\",\"files\":[\"src/app/layout.tsx\"],\"flowId\":\"flow_page_page_1\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T10:28:29.184Z",
+  "sentinelVersion": "v1.2-batch"
+}

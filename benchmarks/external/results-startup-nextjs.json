@@ -1,0 +1,18 @@
+{
+  "ranAt": "2026-10-26T10:39:18.938Z",
+  "project": "startup-nextjs",
+  "results": [
+    {
+      "project": "startup-nextjs",
+      "mutation": "m6-footer-next-image-import-typo",
+      "feature": "flow_page_page_0",
+      "route": "/contact",
+      "outcome": "case",
+      "hit": true,
+      "tier": 1,
+      "adopted": true,
+      "verified": true,
+      "bugId": "bug_flow_page_page_0_mvp4hl58"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "ranAt": "2026-10-26T10:10:47.412Z",
+  "project": "virtual-event-starter-kit",
+  "results": [
+    {
+      "project": "virtual-event-starter-kit",
+      "mutation": "m1-home-conf-content-typo",
+      "feature": "flow_page_page_0",
+      "route": "/",
+      "outcome": "case",
+      "hit": true,
+      "tier": 1,
+      "adopted": true,
+      "verified": true,
+      "bugId": "bug_flow_page_page_0_mvp3bbsz"
+    }
+  ]
+}

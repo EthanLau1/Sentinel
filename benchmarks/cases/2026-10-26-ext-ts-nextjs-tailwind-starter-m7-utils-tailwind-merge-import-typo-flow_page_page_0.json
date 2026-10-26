@@ -1,0 +1,47 @@
+{
+  "id": "2026-10-26-ext-ts-nextjs-tailwind-starter-m7-utils-tailwind-merge-import-typo-flow_page_page_0",
+  "project": "ts-nextjs-tailwind-starter",
+  "feature": "flow_page_page_0",
+  "stage": "MVP",
+  "symptom": "访问 /components 时：Page http://127.0.0.1:3101/components returned HTTP 500",
+  "realRootCause": "src/lib/utils.ts 里 tailwind-merge 的 import 路径写成 'tailwind-mergeX'（包里没有这个模块）→ 模块解析失败 → 依赖 cn() 的所有组件编译失败 → 页面返回 HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "应用编译时无法解析 `tailwind-mergeX`：`src/lib/utils.ts` 第 2 行导入了该模块，且 `/components` 的导入链经 `TextButton.tsx` 触发此错误，最终导致路由返回 HTTP 500。",
+    "confidence": 0.98,
+    "evidenceCount": 7,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "fix-tailwind-merge-import",
+    "title": "修正 src/lib/utils.ts 中的 tailwind-merge 包名",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7489999999999999
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "tailwind-mergeX",
+      "tailwind-merge"
+    ],
+    "recommendedTitleContains": [
+      "utils"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "note": "底层工具库的依赖 import 写错 → 多页同时 500"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/theodorusclarence/ts-nextjs-tailwind-starter.git 注入已知缺陷 m7-utils-tailwind-merge-import-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"tailwind-mergeX\",\"tailwind-merge\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中补丁形状规则「单文件单 hunk 且仅标识符不同（拼写/重命名类）」→ 可自动修\n采纳：Tier 1 自动应用（fix-tailwind-merge-import → [\"src/lib/utils.ts\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/components）\nrun 状态：failedFlows=1 passedFlows=3 appliedPatches=[{\"fixId\":\"fix-tailwind-merge-import\",\"files\":[\"src/lib/utils.ts\"],\"flowId\":\"flow_page_page_0\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T10:41:09.942Z",
+  "sentinelVersion": "v1.2-batch"
+}

@@ -1,0 +1,46 @@
+{
+  "id": "2026-10-26-ext-ts-nextjs-tailwind-starter-m6-arrowlink-fallback-typo-flow_page_page_0",
+  "project": "ts-nextjs-tailwind-starter",
+  "feature": "flow_page_page_0",
+  "stage": "MVP",
+  "symptom": "访问 /components 时：Page http://127.0.0.1:3101/components returned HTTP 500",
+  "realRootCause": "src/components/links/ArrowLink.tsx 里 fallback 组件写成 UnderlineLinks，而文件顶部 import 的是 UnderlineLink（少一个 s）→ 组件未定义 → 渲染用到 ArrowLink 的页面（/ 与 /components）时 React 抛错 → HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "src/components/links/ArrowLink.tsx 第 14 行引用了未定义或未导入的标识符 UnderlineLinks，导致 ArrowLink 渲染时抛出 ReferenceError，并被错误边界捕获，最终使 /components 返回 HTTP 500。",
+    "confidence": 0.96,
+    "evidenceCount": 9,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "bug_flow_page_page_0_mvp4b8qx_fix_quick",
+    "title": "快速修复（绕过/补丁）",
+    "tier": 2,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.6791999999999999
+  },
+  "fixAdopted": false,
+  "fixPassedVerification": false,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "UnderlineLink"
+    ],
+    "recommendedTitleContains": [
+      "ArrowLink"
+    ],
+    "hardTier": 2,
+    "patchValid": false,
+    "note": "共享组件里的 fallback 组件名拼错 → 多页同时 500"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/theodorusclarence/ts-nextjs-tailwind-starter.git 注入已知缺陷 m6-arrowlink-fallback-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"UnderlineLink\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：未命中任何低风险规则（LLM 原判 Tier 1）→ 降级为需人工确认\n采纳：没有 patches 目录\n验证：未采纳修复，不做验证\nrun 状态：failedFlows=2 passedFlows=1 appliedPatches=[]",
+  "createdAt": "2026-10-26T10:37:26.012Z",
+  "sentinelVersion": "v1.2-batch"
+}

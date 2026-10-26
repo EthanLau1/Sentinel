@@ -1,0 +1,46 @@
+{
+  "id": "2026-10-26-ext-ts-nextjs-tailwind-starter-m3-components-import-path-typo-flow_page_page_0",
+  "project": "ts-nextjs-tailwind-starter",
+  "feature": "flow_page_page_0",
+  "stage": "MVP",
+  "symptom": "访问 /components 时：Page http://127.0.0.1:3101/components returned HTTP 500",
+  "realRootCause": "src/app/components/page.tsx 里的 import 路径写成了 '@/components/links/Arrowlinks'（目录里实际是 ArrowLink.tsx），模块解析失败导致该路由编译报错并返回 HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "src/app/components/page.tsx 第 17 行导入的别名路径 '@/components/links/Arrowlinks' 无法解析，触发 Next.js Module not found 构建错误并使 /components 返回 HTTP 500。",
+    "confidence": 0.98,
+    "evidenceCount": 7,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "fix-arrowlink-import-name",
+    "title": "将 components 页面中的 Arrowlinks 导入修正为 ArrowLink",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7489999999999999
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "Arrowlink"
+    ],
+    "recommendedTitleContains": [
+      "Arrowlink"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "note": "import 路径大小写错误 → 模块解析失败。（初版用 TS 字面量类型错误，已作废：Next dev 用 SWC 只剥类型不做检查，dev 模式下不会 500）"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/theodorusclarence/ts-nextjs-tailwind-starter.git 注入已知缺陷 m3-components-import-path-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"Arrowlink\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中补丁形状规则「单文件单 hunk 且仅标识符不同（拼写/重命名类）」→ 可自动修\n采纳：Tier 1 自动应用（fix-arrowlink-import-name → [\"src/app/components/page.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/components）\nrun 状态：failedFlows=1 passedFlows=3 appliedPatches=[{\"fixId\":\"fix-arrowlink-import-name\",\"files\":[\"src/app/components/page.tsx\"],\"flowId\":\"flow_page_page_0\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T09:51:11.127Z",
+  "sentinelVersion": "v1.2-batch"
+}

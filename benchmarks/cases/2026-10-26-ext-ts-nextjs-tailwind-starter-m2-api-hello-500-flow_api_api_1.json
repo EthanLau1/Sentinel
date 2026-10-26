@@ -1,0 +1,46 @@
+{
+  "id": "2026-10-26-ext-ts-nextjs-tailwind-starter-m2-api-hello-500-flow_api_api_1",
+  "project": "ts-nextjs-tailwind-starter",
+  "feature": "flow_api_api_1",
+  "stage": "MVP",
+  "symptom": "API GET /api/hello returned 500 (expected 2xx)",
+  "realRootCause": "src/app/api/hello/route.ts 的 GET 处理器调用 NextResponse.json 时显式传入了 { status: 500 }，把本来该是 200 的响应改成了 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "/api/hello 的 GET 路由在 NextResponse.json 中显式设置了 status: 500，导致接口返回 500 而非测试期望的 2xx。",
+    "confidence": 0.99,
+    "evidenceCount": 6,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "hello-explicit-200",
+    "title": "将 /api/hello 的显式状态码改为 200",
+    "tier": 2,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.629
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "status"
+    ],
+    "recommendedTitleContains": [
+      "status"
+    ],
+    "hardTier": 2,
+    "patchValid": true,
+    "note": "响应状态码被写死为 500"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/theodorusclarence/ts-nextjs-tailwind-starter.git 注入已知缺陷 m2-api-hello-500；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"status\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：未命中任何低风险规则（LLM 原判 Tier 1）→ 降级为需人工确认\n采纳：git apply hello-explicit-200.patch\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/api/hello）\nrun 状态：failedFlows=1 passedFlows=2 appliedPatches=[]",
+  "createdAt": "2026-10-26T09:49:26.776Z",
+  "sentinelVersion": "v1.2-batch"
+}

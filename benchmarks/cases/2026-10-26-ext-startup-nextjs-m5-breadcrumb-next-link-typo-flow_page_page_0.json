@@ -1,0 +1,46 @@
+{
+  "id": "2026-10-26-ext-startup-nextjs-m5-breadcrumb-next-link-typo-flow_page_page_0",
+  "project": "startup-nextjs",
+  "feature": "flow_page_page_0",
+  "stage": "MVP",
+  "symptom": "访问 /contact 时：Page http://127.0.0.1:3102/contact returned HTTP 500",
+  "realRootCause": "src/components/Common/Breadcrumb.tsx 里 next/link 的 import 路径写成 'next/linkX'（next 包里没有 linkX）→ 模块解析失败 → 所有使用 Breadcrumb 的页面编译失败 → HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "src/components/Common/Breadcrumb.tsx 第 1 行错误地从 `next/linkX` 导入 `Link`，Next.js 无法解析该模块，导致渲染 `/contact` 时返回 HTTP 500。",
+    "confidence": 0.99,
+    "evidenceCount": 9,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "FIX-BREADCRUMB-LINK-001",
+    "title": "修正 Breadcrumb 的 Next.js Link 导入路径",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7489999999999999
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "linkX"
+    ],
+    "recommendedTitleContains": [
+      "Breadcrumb"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "note": "共享组件的 next/link import 路径写错 → 多页同时 500"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/NextJSTemplates/startup-nextjs.git 注入已知缺陷 m5-breadcrumb-next-link-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"linkX\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中补丁形状规则「单文件单 hunk 且仅标识符不同（拼写/重命名类）」→ 可自动修\n采纳：Tier 1 自动应用（FIX-BREADCRUMB-LINK-001 → [\"src/components/Common/Breadcrumb.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/contact）\nrun 状态：failedFlows=1 passedFlows=9 appliedPatches=[{\"fixId\":\"FIX-BREADCRUMB-LINK-001\",\"files\":[\"src/components/Common/Breadcrumb.tsx\"],\"flowId\":\"flow_page_page_0\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T10:34:02.411Z",
+  "sentinelVersion": "v1.2-batch"
+}

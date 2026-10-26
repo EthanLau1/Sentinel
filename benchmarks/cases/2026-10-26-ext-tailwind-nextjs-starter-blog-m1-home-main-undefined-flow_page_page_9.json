@@ -1,0 +1,46 @@
+{
+  "id": "2026-10-26-ext-tailwind-nextjs-starter-blog-m1-home-main-undefined-flow_page_page_9",
+  "project": "tailwind-nextjs-starter-blog",
+  "feature": "flow_page_page_9",
+  "stage": "MVP",
+  "symptom": "访问 / 时：Page http://127.0.0.1:3104/ returned HTTP 500",
+  "realRootCause": "app/page.tsx 里 JSX 写的是 <MainX>，但顶部 import 的是 Main（./Main）→ 组件未定义 → 渲染首页时 React 抛错 → HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "app/page.tsx 的服务端渲染引用了未定义的 `MainX`（文件中实际导入的是 `Main`），触发服务端编译/渲染异常并使 `/` 返回 HTTP 500。",
+    "confidence": 0.95,
+    "evidenceCount": 6,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "fix-app-page-main-reference",
+    "title": "在 app/page.tsx 中将未定义的 MainX 改为已导入的 Main",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7489999999999999
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "Main"
+    ],
+    "recommendedTitleContains": [
+      "Main"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "note": "组件名拼写错误 → undefined 元素类型"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/timlrx/tailwind-nextjs-starter-blog.git 注入已知缺陷 m1-home-main-undefined；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"Main\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中低风险规则「拼写」→ 可自动修\n采纳：Tier 1 自动应用（fix-app-page-main-reference → [\"app/page.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/）\nrun 状态：failedFlows=6 passedFlows=1 appliedPatches=[{\"fixId\":\"fix-app-page-main-reference\",\"files\":[\"app/page.tsx\"],\"flowId\":\"flow_page_page_9\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T10:20:56.709Z",
+  "sentinelVersion": "v1.2-batch"
+}

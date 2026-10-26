@@ -1,0 +1,46 @@
+{
+  "id": "2026-10-26-ext-ts-nextjs-tailwind-starter-m1-home-arrowlink-typo-flow_page_page_0",
+  "project": "ts-nextjs-tailwind-starter",
+  "feature": "flow_page_page_0",
+  "stage": "MVP",
+  "symptom": "访问 /components 时：Page http://127.0.0.1:3101/components returned HTTP 500",
+  "realRootCause": "src/app/page.tsx 第 36 行的开标签被写成 <ArrowLinks>，而第 38 行的闭标签仍是 </ArrowLink>，JSX 开闭标签不匹配构成语法错误，Next.js 编译该路由失败，因此 / 以及共用同一编译产物的其它路由都返回 HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "src/app/page.tsx 第 36 行使用了 <ArrowLinks>，第 38 行却以 </ArrowLink> 闭合，JSX 标签不匹配导致编译期 Syntax Error，进而使 /components 返回 HTTP 500。",
+    "confidence": 0.97,
+    "evidenceCount": 7,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "fix-home-arrowlink-singular",
+    "title": "统一 src/app/page.tsx 的 ArrowLink 标签与导入名称",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7489999999999999
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "ArrowLink"
+    ],
+    "recommendedTitleContains": [
+      "ArrowLink"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "note": "JSX 开标签拼写错误导致标签不匹配 → 语法错误 → 整站编译失败。（初版真值写成『组件未导入』，读源码后作废：闭标签仍是 ArrowLink，真因是标签不匹配）"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/theodorusclarence/ts-nextjs-tailwind-starter.git 注入已知缺陷 m1-home-arrowlink-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"ArrowLink\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中补丁形状规则「单文件单 hunk 且仅标识符不同（拼写/重命名类）」→ 可自动修\n采纳：Tier 1 自动应用（fix-arrow-link-singular-tag → [\"src/app/page.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/components）\nrun 状态：failedFlows=2 passedFlows=2 appliedPatches=[{\"fixId\":\"fix-arrow-link-singular-tag\",\"files\":[\"src/app/page.tsx\"],\"flowId\":\"flow_page_page_2\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T09:48:07.767Z",
+  "sentinelVersion": "v1.2-batch"
+}

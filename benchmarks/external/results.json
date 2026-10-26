@@ -1,0 +1,41 @@
+{
+  "ranAt": "2026-10-26T09:48:57.714Z",
+  "results": [
+    {
+      "project": "startup-nextjs",
+      "mutation": "m1-blog-data-typo",
+      "feature": "flow_page_page_3",
+      "route": "/blog",
+      "outcome": "case",
+      "hit": true,
+      "tier": 1,
+      "adopted": true,
+      "verified": true,
+      "bugId": "bug_flow_page_page_3_mvp2k6wf"
+    },
+    {
+      "project": "startup-nextjs",
+      "mutation": "m2-contact-undefined-component",
+      "feature": "flow_page_page_0",
+      "route": "/contact",
+      "outcome": "case",
+      "hit": true,
+      "tier": 1,
+      "adopted": true,
+      "verified": true,
+      "bugId": "bug_flow_page_page_0_mvp2mtx2"
+    },
+    {
+      "project": "startup-nextjs",
+      "mutation": "m3-about-undefined-section",
+      "feature": "flow_page_page_2",
+      "route": "/about",
+      "outcome": "case",
+      "hit": true,
+      "tier": 1,
+      "adopted": true,
+      "verified": true,
+      "bugId": "bug_flow_page_page_2_mvp2pcdt"
+    }
+  ]
+}

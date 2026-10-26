@@ -1,0 +1,47 @@
+{
+  "id": "2026-10-26-ext-ts-nextjs-tailwind-starter-m5-layout-style-import-typo-flow_page_page_0",
+  "project": "ts-nextjs-tailwind-starter",
+  "feature": "flow_page_page_0",
+  "stage": "MVP",
+  "symptom": "访问 /components 时：Page http://127.0.0.1:3101/components returned HTTP 500",
+  "realRootCause": "src/app/layout.tsx 引入的样式模块路径写成 '@/styles/color.css'，而实际文件是 src/styles/colors.css（多了一个 s）→ 模块解析失败 → 根布局编译失败 → 所有路由都返回 HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "src/app/layout.tsx 第 6 行导入了无法解析的 '@/styles/color.css'，触发 Next.js Module not found 构建错误，导致 /components 返回 HTTP 500。",
+    "confidence": 0.98,
+    "evidenceCount": 7,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "fix-remove-invalid-color-import",
+    "title": "删除 src/app/layout.tsx 中失效的 color.css 导入",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7389999999999999
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "color.css",
+      "colors.css"
+    ],
+    "recommendedTitleContains": [
+      "layout"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "note": "根布局的样式 import 路径拼写错误 → 全站 500（一个缺陷影响多条路由 → 归档多条案例）"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/theodorusclarence/ts-nextjs-tailwind-starter.git 注入已知缺陷 m5-layout-style-import-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"color.css\",\"colors.css\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中低风险规则「注释」→ 可自动修\n采纳：Tier 1 自动应用（fix-remove-invalid-color-import → [\"src/app/layout.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/components）\nrun 状态：failedFlows=1 passedFlows=3 appliedPatches=[{\"fixId\":\"fix-remove-invalid-color-import\",\"files\":[\"src/app/layout.tsx\"],\"flowId\":\"flow_page_page_0\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T10:14:16.015Z",
+  "sentinelVersion": "v1.2-batch"
+}

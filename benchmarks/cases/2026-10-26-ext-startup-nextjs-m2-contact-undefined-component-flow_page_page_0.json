@@ -1,0 +1,46 @@
+{
+  "id": "2026-10-26-ext-startup-nextjs-m2-contact-undefined-component-flow_page_page_0",
+  "project": "startup-nextjs",
+  "feature": "flow_page_page_0",
+  "stage": "MVP",
+  "symptom": "访问 /contact 时：Page http://127.0.0.1:3102/contact returned HTTP 500",
+  "realRootCause": "src/app/contact/page.tsx 的 JSX 写了 <ContactForm />，但文件顶部 import 的是 Contact（@/components/Contact），没有 ContactForm → React 拿到 undefined 的元素类型 → 渲染 /contact 抛错 → HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "src/app/contact/page.tsx 渲染了模块作用域中未导入、未定义的 ContactForm 组件，导致服务端渲染抛出异常并使 /contact 返回 HTTP 500。",
+    "confidence": 0.94,
+    "evidenceCount": 7,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "fix-contact-component-reference",
+    "title": "将页面中的 ContactForm 替换为已导入的 Contact",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7489999999999999
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "Contact"
+    ],
+    "recommendedTitleContains": [
+      "Contact"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "note": "组件名写错（未导入）→ undefined 元素类型"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/NextJSTemplates/startup-nextjs.git 注入已知缺陷 m2-contact-undefined-component；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"Contact\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中补丁形状规则「单文件单 hunk 且仅标识符不同（拼写/重命名类）」→ 可自动修\n采纳：Tier 1 自动应用（fix-contact-component-reference → [\"src/app/contact/page.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/contact）\nrun 状态：failedFlows=1 passedFlows=9 appliedPatches=[{\"fixId\":\"fix-contact-component-reference\",\"files\":[\"src/app/contact/page.tsx\"],\"flowId\":\"flow_page_page_0\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T09:47:05.071Z",
+  "sentinelVersion": "v1.2-batch"
+}

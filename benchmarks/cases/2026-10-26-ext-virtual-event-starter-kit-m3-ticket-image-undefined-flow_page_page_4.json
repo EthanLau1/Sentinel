@@ -1,0 +1,46 @@
+{
+  "id": "2026-10-26-ext-virtual-event-starter-kit-m3-ticket-image-undefined-flow_page_page_4",
+  "project": "virtual-event-starter-kit",
+  "feature": "flow_page_page_4",
+  "stage": "MVP",
+  "symptom": "访问 /ticket-image 时：Page http://127.0.0.1:3103/ticket-image returned HTTP 500",
+  "realRootCause": "pages/ticket-image.tsx 里写的是 <TicketImageX />，但 import 的是 TicketImage（@components/ticket-image）→ 组件未定义 → 渲染时 React 抛错 → HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "pages/ticket-image.tsx 第20行渲染了未定义且未导入的 TicketImageX，而文件中实际导入的是 TicketImage，导致服务端渲染抛出 ReferenceError 并返回 HTTP 500。",
+    "confidence": 0.99,
+    "evidenceCount": 6,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "fix-ticket-image-component-reference",
+    "title": "将页面 JSX 修正为已导入的 TicketImage",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7489999999999999
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "TicketImage"
+    ],
+    "recommendedTitleContains": [
+      "TicketImage"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "note": "组件名拼写错误 → undefined 元素类型"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/vercel/virtual-event-starter-kit.git 注入已知缺陷 m3-ticket-image-undefined；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"TicketImage\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中补丁形状规则「单文件单 hunk 且仅标识符不同（拼写/重命名类）」→ 可自动修\n采纳：Tier 1 自动应用（fix-ticket-image-component-reference → [\"pages/ticket-image.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/ticket-image）\nrun 状态：failedFlows=4 passedFlows=8 appliedPatches=[{\"fixId\":\"fix-ticket-image-component-reference\",\"files\":[\"pages/ticket-image.tsx\"],\"flowId\":\"flow_page_page_4\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T10:34:48.519Z",
+  "sentinelVersion": "v1.2-batch"
+}
