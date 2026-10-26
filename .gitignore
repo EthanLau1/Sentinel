@@ -1,6 +1,7 @@
 node_modules/
 .DS_Store
 dist/
+coverage/
 build/
 *.log
 
@@ -8,6 +9,23 @@ build/
 .sentinel/cache/
 .sentinel/update.log
 reports/
+# executor 落盘的待审 patch（run 产物，不是源文件）
+**/.sentinel/auto-patches/
+
+# Next.js 构建产物（examples 的 dev server 产物）
+**/.next/
+
+# Next.js 自动生成的脚手架文件（不是手写源文件，Next 会自己重建）
+# 用具体路径，不用 **/tsconfig.json —— 仓库根的 tsconfig.json 是手写的
+examples/nextjs-blog/next-env.d.ts
+examples/nextjs-blog/tsconfig.json
+examples/nextjs-blog/app/layout.tsx
+
+# UI dogfood 产物（本地调试录屏/截图，非项目源文件）
+dogfood-output/
+
+# TypeScript build cache
+tsconfig.tsbuildinfo
 
 # Non-Sentinel: IDE / Editor configs (local only)
 .vscode/
@@ -21,9 +39,6 @@ Documents/
 # Local dev notes (not Sentinel documentation)
 AGENTS.md
 DEBUG-AUDIT.md
-
-# TypeScript build cache
-tsconfig.tsbuildinfo
 
 # Env
 .env
