@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { parseSimpleYaml, expandEnv, publicLlmSettings, llmConfigToYaml } from '../src/config.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { parseSimpleYaml, expandEnv, publicLlmSettings, llmConfigToYaml, projectRoot } from '../src/config.js';
 
 describe('parseSimpleYaml', () => {
   it('键值对 + 嵌套', () => {
@@ -98,5 +98,33 @@ describe('LLM settings helpers', () => {
     expect(yaml).toContain('default: lmstudio');
     expect(yaml).toContain('baseUrl: http://localhost:1234/v1');
     expect(yaml).toContain('apiKey: lm-studio');
+  });
+});
+
+describe('projectRoot', () => {
+  const originalArgv = process.argv;
+  afterEach(() => {
+    process.argv = originalArgv;
+  });
+
+  it('认 --project=<path> 等号格式', () => {
+    process.argv = ['node', 'sentinel', 'run', '--project=/tmp/some-project'];
+    expect(projectRoot()).toBe('/tmp/some-project');
+  });
+
+  it('认 --project <path> 空格式（帮助文本里写的就是这种）', () => {
+    // 早期只认等号格式：按帮助文本写会静默落到 CWD，测的是别的项目而且不报错。
+    process.argv = ['node', 'sentinel', 'run', '--project', '/tmp/some-project'];
+    expect(projectRoot()).toBe('/tmp/some-project');
+  });
+
+  it('没有 --project 时用 CWD', () => {
+    process.argv = ['node', 'sentinel', 'run'];
+    expect(projectRoot()).toBe(process.cwd());
+  });
+
+  it('--project 后面紧跟另一个开关时不当成路径', () => {
+    process.argv = ['node', 'sentinel', 'run', '--project', '--auto-fix'];
+    expect(projectRoot()).toBe(process.cwd());
   });
 });

@@ -176,9 +176,25 @@ export async function loadBudgetConfig(projectRoot: string): Promise<BudgetConfi
   };
 }
 
+/**
+ * 解析项目根目录。
+ *
+ * 两种写法都要认：
+ *   --project=/path/to/project
+ *   --project /path/to/project
+ *
+ * 为什么：帮助文本写的是空格式（`--project <path>`），而实现早期只认等号格式 ——
+ * 用户按帮助写就会**静默落到 CWD 的项目**上（在别的目录跑等于测错对象，
+ * 而且不报错，最难发现）。
+ */
 export function projectRoot(): string {
-  const arg = process.argv.find((a) => a.startsWith('--project='));
-  if (arg) return resolve(arg.slice('--project='.length));
+  const eq = process.argv.find((a) => a.startsWith('--project='));
+  if (eq) return resolve(eq.slice('--project='.length));
+  const i = process.argv.indexOf('--project');
+  if (i !== -1) {
+    const next = process.argv[i + 1];
+    if (next && !next.startsWith('--')) return resolve(next);
+  }
   return resolve(process.cwd());
 }
 
