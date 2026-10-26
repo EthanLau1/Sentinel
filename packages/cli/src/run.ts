@@ -245,6 +245,9 @@ export async function runRun(): Promise<number> {
   let plannedFlows = 0;
   let passedFlows = 0;
   let failedFlows = 0;
+  // 修复后重跑（phase='after-fix'）单独计数，不混进首轮的 p/f
+  let rerunPassedFlows = 0;
+  let rerunFailedFlows = 0;
   const coverage = { map: null as FeatureMap | null };
 
   // preflight 发现首页 5xx —— 记为一条可复现的缺陷，不静默退出
@@ -305,10 +308,16 @@ export async function runRun(): Promise<number> {
       ctx.bus.subscribe<{ key: string; ttl: number }>('knowledge.cached', (e) => {
         knowledgeCacheHits.push({ key: e.payload.key, ttl: e.payload.ttl });
       });
-      ctx.bus.subscribe('flow.passed', () => {
+      // 流程计数必须**分阶段**：
+      // 修复后的重跑（phase='after-fix'）会把同一条 flow 再跑一遍，
+      // 如果和首轮混在一起数，passed+failed 会比 planned 多 1 ——
+      // 判据「p+f == planned」就永远不成立，而且"哪些 flow 真跑过"也说不清。
+      ctx.bus.subscribe<{ flowId: string; phase?: string }>('flow.passed', (e) => {
+        if (e.payload.phase === 'after-fix') { rerunPassedFlows += 1; return; }
         passedFlows += 1;
       });
-      ctx.bus.subscribe<{ flowId: string }>('flow.failed', (e) => {
+      ctx.bus.subscribe<{ flowId: string; phase?: string }>('flow.failed', (e) => {
+        if (e.payload.phase === 'after-fix') { rerunFailedFlows += 1; return; }
         failedFlows += 1;
         failedFlowIds.add(e.payload.flowId);
       });
@@ -471,7 +480,7 @@ export async function runRun(): Promise<number> {
   // 8. 总结
   const usage = budget.snapshot();
   console.log('');
-  console.log(color.dim(`flows: ${passedFlows} passed / ${failedFlows} failed / ${Math.max(0, plannedFlows - passedFlows - failedFlows)} not run; tokens: ${usage.tokens}  cost: ${costKnown ? `$${usage.usd.toFixed(4)}` : 'unknown'}  duration: ${dur}ms`));
+  console.log(color.dim(`flows: ${passedFlows} passed / ${failedFlows} failed / ${Math.max(0, plannedFlows - passedFlows - failedFlows)} not run${rerunPassedFlows + rerunFailedFlows > 0 ? `（修复后重跑：${rerunPassedFlows} passed / ${rerunFailedFlows} failed，不计入上面的口径）` : ''}; tokens: ${usage.tokens}  cost: ${costKnown ? `$${usage.usd.toFixed(4)}` : 'unknown'}  duration: ${dur}ms`));
   console.log(
     color.dim(
       `llm: ${llmStats.requests} 次请求` +
@@ -517,6 +526,8 @@ export async function runRun(): Promise<number> {
   await writeFile(join(root, 'reports', 'sentinel-run-status.json'), JSON.stringify({
     status: incomplete ? 'incomplete' : 'complete',
     plannedFlows, passedFlows, failedFlows,
+    // 修复后重跑单独计数：口径写清楚，避免与首轮 p/f 相加后看不出真实情况
+    rerunPassedFlows, rerunFailedFlows,
     untestedFlows: notRunFlows,
     unresolvedFlows: unresolvedFlowIds,
     insufficientEvidenceCount,
