@@ -43,6 +43,40 @@ interface BrowserResult {
   storage?: { localStorage: string[]; sessionStorage: string[]; cookieKeys: string[] };
 }
 
+/**
+ * URL 断言的比较规则。
+ *
+ * 为什么不能精确比较：Next.js 的 `trailingSlash: true` 会把 `/about` 规范化成 `/about/`，
+ * 精确比较永远不匹配 → 自动 flow 恒失败 → **修复后重跑被判失败 → 正确的修复被回滚**。
+ * 实测（tailwind-nextjs-starter-blog）：Tier 1 拼写修复已落盘，却因
+ * "Expected URL /about, got http://127.0.0.1:3104/about/" 被回滚，改动等于没做。
+ *
+ * 规则：路径去掉尾斜杠后必须相等；期望里带 query 时才比对 query（期望没带就不因实际多带参数而判失败）。
+ */
+export function urlMatches(actual: string, expected: string): boolean {
+  if (!expected.startsWith('/')) return actual === expected;
+  const norm = (raw: string): { path: string; query: string } => {
+    const [withoutHash = ''] = raw.split('#');
+    const [p = '', q = ''] = withoutHash.split('?');
+    const path = p.length > 1 ? p.replace(/\/+$/, '') : p;
+    return { path, query: q };
+  };
+  let actualPath: string;
+  let actualSearch: string;
+  try {
+    const u = new URL(actual);
+    actualPath = u.pathname;
+    actualSearch = u.search.replace(/^\?/, '');
+  } catch {
+    return false;
+  }
+  const a = norm(actualPath + (actualSearch ? `?${actualSearch}` : ''));
+  const e = norm(expected);
+  if (a.path !== e.path) return false;
+  if (e.query === '') return true;
+  return a.query === e.query;
+}
+
 export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer {
   let _playwright: typeof import('playwright') | null = null;
   let _browser: Browser | null = null;
@@ -196,9 +230,7 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
             const expected = args['expected'];
             if (typeof expected !== 'string' || !expected) throw new Error('URL assertion requires expected');
             const actual = page.url();
-            const matches = expected.startsWith('/')
-              ? new URL(actual).pathname + new URL(actual).search === expected
-              : actual === expected;
+            const matches = urlMatches(actual, expected);
             if (!matches) throw new Error(`Expected URL ${expected}, got ${actual}`);
           } else if (kind === 'text') {
             const expected = args['expected'];
