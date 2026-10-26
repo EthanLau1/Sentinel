@@ -1,0 +1,47 @@
+{
+  "id": "2026-10-26-ext-ts-nextjs-tailwind-starter-m8-underline-link-unstyled-import-typo-flow_page_page_2",
+  "project": "ts-nextjs-tailwind-starter",
+  "feature": "flow_page_page_2",
+  "stage": "MVP",
+  "symptom": "访问 / 时：Page http://127.0.0.1:3101/ returned HTTP 500",
+  "realRootCause": "src/components/links/UnderlineLink.tsx 里 UnstyledLink 的 import 路径写成 '@/components/links/UnstyledLinkX'，实际文件是 UnstyledLink.tsx → 模块解析失败 → 依赖它的 ArrowLink / 页面组件编译失败 → HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "src/components/links/UnderlineLink.tsx 第 5 行错误导入了无法解析的模块 '@/components/links/UnstyledLinkX'，导致 Next.js 编译构建失败并使根页面返回 HTTP 500。",
+    "confidence": 0.99,
+    "evidenceCount": 7,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "fix-unstyled-link-import-typo",
+    "title": "修正 UnderlineLink.tsx 中 UnstyledLinkX 的错误模块路径",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7489999999999999
+  },
+  "fixAdopted": false,
+  "fixPassedVerification": false,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "UnstyledLinkX",
+      "UnstyledLink"
+    ],
+    "recommendedTitleContains": [
+      "UnderlineLink"
+    ],
+    "hardTier": 1,
+    "patchValid": false,
+    "note": "链接组件链上的 import 路径写错 → 多页 500"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/theodorusclarence/ts-nextjs-tailwind-starter.git 注入已知缺陷 m8-underline-link-unstyled-import-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"UnstyledLinkX\",\"UnstyledLink\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中补丁形状规则「单文件单 hunk 且仅标识符不同（拼写/重命名类）」→ 可自动修\n采纳：tier=1（命中补丁形状规则「单文件单 hunk 且仅标识符不同（拼写/重命名类）」→ 可自动修），无落在被注入文件上的补丁\n验证：未采纳修复，不做验证\nrun 状态：failedFlows=3 passedFlows=0 appliedPatches=[]",
+  "createdAt": "2026-10-26T10:50:36.585Z",
+  "sentinelVersion": "v1.2-batch"
+}

@@ -78,6 +78,21 @@ async function httpStatus(port, path) {
   }
 }
 
+/**
+ * 取状态码并对 5xx 重试。
+ * 改完源码后 dev server 要重新编译，编译完成前仍返回 5xx ——
+ * 只取一次样会把「还在编译」当成「没修好」。
+ */
+async function httpStatusWithRetry(port, path, attempts = 5) {
+  let status = 0;
+  for (let i = 0; i < attempts; i += 1) {
+    if (i > 0) await sleep([1000, 2000, 3000, 5000][Math.min(i - 1, 3)]);
+    status = await httpStatus(port, path);
+    if (status > 0 && status < 500) return status;
+  }
+  return status;
+}
+
 /** 推断 dev server 端口 —— 与 Sentinel 自己的推断保持一致，这样它能复用我起的服务 */
 function inferPort(p) {
   if (p.devPort) return p.devPort;
@@ -451,11 +466,12 @@ async function main() {
       }
 
       // 修复后：同一个 dev server（Next dev 热更新）再取一次状态码
+      // 重要：改完源码后 Next dev 要重新编译，编译完成前仍返回 5xx ——
+      // 只取一次样会把「还在编译」误判成「没修好」。必须像 browser MCP 的 visit 那样重试。
       let afterStatus = 0;
       const after = new Map();
       if (adopted) {
-        await sleep(3000); // 等热更新编译
-        for (const r of routes) after.set(r, await httpStatus(port, r));
+        for (const r of routes) after.set(r, await httpStatusWithRetry(port, r));
         afterStatus = after.get(m.route) ?? 0;
         log(`    修复后 ${m.route} → HTTP ${afterStatus}`);
       }

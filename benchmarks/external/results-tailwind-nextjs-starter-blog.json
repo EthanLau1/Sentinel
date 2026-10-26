@@ -1,0 +1,18 @@
+{
+  "ranAt": "2026-10-26T11:00:10.159Z",
+  "project": "tailwind-nextjs-starter-blog",
+  "results": [
+    {
+      "project": "tailwind-nextjs-starter-blog",
+      "mutation": "m2-about-slug-typo",
+      "feature": "flow_page_page_1",
+      "route": "/about",
+      "outcome": "case",
+      "hit": true,
+      "tier": 1,
+      "adopted": true,
+      "verified": false,
+      "bugId": "bug_flow_page_page_1_mvp54es6"
+    }
+  ]
+}

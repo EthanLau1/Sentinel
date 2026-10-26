@@ -1,0 +1,47 @@
+{
+  "id": "2026-10-26-ext-virtual-event-starter-kit-m4-app-global-style-import-typo-flow_page_page_4",
+  "project": "virtual-event-starter-kit",
+  "feature": "flow_page_page_4",
+  "stage": "MVP",
+  "symptom": "访问 /ticket-image 时：Page http://127.0.0.1:3103/ticket-image returned HTTP 500",
+  "realRootCause": "pages/_app.tsx 引入的全局样式模块路径写成 '@styles/global2.css'，而实际文件是 styles/global.css → 模块解析失败 → 应用入口编译失败 → 所有路由都返回 HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "hypothesis",
+    "rootCause": "Next.js 在编译 pages/_app.tsx 第 18 行时无法解析 @styles/global2.css，导致全局构建失败并使 /ticket-image 返回 HTTP 500。",
+    "confidence": 0.99,
+    "evidenceCount": 7,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": false,
+  "recommendedFix": {
+    "id": "none",
+    "title": "未产出修复方案",
+    "tier": 3,
+    "effort": "S",
+    "risk": "S",
+    "score": 0
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "global2.css",
+      "global.css"
+    ],
+    "recommendedTitleContains": [
+      "_app"
+    ],
+    "hardTier": 3,
+    "patchValid": true,
+    "note": "Pages Router 应用入口的全局样式 import 路径错误 → 全站 500"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/vercel/virtual-event-starter-kit.git 注入已知缺陷 m4-app-global-style-import-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=hypothesis 且根因文本含真值关键词 [\"global2.css\",\"global.css\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：未记录硬规则判定\n采纳：Tier 1 自动应用（fix-global-css-import-path → [\"pages/_app.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/ticket-image）\nrun 状态：failedFlows=8 passedFlows=4 appliedPatches=[{\"fixId\":\"fix-global-css-import-path\",\"files\":[\"pages/_app.tsx\"],\"flowId\":\"flow_page_page_7\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T10:47:52.994Z",
+  "sentinelVersion": "v1.2-batch"
+}

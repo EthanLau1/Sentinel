@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-10-26T10:10:47.412Z",
+  "ranAt": "2026-10-26T10:47:54.996Z",
   "project": "virtual-event-starter-kit",
   "results": [
     {
@@ -12,7 +12,91 @@
       "tier": 1,
       "adopted": true,
       "verified": true,
-      "bugId": "bug_flow_page_page_0_mvp3bbsz"
+      "bugId": "bug_flow_page_page_0_mvp3lf1i"
+    },
+    {
+      "project": "virtual-event-starter-kit",
+      "mutation": "m2-api-stages-503",
+      "feature": "flow_api_api_10",
+      "route": "/api/stages",
+      "outcome": "case",
+      "hit": false,
+      "tier": 3,
+      "adopted": true,
+      "verified": false,
+      "bugId": "bug_flow_api_api_10_mvp3y993"
+    },
+    {
+      "project": "virtual-event-starter-kit",
+      "mutation": "m3-ticket-image-undefined",
+      "feature": "flow_page_page_4",
+      "route": "/ticket-image",
+      "outcome": "case",
+      "hit": true,
+      "tier": 1,
+      "adopted": true,
+      "verified": true,
+      "bugId": "bug_flow_page_page_4_mvp46guh"
+    },
+    {
+      "project": "virtual-event-starter-kit",
+      "mutation": "m4-app-global-style-import-typo",
+      "feature": "flow_page_page_0",
+      "route": "/",
+      "outcome": "case",
+      "hit": false,
+      "tier": 3,
+      "adopted": true,
+      "verified": true,
+      "bugId": "bug_flow_page_page_0_mvp4em50"
+    },
+    {
+      "project": "virtual-event-starter-kit",
+      "mutation": "m4-app-global-style-import-typo",
+      "feature": "flow_page_page_3",
+      "route": "/speakers",
+      "outcome": "case",
+      "hit": true,
+      "tier": 3,
+      "adopted": true,
+      "verified": true,
+      "bugId": "bug_flow_page_page_3_mvp4g4td"
+    },
+    {
+      "project": "virtual-event-starter-kit",
+      "mutation": "m4-app-global-style-import-typo",
+      "feature": "flow_page_page_4",
+      "route": "/ticket-image",
+      "outcome": "case",
+      "hit": false,
+      "tier": 3,
+      "adopted": true,
+      "verified": true,
+      "bugId": "bug_flow_page_page_4_mvp4isre"
+    },
+    {
+      "project": "virtual-event-starter-kit",
+      "mutation": "m4-app-global-style-import-typo",
+      "feature": "flow_page_page_6",
+      "route": "/expo",
+      "outcome": "case",
+      "hit": false,
+      "tier": 3,
+      "adopted": true,
+      "verified": true,
+      "bugId": "bug_flow_page_page_6_mvp4ju14"
+    },
+    {
+      "project": "virtual-event-starter-kit",
+      "mutation": "m4-app-global-style-import-typo",
+      "feature": "flow_page_page_7",
+      "route": "/schedule",
+      "outcome": "case",
+      "hit": true,
+      "tier": 3,
+      "adopted": true,
+      "verified": true,
+      "bugId": "bug_flow_page_page_7_mvp4l54o"
     }
   ]
 }

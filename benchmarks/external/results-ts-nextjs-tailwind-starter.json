@@ -1,18 +1,42 @@
 {
-  "ranAt": "2026-10-26T10:41:11.944Z",
+  "ranAt": "2026-10-26T10:50:38.587Z",
   "project": "ts-nextjs-tailwind-starter",
   "results": [
     {
       "project": "ts-nextjs-tailwind-starter",
-      "mutation": "m7-utils-tailwind-merge-import-typo",
+      "mutation": "m8-underline-link-unstyled-import-typo",
+      "feature": "flow_page_page_2",
+      "route": "/",
+      "outcome": "case",
+      "hit": true,
+      "tier": 1,
+      "adopted": false,
+      "verified": false,
+      "bugId": "bug_flow_page_page_2_mvp4uylx"
+    },
+    {
+      "project": "ts-nextjs-tailwind-starter",
+      "mutation": "m8-underline-link-unstyled-import-typo",
       "feature": "flow_page_page_0",
       "route": "/components",
       "outcome": "case",
       "hit": true,
       "tier": 1,
-      "adopted": true,
-      "verified": true,
-      "bugId": "bug_flow_page_page_0_mvp4kaq4"
+      "adopted": false,
+      "verified": false,
+      "bugId": "bug_flow_page_page_0_mvp4t0ze"
+    },
+    {
+      "project": "ts-nextjs-tailwind-starter",
+      "mutation": "m8-underline-link-unstyled-import-typo",
+      "feature": "flow_api_api_1",
+      "route": "/api/hello",
+      "outcome": "case",
+      "hit": true,
+      "tier": 1,
+      "adopted": false,
+      "verified": false,
+      "bugId": "bug_flow_api_api_1_mvp4wt9i"
     }
   ]
 }

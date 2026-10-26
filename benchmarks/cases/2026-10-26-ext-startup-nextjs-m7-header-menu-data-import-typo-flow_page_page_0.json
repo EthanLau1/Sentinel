@@ -1,0 +1,47 @@
+{
+  "id": "2026-10-26-ext-startup-nextjs-m7-header-menu-data-import-typo-flow_page_page_0",
+  "project": "startup-nextjs",
+  "feature": "flow_page_page_0",
+  "stage": "MVP",
+  "symptom": "访问 /contact 时：Page http://127.0.0.1:3102/contact returned HTTP 500",
+  "realRootCause": "src/components/Header/index.tsx 里菜单数据的 import 路径写成 './menuDataX'，实际文件是 menuData.ts → 模块解析失败 → 根布局引用的 Header 组件编译失败 → 所有路由返回 HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "/contact 触发 Next.js 编译时，src/components/Header/index.tsx 第 7 行无法解析导入的 ./menuDataX，模块解析失败导致页面返回 HTTP 500。",
+    "confidence": 0.98,
+    "evidenceCount": 7,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "fix-header-menu-import-typo",
+    "title": "修正 Header 菜单模块导入路径",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7489999999999999
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "replayExpectation": {
+    "rootCauseContains": [
+      "menuDataX",
+      "menuData"
+    ],
+    "recommendedTitleContains": [
+      "Header"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "note": "布局级共享组件的数据 import 写错 → 全站 500"
+  },
+  "notes": "真值来源：公开仓库 https://github.com/NextJSTemplates/startup-nextjs.git 注入已知缺陷 m7-header-menu-data-import-typo；真值由人工读源码写定，未参考 Sentinel 产出。\n命中判定：rootCauseStatus=confirmed 且根因文本含真值关键词 [\"menuDataX\",\"menuData\"]。\ntier 来源：run-status.tierDecisions（硬规则），理由：命中补丁形状规则「单文件单 hunk 且仅标识符不同（拼写/重命名类）」→ 可自动修\n采纳：Tier 1 自动应用（fix-header-menu-import → [\"src/components/Header/index.tsx\"]）\n验证：修复前 HTTP 500 → 修复后 HTTP 200（/contact）\nrun 状态：failedFlows=4 passedFlows=6 appliedPatches=[{\"fixId\":\"fix-header-menu-import\",\"files\":[\"src/components/Header/index.tsx\"],\"flowId\":\"flow_page_page_3\",\"status\":\"applied\"}]",
+  "createdAt": "2026-10-26T10:55:14.517Z",
+  "sentinelVersion": "v1.2-batch"
+}

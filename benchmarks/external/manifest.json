@@ -129,6 +129,24 @@
             "utils"
           ],
           "note": "底层工具库的依赖 import 写错 → 多页同时 500"
+        },
+        {
+          "id": "m8-underline-link-unstyled-import-typo",
+          "file": "src/components/links/UnderlineLink.tsx",
+          "find": "import UnstyledLink, {\n  UnstyledLinkProps,\n} from '@/components/links/UnstyledLink';",
+          "replace": "import UnstyledLink, {\n  UnstyledLinkProps,\n} from '@/components/links/UnstyledLinkX';",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问首页与组件页都返回 HTTP 500。",
+          "realRootCause": "src/components/links/UnderlineLink.tsx 里 UnstyledLink 的 import 路径写成 '@/components/links/UnstyledLinkX'，实际文件是 UnstyledLink.tsx → 模块解析失败 → 依赖它的 ArrowLink / 页面组件编译失败 → HTTP 500。",
+          "expectRootCauseContains": [
+            "UnstyledLinkX",
+            "UnstyledLink"
+          ],
+          "expectTitleContains": [
+            "UnderlineLink"
+          ],
+          "note": "链接组件链上的 import 路径写错 → 多页 500"
         }
       ]
     },
@@ -241,6 +259,24 @@
             "Footer"
           ],
           "note": "布局级共享组件的 next/image import 写错 → 全站 500"
+        },
+        {
+          "id": "m7-header-menu-data-import-typo",
+          "file": "src/components/Header/index.tsx",
+          "find": "import menuData from \"./menuData\";",
+          "replace": "import menuData from \"./menuDataX\";",
+          "route": "/",
+          "routeType": "page",
+          "symptom": "访问任何页面都返回 HTTP 500，站点整体不可用。",
+          "realRootCause": "src/components/Header/index.tsx 里菜单数据的 import 路径写成 './menuDataX'，实际文件是 menuData.ts → 模块解析失败 → 根布局引用的 Header 组件编译失败 → 所有路由返回 HTTP 500。",
+          "expectRootCauseContains": [
+            "menuDataX",
+            "menuData"
+          ],
+          "expectTitleContains": [
+            "Header"
+          ],
+          "note": "布局级共享组件的数据 import 写错 → 全站 500"
         }
       ]
     },
