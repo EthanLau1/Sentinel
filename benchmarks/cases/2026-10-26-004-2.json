@@ -1,0 +1,34 @@
+{
+  "id": "2026-10-26-004-2",
+  "project": "nextjs-blog",
+  "feature": "flow_page_page_2",
+  "stage": "MVP",
+  "symptom": "访问 / 时：waitFor: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('body').first() to be visible\u001b[22m\n\u001b[2m    14 × locator resolved to hidden <body>…</body>\u001b[22m\n",
+  "realRootCause": "app/page.tsx 的占位组件直接 return null，根路由 / 渲染出空 body，Playwright 等待 body 可见必然超时（已读源码核实）",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "根路由“/”映射到仅返回 null 的 app/page.tsx，导致页面 body 始终没有可见内容，浏览器等待 body 可见时在 5 秒后超时。",
+    "confidence": 0.89,
+    "evidenceCount": 4,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "bug_flow_page_page_2_mvow0y7m_fix_1",
+    "title": "TODO-人工确认推荐方案",
+    "tier": 0,
+    "effort": "low",
+    "risk": "low",
+    "score": 0
+  },
+  "fixAdopted": false,
+  "fixPassedVerification": false,
+  "notes": "2026-10-26 首次在真实外部项目上跑通完整闭环的案例（examples/nextjs-blog）。真实根因由人工读源码核实；Sentinel 的判断为 confirmed 且根因文本与人工结论一致 → hit=true。本次未实际采纳/应用修复方案，故 fixAdopted 与 fixPassedVerification 均为 false（不编造）。",
+  "createdAt": "2026-10-26T06:45:24.426Z",
+  "sentinelVersion": "0.2.0"
+}
