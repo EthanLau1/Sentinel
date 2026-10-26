@@ -8,7 +8,8 @@
 
 | 文档 | 用途 | 改动需要 |
 |---|---|---|
-| [CONSTITUTION.md](./CONSTITUTION.md) | 宪法 v1.1 — 红线、机制、原则 | 升宪法版本号 |
+| [CONSTITUTION.md](./CONSTITUTION.md) | 宪法 v1.2 — 红线、机制、原则 | 升宪法版本号 |
+| [CONSTITUTION-CHANGES.md](./CONSTITUTION-CHANGES.md) | 宪法 v1.1 → v1.2 的逐条处置记录 | 升宪法版本号 |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 架构 — 分层、事件流、5 类型 5 接口 | 同步升宪法 |
 | [ROADMAP.md](./ROADMAP.md) | 13 周路线 — 每周产出和指标 | PR 即可 |
 
@@ -19,6 +20,7 @@
 | 文档 | 用途 |
 |---|---|
 | [NEXT-STEPS.md](./NEXT-STEPS.md) | M0 第 1 周精确清单 — 每个文件每个测试 |
+| [REMEDIATION-PLAN-v1.md](./REMEDIATION-PLAN-v1.md) | **补齐方案 v1** — 34 项缺漏的 4 个根因、6 个执行批次、每批可跑的验收判据 |
 | [EVENT-CATALOG.md](./EVENT-CATALOG.md) | 所有 Event 类型的固定枚举（防止乱发事件） |
 | [CONFIG-SPEC.md](./CONFIG-SPEC.md) | `.sentinel/*.yml` 配置文件规范 |
 | [STAGE-PRESETS.md](./STAGE-PRESETS.md) | Idea/MVP/Launch/Scale 三套 weights 预设 |
@@ -64,21 +66,24 @@
 
 **要改宪法的人**:
 1. [CONSTITUTION.md](./CONSTITUTION.md) 末尾的"宪法升级流程"
-2. 升级版本号 (v1.1 → v1.2 / v2.0)
-3. 同步更新 ARCHITECTURE / ROADMAP
+2. 升级版本号 (v1.2 → v2.0)
+3. 在 [CONSTITUTION-CHANGES.md](./CONSTITUTION-CHANGES.md) 写明 why / what / impact
+4. 同步更新 ARCHITECTURE / ROADMAP
+5. 跑 `bun run lint:spec`（宪法里的机检条款由守卫守住）
 
 ---
 
 ## ⚙️ 状态
 
 ```
-✅ Constitution v1.1     已锁定
+✅ Constitution v1.2     已锁定（v1.1→v1.2 处置见 CONSTITUTION-CHANGES.md）
 ✅ Architecture          已设计
 ✅ 13-week Roadmap       已规划
 ✅ Event Catalog         已枚举
 ✅ Config Spec           已定义
 ✅ Stage Presets         已校准
-🚧 M0 实施              待启动 (W1)
+✅ lint:spec 守卫       已接入（scripts/check-spec-sync.mjs + baseline）
+🚧 补齐方案批3/批5      L3 闭环验证 + benchmark 真实案例
 ```
 
 ---
