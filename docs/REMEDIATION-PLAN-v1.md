@@ -280,6 +280,8 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 #    期望：
 #    - exit code = 0 或 1（不是 2）
 #    - run-status.json: plannedFlows > 0 且 passedFlows+failedFlows == plannedFlows
+#      （口径：这两个数只数**首轮**；修复后的重跑单列 rerunPassedFlows / rerunFailedFlows。
+#        混在一起数会多出 1 —— 重跑会把同一条 flow 再跑一遍）
 #    - coverageRisks 非空
 #    - 报告中不存在"同一错误重复 N 次"（同源聚合生效）
 
@@ -360,7 +362,7 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 | **2** | L4a：reporters + knowledge 补测试并设门槛 | coverage：reporters/knowledge ≥70%；全量测试通过 |
 | **3** | L3 闭环 | Tier 1 真实改码并回滚成功；生成 1 个 PR；修复后重跑记录进报告；executor 注释同步 |
 | **4** | L5 宪法 v1.2（不含"未退化"验证） | 宪法版本号已升；8 条处置逐条写进变更记录 |
-| **5** | benchmark 回测 + 未退化验证 | 案例 ≥30（真实外部 ≥20）；`validateCase` 进 `npm test`；命中率/采纳率有实测数字；**回测全部历史 case 确认未退化** |
+| **5** | benchmark 回测 + 未退化验证 | 案例 ≥30（真实外部 ≥20）；`validateCase` 进 `npm test`；命中率/采纳率有实测数字；**回测覆盖全部可回放的历史 case 并确认未退化**（当前 35/39 条有夹具，未覆盖的 4 条与原因见 §13.12） |
 
 **每批一个 commit，提交信息写清"解决哪个规范条目"**（遵守 AGENTS.md「只同步 Sentinel 文件」铁律：只 `git add` 明确列出的文件）。
 
@@ -435,12 +437,12 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 
 | 批 | 内容 | 状态 | 证据 |
 |---|---|---|---|
-| **0** | L1 守卫骨架 + baseline + 3 条防降锁 | ✅ 完成 | `bun run lint:spec` → "已知未修 28 / 新增偏差 0"；注入偏差 exit 1；手改 baseline exit 2；基线过期 exit 2；超期未清理 exit 1（4 条锁逐条实测） |
-| **1** | L2 诚实层（4.1–4.9 + E1/E2） | ✅ 完成 | 真实 run 7 次；exit≠2；流程数对齐；报告 11 字段齐全；**2 条 confirmed 且 rootCause 非空** |
+| **0** | L1 守卫骨架 + baseline + 3 条防降锁 | ✅ 完成 | `bun run lint:spec` → "已知未修 11 / 新增偏差 0"；注入偏差 exit 1；手改 baseline exit 2；基线过期 exit 2；超期未清理 exit 1（4 条锁逐条实测） |
+| **1** | L2 诚实层（4.1–4.9 + E1/E2） | ✅ 完成 | 真实 run 7 次；exit≠2；流程数对齐（**首轮口径** —— 修复后的重跑单列 rerunPassed/FailedFlows，见 §13.12 缺口 4）；报告 11 字段齐全；**2 条 confirmed 且 rootCause 非空** |
 | **2** | L4a 报告层/检索层补测试 + 门槛 | ✅ 完成 | reporters 94.28%、knowledge 100%；`vitest.config.ts` 已设 ≥70% 门槛（实测生效） |
-| **3** | L3 闭环层 | ✅ 主要判据达成 | **run17 实测**：Tier 1 真改码（`app/posts/page.tsx` 的 `postList.map` → `posts.map`）+ 修复后重跑通过（flows 1 → **2 passed**）+ Tier 2 patch 真落盘 + 报告第 11 字段写硬规则 tier 与理由。**回滚路径本轮被真实触发**（E31 事故：`status: "reverted"`，原因写进 run-status）—— 不再只是单测覆盖；**PR 仍只到 `--dry-run`**（真实建 PR 属外部可见动作，需单独授权） |
+| **3** | L3 闭环层 | ✅ 主要判据达成 | **run17 实测**：Tier 1 真改码（`app/posts/page.tsx` 的 `postList.map` → `posts.map`）+ 修复后重跑通过（flows 1 → **2 passed**）+ Tier 2 patch 真落盘 + 报告第 11 字段写硬规则 tier 与理由。**回滚路径本轮被真实触发**（E31 事故：`status: "reverted"`，原因写进 run-status）—— 不再只是单测覆盖；**PR 已能真建**（2026-10-26 补齐，见 §13.12）：`--create-pr` 会建独立分支 → 提交 → 推送 → `gh pr create`，默认关闭；不传该参数时完全不产生外部可见动作 |
 | **4** | L5 宪法 v1.2 | ✅ 完成 | `docs/CONSTITUTION.md` 升 v1.2 + `docs/CONSTITUTION-CHANGES.md`（8 条处置逐条写明） |
-| **5** | benchmark 回测 + 真实案例 | ✅ 达成（§13.8–13.11） | **案例 39 条（真实外部 36 条）**，判据 ≥30 / 外部 ≥20 已达标 —— 样本不是等来的，是「克隆 4 个公开真实仓库 + 注入 21 处人工写定真值的缺陷」做出来的；`validateCase` 已进 `npm test`；统计/报告脚本可跑（命中率、采纳率、验证通过率都是实测数字）；**可重放回测机制已建好并跑通**（`bun run test:replay` → 夹具 1 个通过、退化 0） |
+| **5** | benchmark 回测 + 真实案例 | ✅ 达成（§13.8–13.11） | **案例 39 条（真实外部 36 条）**，判据 ≥30 / 外部 ≥20 已达标 —— 样本不是等来的，是「克隆 4 个公开真实仓库 + 注入 21 处人工写定真值的缺陷」做出来的；`validateCase` 已进 `npm test`；统计/报告脚本可跑（命中率、采纳率、验证通过率都是实测数字）；**可重放回测已覆盖 35/39 个案例**（`bun run test:replay` → 夹具 36 个通过、退化 0：35 个**契约夹具** + 1 个**录制夹具**；未覆盖的 4 条与原因见 §13.12） |
 
 ### 13.2 执行中新发现的 11 个缺陷（不在原 34 项里）
 
@@ -695,13 +697,13 @@ baseline 里那 28 条不是"随便记的"，每一条都是守卫查出来、�
 
 | 项目 | 案例 | 命中 | 采纳 | 验证通过 |
 |---|---|---|---|---|
-| `theodorusclarence/ts-nextjs-tailwind-starter` | 12 | 11 | 8 | 8 |
+| `theodorusclarence/ts-nextjs-tailwind-starter` | 12 | 11 | 6 | 6 |
 | `NextJSTemplates/startup-nextjs` | 11 | 11 | 11 | 11 |
 | `vercel/virtual-event-starter-kit` | 8 | 4 | 8 | 7 |
 | `timlrx/tailwind-nextjs-starter-blog` | 2 | 2 | 2 | 2 |
 | `nextjs-blog`（Sentinel 自带示例） | 3 | 3 | 1 | 1 |
 | `sentinel-self`（自反，单列不算） | 3 | 3 | 3 | 3 |
-| **合计** | **39** | **35** | **31** | **30** |
+| **合计** | **39** | **34** | **31** | **30** |
 | **其中真实外部** | **36** | **31（86.1%）** | 28 | 27 |
 
 样本来源：4 个公开真实仓库 + 21 处注入缺陷（真值全部由人读源码写定，见 §13.8）。
@@ -730,8 +732,54 @@ Vue/Nuxt/Svelte/Vite 项目识别到 0 路由 → 0 流程 → **一个诊断都
 自动 flow 恒判失败 → **修复后重跑被判失败 → 正确的 Tier 1 修复被回滚**（改动等于没做，
 报告里只留下一句「已回滚」）。实测：改前 `status: "reverted"`，改后 `status: "applied"`，
 `/about` 由 500 变 200，run 耗时也从 341s 降到 135s（不再走"打补丁→重跑→回滚"的圈）。
+**证据边界**：改后重跑把改前的 run-status **覆盖**了 —— 磁盘上现在只剩改后的产物，
+"改前是 reverted"这件事由当时的输出与提交信息记录，回滚路径本身由单测覆盖
+（`packages/subagents/test/executor-apply.test.ts`），不再拿"文件还在"当证据（见 §13.12 缺口 5）。
 
 **为什么这三个缺陷（E29/E30/E31）值得单独记**：
 它们都不在"没有这个功能"，而在**"看起来做完了，其实没做成"** ——
 E29 测的是错的项目、E30 补丁打不上、E31 补丁打上了又被回滚。
 基准的价值就在这里：只有把"改完真的能验证"这条链路走一遍，才会暴露这三种假成功。
+
+---
+
+### 13.12 独立审核提出的 6 条缺口：处置记录（2026-10-26 第二轮）
+
+审核方按"实证"逐条核对方案文档与代码事实，指出 6 处对不上的地方。
+这一节是逐条处置的结果：**每条都写清改了什么、凭什么这么说、还剩什么没覆盖**。
+
+| # | 缺口（审核原话要点） | 处置 | 现在的状态 |
+|---|---|---|---|
+| **1**【中】 | §13.11 表格 `ts-nextjs-tailwind-starter` 行写「采纳 8 / 验证 8」，实际 **6/6**；「合计」行写「命中 35」，实际 **34**（外部 31 + 自反 3），且表内各行相加也得 34/31，自相矛盾 | 按 `benchmarks/cases/*.json` 重算并改正两处数字；现在**表内各行相加 = 合计 = 权威报告**（脚本 `scripts/bench-report.mjs` 从 cases/ 现算） | ✅ 已改，数字与产物一致 |
+| **2**【中】 | §8 判据「回测全部历史 case 确认未退化」只覆盖 **1/39**；34 条带 `replayExpectation` 却没有录制的模型回复 → 不可回测；`test:replay` 的「退化 0」只说明那 1 条没退化 | ① 新增**契约夹具**（`scripts/build-contract-fixtures.mjs`）：从案例 + manifest + bench 工作副本**重建被改坏的真实文件**，用人工真值构造模型回复，补丁是**把注入的缺陷改回去**的真补丁；② 回放器支持 `bug.draft` 兜底（hypothesis 案例在 planner 之前就停了，原来恒为「(无)」）；③ 关键词判据改为**任一命中**（与归档时的命中判定 `.some()` 同一口径，原来用 `every()` 会把「换个说法」的正常案例判成退化） | ✅ 夹具 **36 个**（35 契约 + 1 录制），覆盖 **35/39** 个案例；未覆盖 4 条及原因见下方覆盖边界表 |
+| **3**【低】 | §13.1 批0 行仍写「已知未修 28」，实跑是 11 | 按 `bun run lint:spec` 实跑结果改正 | ✅ 已改为 11 |
+| **4**【低】 | §4.10②「passedFlows+failedFlows == plannedFlows」在自动修复重跑后不成立（`plannedFlows` 取自 `flow.planned`，`after-fix` 重跑只加 passed/failed）→ 5 份 run-status 里 4 份 p+f = planned+1，而 §13.1 批1 证据仍写「流程数对齐」 | 计数**分阶段**：`passedFlows/failedFlows` 只数首轮，修复后重跑单列 `rerunPassedFlows/rerunFailedFlows`（run-status 与终端摘要都写清口径） | ✅ 代码已改；§4.10② 与 §13.1 的表述同步改成"首轮口径" |
+| **5**【信息】 | E31「回滚被真实触发」的原始产物已被改后重跑**覆盖**，磁盘上只剩文档/提交信息层面的记录 | 不再把那段产物当证据：回滚路径的证据改为**单测覆盖**（`packages/subagents/test/executor-apply.test.ts`）+ 事故过程的文字记录；文档里标明"原始 run-status 已被后续重跑覆盖" | ✅ 证据边界写清，不再以"文件还在"充当证据 |
+| **6**【高】 | 批3 判据「真实项目生成 1 个 PR」**未达成**：`executor.ts` 把 `gh pr create` 硬编码 `--dry-run`，`pr.created` 固定 `dryRun: true`，CLI 的 `--create-pr` 对真实建 PR 无效 —— 这是**功能缺失**，不是"待授权" | ① 重写 `handlePr`：建独立分支 `sentinel/fix-<id>` → 应用补丁 → 提交 → 推送该分支 → `gh pr create`（**不带** `--dry-run`）→ 切回原分支；② 任何一步失败都切回原分支并把原因写进 `patch.rejected`；③ 事件载荷改为 `{ fixId, title, url?, branch? }`（去掉恒为常量的 `dryRun`）；④ 补 4 条单测（本地裸仓库当远端 + PATH 上的假 `gh`） | ✅ 代码路径已实现并端到端验证；**在 GitHub 上真建一个 PR 属外部可见动作，需你授权后执行**（`--create-pr` 默认关闭，不传参数不产生任何外部动作） |
+
+#### 缺口 2 的回测覆盖边界（必须写清：未覆盖 ≠ 没问题）
+
+| 类别 | 条数 | 说明 |
+|---|---|---|
+| 契约夹具（人工真值构造的模型回复） | **35** | 31 条 confirmed（根因状态 + 三方案协议 + 补丁合法且**真能 git apply**；其中 24 条还比对硬规则 tier、29 条比对方案是否点名真值关键词） + 4 条 hypothesis（critic 拒了 → 链路停在 planner 之前，只判根因部分） |
+| 录制夹具（**真录的**模型回复） | **1** | `2026-10-26-006-1` —— 守的是"模型输出形态"这条路（think 块、截断、怪 JSON） |
+| 未覆盖 | **4** | 3 条自反案例（分析 Sentinel 自己的源码，没有注入的真值缺陷，也没有人工判据关键词）+ 1 条漏检案例（`ts-...-m4-components-toggle-noop`：Sentinel 未产出诊断，没有可回放的决策链） |
+| 判据**不比对 tier** | 3 条 | `006-1` 与 `ts-...-m6` ×2：档案记的 tier 来自**真实模型补丁**的判定，而契约夹具用的是人工重建的理想补丁，两者形状不同 → 该项不比对，其余判据照常（生成脚本会打印偏差，不自动改成"通过"） |
+
+#### 回测判据不是恒真的证明（反证）
+
+判据本身也要证明"能抓住退化"。故意改坏决策层，回测必须报错：
+
+| 故意改坏的地方 | 回测结果 |
+|---|---|
+| `isRenameOnlyPatch` 不再认"纯重命名"（硬规则 tier 失效） | **21 个夹具退化** ✅ |
+| planner 只给 2 个方案且不补足 | **32 个夹具退化** ✅ |
+| `extractDiff` 跳过 diff 规范化（E23/E24 回归） | **1 个夹具退化** ✅（正是那条靠 hunk 计数活着的录制夹具） |
+
+#### 这轮顺带查出的档案数据缺陷（已改）
+
+1. **11 条案例的 `recommendedTitleContains` 与同一文件里的 `recommendedFix.title` 自相矛盾** ——
+   关键词来自根因里的标识符，却要求它出现在标题里（例如标题「修正根布局中的 Footer 导入路径」却要求出现「layout」）。
+   改成 `recommendedMentions`，语义也改成**标题 + 说明**（planner 的契约本来就是"方案必须点名具体文件与改什么"）。
+2. **关键词判据的命中口径不一致** —— 归档时用 `.some()`（任一命中），回测用 `every()`（全部命中）→ 同一个词表两套语义。已统一为任一命中。
+3. **5 条 vek 案例的 `hardTier=3` 是查表失败的兜底值，不是真实判定** —— 记录里写着「未记录硬规则判定」，而同一份 run-status 的 `appliedPatches` 显示修复是 **Tier 1 自动应用**的（Tier 1 是唯一会自动改用户代码的档）。契约夹具据此不再比对 tier，并打印偏差说明。
