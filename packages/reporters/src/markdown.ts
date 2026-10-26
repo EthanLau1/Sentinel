@@ -5,8 +5,15 @@
 
 import type { BugFinding, FixOption } from '@sentinel/core';
 import { isToolFailure } from './aggregate.js';
+import { findTierDecision, type TierDecisionRecord } from './tier.js';
 
-export function bugToMarkdown(bug: BugFinding): string {
+/** 报告选项：带上 executor 硬规则的 tier 判定（决定实际会不会改代码） */
+export interface MarkdownOptions {
+  /** executor 的硬规则判定结果 —— 报告必须展示它，而不是 LLM 自报的 tier */
+  tierDecisions?: TierDecisionRecord[];
+}
+
+export function bugToMarkdown(bug: BugFinding, opts: MarkdownOptions = {}): string {
   const recommended = bug.fixOptions.find((o) => o.id === bug.recommendedFixId) ?? bug.fixOptions[0];
   const alternatives = bug.fixOptions.filter((o) => o.id !== recommended?.id);
 
@@ -78,9 +85,16 @@ export function bugToMarkdown(bug: BugFinding): string {
   }
 
   // 11. 是否可自动修
+  //    用 executor 硬规则判出来的 tier，不是 LLM 自报的 —— 真正决定改不改代码的是前者
   if (recommended) {
-    const tierDesc = ['只报告', '自动修', '写 patch 待审核', '仅建议'][recommended.tier];
-    lines.push(`**11. 是否可自动修**: Tier ${recommended.tier} — ${tierDesc}`);
+    const decision = findTierDecision(opts.tierDecisions, recommended.id);
+    const tier = decision?.tier ?? recommended.tier;
+    const tierDesc = ['只报告', '自动修', '写 patch 待审核', '仅建议'][tier];
+    const reason = decision ? `（依据：${decision.reason}）` : '';
+    const mismatch = decision?.llmTier !== undefined && decision.llmTier !== tier
+      ? ` [LLM 原判 Tier ${decision.llmTier}，硬规则已降级]`
+      : '';
+    lines.push(`**11. 是否可自动修**: Tier ${tier} — ${tierDesc}${reason}${mismatch}`);
   } else {
     lines.push('**11. 是否可自动修**: (无修复方案，暂不判定)');
   }
@@ -88,7 +102,11 @@ export function bugToMarkdown(bug: BugFinding): string {
   return lines.join('\n');
 }
 
-export function reportToMarkdown(bugs: BugFinding[], meta: { generatedAt?: number; project?: string } = {}): string {
+export function reportToMarkdown(
+  bugs: BugFinding[],
+  meta: { generatedAt?: number; project?: string } = {},
+  opts: MarkdownOptions = {},
+): string {
   const lines: string[] = [];
   lines.push(`# Sentinel Report`);
   lines.push('');
@@ -109,7 +127,7 @@ export function reportToMarkdown(bugs: BugFinding[], meta: { generatedAt?: numbe
   lines.push('');
 
   for (const b of bugs) {
-    lines.push(bugToMarkdown(b));
+    lines.push(bugToMarkdown(b, opts));
     lines.push('');
     lines.push('---');
     lines.push('');

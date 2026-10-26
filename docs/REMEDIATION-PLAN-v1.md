@@ -438,7 +438,7 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 | **0** | L1 守卫骨架 + baseline + 3 条防降锁 | ✅ 完成 | `bun run lint:spec` → "已知未修 28 / 新增偏差 0"；注入偏差 exit 1；手改 baseline exit 2；基线过期 exit 2；超期未清理 exit 1（4 条锁逐条实测） |
 | **1** | L2 诚实层（4.1–4.9 + E1/E2） | ✅ 完成 | 真实 run 7 次；exit≠2；流程数对齐；报告 11 字段齐全；**2 条 confirmed 且 rootCause 非空** |
 | **2** | L4a 报告层/检索层补测试 + 门槛 | ✅ 完成 | reporters 94.28%、knowledge 100%；`vitest.config.ts` 已设 ≥70% 门槛（实测生效） |
-| **3** | L3 闭环层 | 🟡 部分 | Tier 硬规则 / 白名单 / git apply / 回滚 / 修复后重跑 / PR 路径 **代码已写并有测试**；端到端真实自动修复未验证（planner 协议本轮刚改，需再跑一次） |
+| **3** | L3 闭环层 | ✅ 主要判据达成 | **run17 实测**：Tier 1 真改码（`app/posts/page.tsx` 的 `postList.map` → `posts.map`）+ 修复后重跑通过（flows 1 → **2 passed**）+ Tier 2 patch 真落盘 + 报告第 11 字段写硬规则 tier 与理由。回滚路径有单测覆盖（真实 run 里修复成功故未触发回滚）；**PR 仍只到 `--dry-run`**（真实建 PR 属外部可见动作，需单独授权） |
 | **4** | L5 宪法 v1.2 | ✅ 完成 | `docs/CONSTITUTION.md` 升 v1.2 + `docs/CONSTITUTION-CHANGES.md`（8 条处置逐条写明） |
 | **5** | benchmark 回测 + 真实案例 | 🟡 部分 | `validateCase` 已进 `npm test`（5 个用例）；统计脚本可跑；**真实外部案例仅 1 个项目**，距离"≥30 条 / 外部 ≥20"差得远 —— 见 §13.4 |
 
@@ -457,6 +457,26 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 | **E12**【P1】 | **agent 的显式超时（90s）比 provider 默认（120s）还短 → 误杀真实请求** | run9：critic 的裁决请求超时 → 那条 bug 停在 `hypothesis` → 报告第 7 字段又是空的；`rejectedBugs` 里有明确理由 | E4 修超时时给 agent 设了 90s，**比 provider 的 120s 默认值还严格**。带推理块（`<think>`）的模型响应更慢，90s 偶发不够 → 超时被当成"裁决失败" | agent 超时 90s → **180s**；provider 默认 120s → **180s**；CONFIG-SPEC 写明 `timeoutMs` 可配并说明调整方向。**超时仍保留**（有界失败优先于挂死），但要够长到不误杀 |
 | **E13**【P1】 | **planner 的方案解析失败 → 报告里是"与本项目无关的通用话术"** | run10 真实 run：报告第 7 字段是"快速修复（绕过/补丁）"—— 看着有方案，其实对 `app/posts/page.tsx` 毫无参考价值 | planner 的**单次**调用同时要求"输出 JSON 数组"和"追加 unified diff 段"。MiniMax-M3 在这种双重约束下输出英文推理散文（"impossible to only output JSON array…"），`extractJson` 的 4 级兜底全失败 → 回退到 `heuristicPlan` 的通用模板。**警告有打出来，但 warn 不等于有用** | 拆成**两次调用，一次只要求一件事**：第 1 步只要 JSON 数组（字段少、无嵌套、无 diff）→ 解析几乎必成功；第 2 步单独要 unified diff（纯文本，零转义）。prompt 极简化并要求 `description` 点名真实文件路径；patch 失败只影响自动修复，不影响方案本身；新增 7 个测试 |
 | **E14**【P1（口径）】 | **`maxTokensPerRequestObserved` 与配置上限不是同一个口径 → 数字看着"超限"其实不是** | run10：`单次最多 9766 tokens` vs 配置上限 8000，看着像护栏失效 | `max_tokens` 参数限制的是**输出** token，而统计记的是 `usage.totalTokens`（输入+输出）。两个口径被塞进同名字段并列对比 | 拆成 `maxCompletionTokensObserved`（输出，与配置上限同口径）和 `maxTotalTokensObserved`（总计，用于算预算上界）；控制台输出写明口径；宪法第 6 条同步；**新增守卫第 14 组**（宪法条款里的字段名 × `run.ts` 实际写出的字段）—— 改名从此不会漏掉规范同步 |
+
+#### 第二轮（真实 run 验收阶段）新发现的 10 个缺陷
+
+> 第一轮 E4–E14 是"把方案跑起来"暴露的；第二轮 E15–E21 是**在真实项目上验证闭环**时暴露的。
+> 共同特征：**报告说的和实际做的不一致** —— 报告说能改码、实际没改；报告说 Tier 2、
+> 磁盘上没有 patch；报告说高风险只建议、实际被放宽成会写 patch。
+
+| # | 缺陷 | 症状 | 根因 | 处置 |
+|---|---|---|---|---|
+| **E15**【P1】 | **`executor.tier_decided` 是死事件 → 报告第 11 字段显示的不是硬规则判出的 tier** | run12：LLM 判 Tier 1（要改码），硬规则降级到 Tier 2，实际**文件没被改**；而报告第 11 字段按 LLM 自报值写 | executor 发出了 `executor.tier_decided`，但 `run.ts` **从没订阅** → 硬规则判定结果进黑洞。报告直接读 `fixOptions[].tier`（LLM 自报值） | 新增 `packages/reporters/src/tier.ts`（`applyTierDecisions` / `findTierDecision`）覆盖 LLM 自报值；报告第 11 字段写硬规则 tier + 理由 + "LLM 原判 Tier N，硬规则已降级"提示；`run.ts` 订阅并写入 `run-status.json.tierDecisions`；新增**守卫第 15 组**（宪法「Tier 由 executor 硬规则判断」× run.ts 是否订阅该事件） |
+| **E16**【P0（宪法不符）】 | **Tier 2 的产物从未落盘 —— 报告说"写 patch 待审核"，磁盘上什么都没有** | `examples/nextjs-blog/reports/patches/` **目录不存在**；run14 的 `run-status.json` 里 `generatedPatches: []` | executor 的 `maxTier` **默认是 1**，Tier 2 分支被 `if (tier > maxTier) continue` 整个跳过。宪法第 130 行明文「Tier 2 自动写 patch，但需要人确认」——**实现与宪法不一致**，而且被跳过时连事件都不发 | `maxTier` 默认 1 → **3**（executor 与 CLI 同步）；被 maxTier 拦下时发 `patch.rejected` 说明原因；**新增守卫第 17 组**（宪法「Tier 2 自动写 patch」× maxTier 默认值），改回去会立刻 exit 1 |
+| **E17**【P1】 | **产物没产出的四条路径全是静默 → 用户查不到原因** | 写盘抛错、fs provider 缺失、patch 格式非法、`written !== true` —— 全部静默 `return` | `writePatchFile` / `writeAutoPatchFile` / `writeSuggestion` 的 catch 块是空的；`if (!fs \|\| !validPatch(...)) return` 也是直接返回 | 统一走 `rejectFix()` 发 `patch.rejected`（带具体原因）；新增 `packages/subagents/test/executor-products.test.ts` 9 条用例；**反证实测**：把 `rejectFix` 改回静默 → 5 个测试立刻失败 |
+| **E18**【P1】 | **Tier 1 的判定关键词法对中文 LLM 必然漏判 → 计划判据「Tier 1 真实改码」无法达成** | run12 / run13 / run14 三次真实 run，`tierDecisions` **全是 Tier 2**，Tier 1 从未触发 | LOW_RISK_RULES 靠关键词（`拼写` / `typo` / `format`…）匹配 title+description。中文 LLM 描述的是**动作**不是**词类**——"把 postList 改成 posts"里没有"拼写"二字，关键词法命中率极低 | 新增**补丁形状判定** `isRenameOnlyPatch()`：单文件、单 hunk、增删行一一对应且逐对比较**只有标识符不同**（关键字保持原样，`null`→`undefined` 不算）→ 判 Tier 1。确定性规则，不依赖 LLM 用词 |
+| **E19**【P2（措辞）】 | **tier 判定理由固定写"降级"，与事实不符** | run14：LLM 本来就判 Tier 2、硬规则也是 Tier 2，理由却写"未命中任何低风险规则（LLM 原判 Tier 2）→ **降级**" | `classifyTier` 的兜底 reason 写死了"降级"两个字 | 只有真的从 Tier 1 降下来才写"降级"；LLM 判 Tier 3 时写"硬规则不放宽"；其余情况只写"需人工确认" |
+| **E20**【P0（安全）】 | **硬规则会把 LLM 判的 Tier 3 放宽成 Tier 2** | run14 的 `fix-root-redirect-existing-route`：LLM 判 Tier 3（仅建议），硬规则因为"未命中低风险规则"返回 Tier 2（会写 patch、可能建 PR）——**放宽了风险等级** | `classifyTier` 只在命中 HARD_RISK 时给 3，其余一律给 2，**完全忽略了 LLM 的 Tier 3 信号** | LLM 判 Tier 3 时硬规则**不放宽**（宪法第 58 行「高风险只能建议」、第 131 行）；守卫第 17 组同步检查这条守卫还在不在 |
+| **E21**【P1（安全）】 | **硬风险规则只认英文，中文描述的高风险改动一律漏判** | `HARD_RISK_RULES` 全部是英文正则（`migrat\w*` / `permission` / `secret`…）。中文 fix 描述"重构数据库迁移脚本"命中不了任何一条 → 落到 Tier 2 → **数据库迁移类改动会被写成待审 patch** | 规则集写的时候只用英文关键词，没有考虑 LLM 用中文描述 | 7 条硬风险规则全部补中文关键词（迁移 / 权限 / 授权 / 登录 / 会话 / 鉴权 / 认证 / 密钥 / 凭据 / 凭证 / 流水线 / 部署配置…） |
+| **E22**【P1（可靠性）】 | **planner 的 JSON 输出撞上 `max_tokens` 被截断 → 方案退化成通用模板** | run15：`planner: 方案 JSON 解析失败`（`Unterminated string`），报告里第 2 条 bug 的推荐方案变成"快速修复（绕过/补丁）"——跟本项目毫无关系 | 模型的 `<think>` 推理块吃掉了输出预算（run14 用了 7921/8000，** chronically 贴着上限**），JSON 在中途被切断。5 级兜底全失败 → `heuristicPlan` 通用模板顶上。**模型本来已经写出了真实方案** | 新增 `salvageTruncatedJsonArray()`：截断时保住**已经写完的那几个对象**（找到最后一个完整闭合的顶层对象，砍掉残缺部分并闭合数组），作为第 6 级兜底；planner 不再因为"方案不足 3 个"就把真方案全扔掉换成模板，而是**保留真方案 + 用模板补足数量** |
+| **E23**【P1】 | **LLM 产的 diff 格式不精确 → 补丁被判"格式非法" → 产物落不了盘** | run15：`fix-post-list-call-site` 有 patch，但 `rejectedPatches` 写"patch 格式非法"。看原文发现两处问题：① `<think>` 推理块里先写了一遍示例 diff，残渣混在前面；② hunk 头声明 `@@ -9,7 +9,7 @@`，实际只给了 5 行 | `extractDiff` 从第一个 `---` 开始截（推理残渣里的示例 diff 被当成正文）；`validPatch` 是严格校验器，hunk 计数对不上就整份拒绝。**内容其实是对的，只是格式不准** | 新增 `packages/subagents/src/diff.ts` 的 `normalizePatch()`：按实际内容**重算每个 hunk 头的行数**（行号起点不动，git apply 本身允许偏移匹配）；`extractDiff` 先剥 `<think>` 残渣再截 diff。用 run15 的真实输出做回归样本 |
+| **E24**【P0（一个字符）】 | **patch 结尾少一个换行 → `git apply` 报 `corrupt patch` → Tier 1 自动修复整条路径失效** | run16：Tier 1 **已经触发**（补丁形状规则命中 `fix-posts-use-existing-posts-array`），但 `git apply --check 失败：error: corrupt patch at line 11`；line 11 正是 patch 的**最后一行** | LLM 输出的 diff 末尾没有换行。`git apply` 要求 patch 以换行结束，少一个换行就认为最后一行不完整。**这个错在静态校验里查不出来** —— `validPatch` 认为它是合法的，只有真跑 git 才暴露。一个换行字符，让"报告说能改码"和"实际没改"彻底分裂 | `normalizePatch()` 统一补结尾换行；`applyPatch()` 在调用 git 前再 `ensureTrailingNewline()` 兜底（防御：patch 可能来自 planner 之外的路径）；新增端到端用例（真实 git 仓库 + 缺换行的 patch → 真的被应用） |
+
 
 ### 13.3 真实 run 的前后对比（同一项目 `examples/nextjs-blog`）
 
@@ -480,6 +500,12 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 | run8 | E10 修复（收集器改合并语义） | 第 7 字段出方案（★ Tier 1 score=0.60） | critic 裁决 90s 超时 → 1 条退回 hypothesis → 查出 E12 |
 | run9/run10 | E12 修复（超时 90s → 180s） | 2 条 confirmed + 2 条都有方案 | planner 的方案是通用模板（E13）；token 口径混用（E14） |
 | run11 | E13 修复（planner 拆成两次调用） | **方案变成针对具体文件的具体动作**："在 app/posts/page.tsx 渲染最小可见的 Posts 页面"，带可执行验证命令 + Tier 1 patch | — |
+| run12 | 注入拼写错误 bug 后跑 `--auto-fix` | 根因准确（`postList` 未定义 → ReferenceError → HTTP 500，conf=0.97），但**文件没被改** | 查出 **E15**：`executor.tier_decided` 是死事件，硬规则 tier 被丢弃 |
+| run13 | 同一 bug 重跑 | 同一个 bug，LLM 这次自判 Tier 2（run12 判 Tier 1） | **LLM 自己给的 tier 就不稳定** —— 更加证明硬规则不可省 |
+| run14 | E15 修复（tier 进报告 + 过程事件进 run-status） | `run-status.json` 出现 `tierDecisions`（6 条，带理由）；报告第 11 字段写"硬规则 tier + 理由 + LLM 原判" | `generatedPatches` / `rejectedPatches` **全空** → 查出 **E16**（Tier 2 分支被 `maxTier=1` 整个跳过） |
+| run15 | E16–E21 修复 | 4 条 `rejectedPatches` **每条都带原因**（E17 生效）；tier 理由区分"降级"/"不放宽"（E19/E20 生效） | planner 的 JSON 撞上 `max_tokens` 被截断 → 查出 **E22**；LLM 的 diff 计数不准 → 查出 **E23** |
+| run16 | E22/E23 修复 | **Tier 1 首次自然触发**（补丁形状规则命中重命名 patch）；第 2 条 bug 判 Tier 2 | `git apply --check 失败：corrupt patch at line 11` → 查出 **E24**（patch 结尾少一个换行） |
+| run17 | E24 修复 | ✅ **Tier 1 真改码**：`app/posts/page.tsx` 的 `postList.map` → `posts.map`；**修复后重跑通过**（flows 1 passed → **2 passed**）；**Tier 2 patch 真落盘** `reports/patches/fix-root-inline-visible-content.patch`；报告第 11 字段"Tier 1 — 自动修（依据：命中低风险规则「拼写」）" | — |
 
 ### 13.4 批5 的诚实缺口（不可自动化）
 

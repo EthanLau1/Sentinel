@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Budget, Kernel, type BugFinding, type ProviderSet, type Subagent } from '@sentinel/core';
 import { createPlanner, extractDiff } from '../src/index.js';
+import { salvageTruncatedJsonArray } from '../src/json.js';
 
 /**
  * planner 两步调用（2026-10-26 真实 run10 实测后重构）：
@@ -114,8 +115,10 @@ describe('planner 两步调用', () => {
 });
 
 describe('unified diff 提取', () => {
-  it('裸 diff 能提取', () => {
-    expect(extractDiff(DIFF)).toContain('@@ -1,3 +1,5 @@');
+  it('裸 diff 能提取（hunk 头按实际行数归一化）', () => {
+    // DIFF 的原文写的是 `@@ -1,3 +1,5 @@`，但实际只有 3 行新内容 ——
+    // LLM 计数不准是常态，接收端按实际内容重算，不能因此把整个补丁丢掉。
+    expect(extractDiff(DIFF)).toContain('@@ -1,3 +1,3 @@');
   });
 
   it('markdown 围栏里的 diff 能提取', () => {
@@ -129,5 +132,33 @@ describe('unified diff 提取', () => {
 
   it('NO_PATCH 视为没有补丁', () => {
     expect(extractDiff('NO_PATCH')).toBeUndefined();
+  });
+});
+
+describe('E22 — 输出撞上 max_tokens 被截断 → 抢救已写完的方案', () => {
+  /** 真实 run15 的形态：JSON 在第 2 个对象中间被切断 */
+  const TRUNCATED =
+    '[{"id":"fix1","title":"改用 posts 数组","description":"改 app/posts/page.tsx","effort":"low","risk":"low","runtimeCost":"none","regressionRisk":"low","maintenanceCost":"none","stageFit":"MVP","tier":1,"confidence":0.9,"whyRecommended":"最小改动","verificationCommand":"npm test"},' +
+    '{"id":"fix2","title":"统一命名","description":"改 app/posts/page.tsx","effort":"low","risk":"low","runtimeCost":"none","regressionRisk":"low","maintenanceCost":"none","stageFit":"MVP","tier":2,"confidence":0.8,"whyReco';
+
+  it('截断的 JSON 能救回已写完的对象', () => {
+    const salvaged = salvageTruncatedJsonArray(TRUNCATED);
+    expect(salvaged).not.toBeNull();
+    const parsed = JSON.parse(salvaged!);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].id).toBe('fix1');
+  });
+
+  it('完整的 JSON 不需要抢救', () => {
+    expect(salvageTruncatedJsonArray(OPTIONS_JSON)).toBeNull();
+  });
+
+  it('planner 保留救回来的真实方案，而不是全换成通用模板', async () => {
+    const { proposed, options } = await runPlanner((i) => (i === 0 ? TRUNCATED : DIFF));
+    expect(proposed).toBe(1);
+    expect(options.length).toBeGreaterThanOrEqual(3);
+    // 第一个必须是模型写的真方案
+    expect(options[0].title).toBe('改用 posts 数组');
+    expect(options[0].description).toContain('app/posts/page.tsx');
   });
 });

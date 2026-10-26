@@ -27,6 +27,7 @@ import {
 } from './cost-model.js';
 import { formatEvidence } from './analyst.js';
 import { extractJson } from './json.js';
+import { normalizePatch, stripThinkResidue } from './diff.js';
 
 /** 单个 agent 的 LLM 调用超时（ms）—— 超时必须有，否则一次网络抖动就能挂死整轮 */
 /**
@@ -58,8 +59,13 @@ export function createPlanner(config: PlannerConfig = {}): Subagent {
         const bug = event.payload;
         let options = await llmPlan(ctx, bug, stage).catch(() => null);
 
-        if (!options || options.length < 3) {
+        if (!options || options.length === 0) {
           options = heuristicPlan(bug, stage);
+        } else if (options.length < 3) {
+          // 抢救回来的方案比通用模板有用得多 —— 保留它们，只用模板补足数量。
+          // 以前这里直接 `options = heuristicPlan(...)`，等于把模型写的真方案全扔了。
+          const real = options;
+          options = [...real, ...heuristicPlan(bug, stage).slice(0, 3 - real.length)];
         }
 
         const scored = options.map((o) => {
@@ -351,12 +357,18 @@ function fileContext(bug: BugFinding): string {
 /** 从模型回复里提取 unified diff（允许前面有说明文字、允许 markdown 围栏） */
 export function extractDiff(raw: string): string | undefined {
   if (typeof raw !== 'string' || raw.trim() === '') return undefined;
-  const fenced = raw.match(/```(?:diff|patch)?\s*\r?\n([\s\S]*?)```/);
-  const text = fenced ? fenced[1]! : raw;
+  // ① 先剥 <think> 残渣：模型常在推理里先写一遍示例 diff，
+  //    不剥的话从第一个 "---" 开始截会把推理残渣当成 diff 的开头。
+  const noThink = stripThinkResidue(raw);
+  const fenced = noThink.match(/```(?:diff|patch)?\s*\r?\n([\s\S]*?)```/);
+  const text = fenced ? fenced[1]! : noThink;
   const m = text.match(/---[^\n]*\r?\n\+\+\+[^\n]*\r?\n[\s\S]*/);
   if (!m) return undefined;
-  const diff = m[0].trim();
+  let diff = m[0].trim();
   if (!diff || diff.includes('NO_PATCH')) return undefined;
+  // ② 按实际内容重算 hunk 头的行数：LLM 的计数常常不准，
+  //    而 validPatch 是严格校验器 —— 计数不准 = 补丁被丢 = 产物落不了盘。
+  diff = normalizePatch(diff).patch;
   return diff;
 }
 

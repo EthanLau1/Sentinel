@@ -327,6 +327,86 @@ if (!exists('packages/reporters/src/html.ts')) {
   }
 }
 
+// ── 15. 报告的 Tier 必须来自 executor 硬规则 ─────────────────────────────
+{
+  const constitution = read('docs/CONSTITUTION.md');
+  const runSrc = read('packages/cli/src/run.ts');
+  // 宪法原文：「Tier 由 `executor/` 硬规则判断，**不**靠 LLM prompt 决定」
+  if (/Tier 由 `executor\/` 硬规则判断/.test(constitution)) {
+    if (!/executor\.tier_decided/.test(runSrc)) {
+      add(
+        'tier',
+        'report-tier-not-hardcoded',
+        '宪法要求 Tier 由 executor 硬规则判断，但 run.ts 没订阅 executor.tier_decided —— 报告第 11 字段会显示 LLM 自报的 tier，与"实际改不改代码"不一致',
+      );
+    }
+  }
+}
+
+// ── 16. 死事件：目录声明了订阅者，代码里却没人消费 ───────────────────────
+{
+  const catalog = read('docs/EVENT-CATALOG.md');
+  // 只管目录里明确写了订阅者的事件；标了「(内部)」的是过程事件，不要求外部消费者
+  const withSubscribers = new Map(
+    [...catalog.matchAll(/\|\s*`([a-z]+\.[a-z_]+)`\s*\|[^|]*\|\s*([^|]+?)\s*\|/g)]
+      .map((m) => [m[1], m[2]])
+      .filter(([, subs]) => subs && subs !== '(内部)'),
+  );
+  const code = allSrc();
+  const published = new Set([...code.matchAll(/type:\s*'([a-z]+\.[a-z_]+)'/g)].map((m) => m[1]));
+  const subscribed = new Set(
+    [...code.matchAll(/subscribe(?:<[^>]*>)?\(\s*'([a-z]+\.[a-z_]+)'/g)].map((m) => m[1]),
+  );
+  for (const [ev, subs] of withSubscribers) {
+    if (!published.has(ev)) continue; // 没发出就不用管（由第 1 组负责）
+    if (!subscribed.has(ev)) {
+      add('dead-event', ev, `事件 ${ev} 在目录里声明订阅者是「${subs}」，但代码里没有任何订阅者 —— 它的载荷会被静默丢弃`);
+    }
+  }
+  // 代码里发布了但目录里没登记的事件 → 目录缺行（规范↔实现分叉）
+  const declared = new Set([...catalog.matchAll(/`([a-z]+\.[a-z_]+)`/g)].map((m) => m[1]));
+  for (const ev of published) {
+    if (!declared.has(ev)) {
+      add('event-catalog', ev, `代码里发布了事件 ${ev}，但 docs/EVENT-CATALOG.md 里没有登记`);
+    }
+  }
+}
+
+// ── 17. 宪法 Tier 定义 × executor 的 tier 闸门与判定 ─────────────────────
+{
+  const constitution = read('docs/CONSTITUTION.md');
+  const executor = read('packages/subagents/src/executor.ts');
+  const runSrc = read('packages/cli/src/run.ts');
+
+  // 宪法第 130 行：「Tier 2 自动写 patch，但需要人确认（生成 PR 等审查）」
+  // → maxTier 默认值不能低于 2，否则 Tier 2 分支整个被跳过：
+  //    报告写着"Tier 2 — 写 patch 待审核"，磁盘上什么都没有。
+  if (/Tier 2\s*自动写 patch/.test(constitution)) {
+    const execDefault = /maxTier\s*=\s*config\.maxTier\s*\?\?\s*(\d)/.exec(executor);
+    const cliDefault = /maxTier:\s*opts\.maxTier\s*\?\?\s*(\d)/.exec(runSrc);
+    for (const [where, m] of [['executor.ts', execDefault], ['run.ts', cliDefault]]) {
+      if (m && Number(m[1]) < 2) {
+        add(
+          'tier',
+          `max-tier-default-${where}`,
+          `宪法要求 Tier 2 自动写 patch，但 ${where} 的 maxTier 默认值是 ${m[1]} —— Tier 2 分支会被整个跳过，报告说"写 patch"实际不落盘`,
+        );
+      }
+    }
+  }
+
+  // 宪法第 58 行「高风险只能建议」：硬规则只能收紧，不能把 LLM 判的 Tier 3 放宽成 Tier 2
+  if (/高风险只能建议/.test(constitution)) {
+    if (!/llmTier\s*===\s*3/.test(executor)) {
+      add(
+        'tier',
+        'tier-not-relaxed-by-llm',
+        '宪法要求高风险只能建议（Tier 3），但 executor 没有「LLM 判 Tier 3 时硬规则不放宽」的守卫 —— 硬规则可能把 Tier 3 放宽成 Tier 2（写 patch/建 PR）',
+      );
+    }
+  }
+}
+
 // ── 输出与基线比对 ─────────────────────────────────────────────────────────
 const key = (f) => `${f.dimension}::${f.id}`;
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');

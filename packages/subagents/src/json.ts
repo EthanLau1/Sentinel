@@ -98,6 +98,47 @@ function escapeRawControlChars(text: string): string {
 }
 
 /**
+ * 抢救被 max_tokens 截断的 JSON 数组。
+ *
+ * 场景（实测 run15）：模型输出撞上输出上限，JSON 在中途被切断，
+ * 表现为 `Unterminated string` —— 5 级兜底全失败 → 方案退化成通用模板，
+ * 报告里写着"快速修复（绕过/补丁）"，跟本项目毫无关系。
+ *
+ * 能救的不是"猜出剩下的内容"，而是**保住已经写完的那几个对象**：
+ * 找到最后一个完整闭合的顶层对象，砍掉残缺部分并闭合数组。
+ * 数组本身完整时返回 null（不需要抢救）。
+ */
+export function salvageTruncatedJsonArray(raw: string): string | null {
+  if (typeof raw !== 'string') return null;
+  const text = stripFence(stripThink(raw));
+  const start = text.indexOf('[');
+  if (start < 0) return null;
+
+  let depth = 0;
+  let inStr = false;
+  let escaped = false;
+  const elementEnds: number[] = [];
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]!;
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\') { if (inStr) escaped = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '[' || ch === '{') { depth += 1; continue; }
+    if (ch === ']' || ch === '}') {
+      depth -= 1;
+      if (depth === 1 && ch === '}') elementEnds.push(i);
+      if (depth === 0) return null; // 数组本身是完整的，不需要抢救
+    }
+  }
+
+  if (elementEnds.length === 0) return null;
+  const last = elementEnds[elementEnds.length - 1]!;
+  return text.slice(start, last + 1) + ']';
+}
+
+/**
  * 从 LLM 回复中提取 JSON。
  * 失败时返回原因，便于调用方把"解析失败"如实报出来。
  */
@@ -136,6 +177,16 @@ export function extractJson<T = unknown>(raw: string): JsonExtract<T> {
       } catch (err2) {
         errors.push(`转义后: ${(err2 as Error).message}`);
       }
+    }
+  }
+
+  // 兜底 3：输出被 max_tokens 截断 → 保住已经写完的那几个对象
+  const salvaged = salvageTruncatedJsonArray(raw);
+  if (salvaged) {
+    try {
+      return { ok: true, value: JSON.parse(salvaged) as T };
+    } catch (err) {
+      errors.push(`抢救截断的 JSON: ${(err as Error).message}`);
     }
   }
 

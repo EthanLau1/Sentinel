@@ -31,7 +31,12 @@ Options for 'run':
   --detailed                  Include sensitive Evidence (cookie/storage)
   --demo                      Run a no-key demo with sample bugs/fixes
   --no-enhance                Skip M6 knowledge enhancement
-  --tier <0|1|2|3>            Max auto-fix tier (default 1)
+  --tier <0|1|2|3>            Highest tier to process (default 3: Tier1 auto-fix /
+                             Tier2 patch file / Tier3 suggestion). Modifying source
+                             still requires --auto-fix.
+  --auto-fix                 Allow Tier 1 to actually modify the project source
+                             (default off — patches are only written to .sentinel/auto-patches/)
+  --create-pr                Open a PR for Tier 2 fixes (requires gh CLI, default off)
   --report <markdown|json|both>  Report format (default both)
 
 Global:

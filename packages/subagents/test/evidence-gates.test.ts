@@ -166,8 +166,10 @@ describe('subagent evidence and patch gates', () => {
     expect(tierDecided?.tier).toBe(2);
     expect(tierDecided?.llmTier).toBe(1);
     expect(tierDecided?.reason).toContain('降级');
-    // 默认 maxTier=1 → Tier 2 不自动落盘
-    expect(writes).toBe(0);
+    // 默认 maxTier=3 —— 宪法「Tier 2 自动写 patch，但需要人确认」：
+    // 降级为 Tier 2 之后必须真的落盘待审 patch（1 次 fs.write + 1 次 patch.generated 事件）。
+    // 以前默认 maxTier=1，Tier 2 分支整个被跳过 → 报告写着"写 patch 待审核"，磁盘上什么都没有。
+    expect(writes).toBe(2);
   });
 
   it('Tier 由硬规则判定：命中高风险特征 → 直接降为 Tier 3，只出建议', async () => {

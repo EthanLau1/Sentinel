@@ -56,6 +56,107 @@ describe('Tier 硬规则 — 宪法要求 Tier 不靠 LLM 给', () => {
   });
 });
 
+describe('E20 — 硬规则不得放宽 LLM 的「仅建议」判定', () => {
+  it('LLM 判 Tier 3 → 硬规则保持 Tier 3（哪怕命中低风险关键词）', () => {
+    const d = classifyTier(opt({ tier: 3, title: 'format file' }));
+    expect(d.tier).toBe(3);
+    expect(d.reason).toContain('不放宽');
+  });
+
+  it('LLM 判 Tier 3 + 未命中任何规则 → 仍然是 Tier 3', () => {
+    const d = classifyTier(opt({ tier: 3, title: '调整重定向策略' }));
+    expect(d.tier).toBe(3);
+  });
+
+  it('LLM 判 Tier 3 的方案不会被写成待审 patch', () => {
+    // Tier 3 = 仅建议，不能降级成"写个 patch 等人看"
+    expect(classifyTier(opt({ tier: 3, title: '调整重定向策略' })).tier).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('E21 — 硬风险规则要认中文描述', () => {
+  it('中文「数据库迁移」→ Tier 3', () => {
+    expect(classifyTier(opt({ title: '重构数据库迁移脚本' })).tier).toBe(3);
+  });
+  it('中文「权限校验」→ Tier 3', () => {
+    expect(classifyTier(opt({ title: '调整权限校验逻辑' })).tier).toBe(3);
+  });
+  it('中文「密钥」→ Tier 3', () => {
+    expect(classifyTier(opt({ description: '把密钥写进配置文件' })).tier).toBe(3);
+  });
+});
+
+describe('E19 — 判定理由的措辞必须与事实一致', () => {
+  it('LLM 本来就判 Tier 2 → 理由不能写「降级」', () => {
+    const d = classifyTier(opt({ tier: 2, title: '调整重定向策略' }));
+    expect(d.tier).toBe(2);
+    expect(d.reason).not.toContain('降级');
+  });
+
+  it('LLM 判 Tier 1 但未命中低风险 → 理由写「降级」', () => {
+    const d = classifyTier(opt({ tier: 1, title: '调整重定向策略' }));
+    expect(d.reason).toContain('降级');
+  });
+});
+
+describe('E18 — 补丁形状判定（纯标识符重命名 = 低风险）', () => {
+  const RENAME = `--- a/app/posts/page.tsx
++++ b/app/posts/page.tsx
+@@ -9,7 +9,7 @@
+     <main>
+       <h1>Posts</h1>
+       <ul>
+-        {postList.map((p) => (
++        {posts.map((p) => (
+           <li key={p.id}>{p.title}</li>
+         ))}
+       </ul>
+`;
+
+  it('单文件单 hunk 只改标识符 → 判 Tier 1（中文描述不会说「拼写」，关键词法必然漏判）', () => {
+    const d = classifyTier(opt({ tier: 1, title: '在 app/posts/page.tsx 中改用 posts.map 渲染', patch: RENAME }));
+    expect(d.tier).toBe(1);
+    expect(d.reason).toContain('补丁形状');
+  });
+
+  it('改动语义（新增组件）→ 不是 Tier 1', () => {
+    const add = `--- a/app/page.tsx
++++ b/app/page.tsx
+@@ -1,3 +1,7 @@
+ export default function Page() {
+-  return null;
++  return (
++    <main>
++      <h1>Home</h1>
++    </main>
++  );
+ }
+`;
+    expect(classifyTier(opt({ tier: 1, title: '渲染首页', patch: add })).tier).toBe(2);
+  });
+
+  it('改的是字面量而非名字（null → undefined）→ 不是重命名', () => {
+    const lit = `--- a/src/a.ts
++++ b/src/a.ts
+@@ -1 +1 @@
+-return null;
++return undefined;
+`;
+    expect(classifyTier(opt({ tier: 1, title: '改默认值', patch: lit })).tier).toBe(2);
+  });
+
+  it('多文件 patch → 不是重命名（改太多）', () => {
+    const multi = RENAME +
+      `--- a/src/b.ts
++++ b/src/b.ts
+@@ -1 +1 @@
+-old
++new
+`;
+    expect(classifyTier(opt({ tier: 1, title: '顺手改两处', patch: multi })).tier).toBe(2);
+  });
+});
+
 describe('自动修改白名单', () => {
   it('常见源文件类型允许', () => {
     for (const p of ['src/a.ts', 'src/a.tsx', 'app/page.tsx', 'styles.css', 'README.md', 'package.json']) {

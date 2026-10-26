@@ -203,6 +203,33 @@ describe('L3 闭环：应用 → 验证失败 → 回滚', () => {
     expect(readFileSync(join(root, 'app', 'page.tsx'), 'utf8')).toContain('return null;');
   });
 
+  it('E24：patch 缺结尾换行 → 仍然被真正应用（git apply 会报 corrupt patch）', async () => {
+    const applied: unknown[] = [];
+    const capture: Subagent = {
+      name: 'capture',
+      register(ctx) {
+        ctx.bus.subscribe<{ files: string[] }>('patch.applied', (e) => { applied.push(e.payload); });
+      },
+    };
+    const option = {
+      id: 'fix_1', title: 'format page', description: 'format the page', effort: 'low', risk: 'low',
+      runtimeCost: 'none', regressionRisk: 'low', maintenanceCost: 'low',
+      stageFit: 'MVP', tier: 1, confidence: 0.9, score: 0.8, sources: [],
+      // 和 LLM 真实产出的一样：最后一行没有换行
+      patch: PATCH.replace(/\n$/, ''),
+    } as FixOption;
+
+    const kernel = new Kernel({
+      providers: makeProviders(),
+      budget: new Budget({}),
+      subagents: [createExecutor({ projectRoot: root, autoApply: true }), capture],
+    });
+    await kernel.kick('fix.enhanced', { bug, options: [option] }, 'enhancer');
+
+    expect(applied).toHaveLength(1);
+    expect(readFileSync(join(root, 'app', 'page.tsx'), 'utf8')).toContain('return <main>fixed</main>;');
+  });
+
   it('白名单外的文件被拒绝（不越界改）', async () => {
     const rejected: Array<{ reason?: string }> = [];
     const capture: Subagent = {

@@ -48,9 +48,12 @@ import {
   aggregateDuplicateBugs,
   isToolFailure,
   createBugCollector,
+  applyTierDecisions,
+  type TierDecisionRecord,
   color,
 } from '@sentinel/reporters';
 import { loadBudgetConfig, loadLlmConfig, projectRoot } from './config.js';
+import { createStatusEventCollector } from './status-events.js';
 import { collectConfigChecks } from './doctor.js';
 import { demoBugs } from './demo.js';
 import { autoInit } from './auto-init.js';
@@ -236,6 +239,9 @@ export async function runRun(): Promise<number> {
     status: 'applied' | 'reverted';
     reason?: string;
   }> = [];
+  // 过程事件的收集器（可测模块）—— 之前这些信息根本没有出口：
+  // 硬规则 tier 判定、落盘待审的 patch、被拒的补丁、建好的 PR、预算超限、证据采集失败
+  const statusEvents = createStatusEventCollector();
   let plannedFlows = 0;
   let passedFlows = 0;
   let failedFlows = 0;
@@ -317,6 +323,33 @@ export async function runRun(): Promise<number> {
         if (idx >= 0) appliedPatches[idx] = entry;
         else appliedPatches.push(entry);
       });
+      // executor 的硬规则判定不能丢 —— 报告第 11 字段必须展示它，
+      // 否则会出现"报告说 Tier 1 能自动修、实际没改"且用户查不到原因
+      ctx.bus.subscribe<{ fixId: string; tier: 0 | 1 | 2 | 3; reason: string; llmTier?: number }>(
+        'executor.tier_decided',
+        (e) => statusEvents.onTierDecided(e.payload),
+      );
+      // 落盘待审的 patch —— 用户要知道"建议改哪个文件、去哪看"
+      ctx.bus.subscribe<{ fixId: string; files: string[]; applied: boolean; approvalRequired: boolean }>(
+        'patch.generated',
+        (e) => statusEvents.onPatchGenerated(e.payload),
+      );
+      // 补丁被拒 —— 原因必须能看到（不在白名单 / 应用失败）
+      ctx.bus.subscribe<{ fixId: string; reason: string }>('patch.rejected', (e) => {
+        statusEvents.onPatchRejected(e.payload);
+      });
+      // PR —— 建了哪个 PR、是不是 dry-run
+      ctx.bus.subscribe<{ fixId: string; title: string; dryRun: boolean }>('pr.created', (e) => {
+        statusEvents.onPrCreated(e.payload);
+      });
+      // 预算超限 —— 哪一项超了、上限是多少
+      ctx.bus.subscribe<{ kind: string; limit: number }>('budget.exceeded', (e) => {
+        statusEvents.onBudgetExceeded(e.payload);
+      });
+      // 证据采集失败 —— 诊断不完整时必须说出来
+      ctx.bus.subscribe<{ error: string; kind: string }>('evidence.failed', (e) => {
+        statusEvents.onEvidenceFailed(e.payload);
+      });
       // critic 的裁决理由不能丢 —— 否则"为什么没确认"永远查不到
       ctx.bus.subscribe<{ bugId: string; reason: string }>('bug.rejected', (e) => {
         rejectedBugs.push({ bugId: e.payload.bugId, reason: e.payload.reason });
@@ -349,7 +382,9 @@ export async function runRun(): Promise<number> {
   subagents.push(createEnhancer({ skipSearch: opts.noEnhance === true }));
   subagents.push(
     createExecutor({
-      maxTier: opts.maxTier ?? 1,
+      // 默认 3 = 宪法定义的 Tier 1/2/3 各自产出对应产物；
+      // 真正改用户代码仍然要显式 --auto-fix。
+      maxTier: opts.maxTier ?? 3,
       projectRoot: root,
       // 改用户源码、推分支、开 PR 都是对外部状态的可见改动 —— 必须显式开启
       autoApply: opts.autoFix === true,
@@ -400,7 +435,8 @@ export async function runRun(): Promise<number> {
   const dur = Date.now() - startMs;
 
   // 7. 输出报告（同源错误先聚合，避免几十条同质问题淹没用户）
-  const reportedBugs = aggregateDuplicateBugs(collector.bugs);
+  // 报告里的 tier 必须是硬规则判出来的那个（不是 LLM 自报的）
+  const reportedBugs = aggregateDuplicateBugs(applyTierDecisions(collector.bugs, statusEvents.tierDecisions));
   console.log('');
   console.log(printSummary(reportedBugs));
   console.log('');
@@ -408,7 +444,7 @@ export async function runRun(): Promise<number> {
     console.log(printBug(b));
   }
 
-  await writeReports(root, reportedBugs, opts.reportFormat ?? 'both');
+  await writeReports(root, reportedBugs, opts.reportFormat ?? 'both', statusEvents.tierDecisions);
 
   // 8. 总结
   const usage = budget.snapshot();
@@ -466,6 +502,14 @@ export async function runRun(): Promise<number> {
     insufficientEvidence,
     rejectedBugs,
     appliedPatches,
+    // 硬规则 tier 判定：每个方案最终被判成哪一档、依据是什么
+    tierDecisions: statusEvents.tierDecisions,
+    // 过程信息：之前这些都查不到（事件发出但没人消费）
+    generatedPatches: statusEvents.generatedPatches,
+    rejectedPatches: statusEvents.rejectedPatches,
+    createdPrs: statusEvents.createdPrs,
+    budgetExceeded: statusEvents.budgetExceeded,
+    evidenceFailures: statusEvents.evidenceFailures,
     bugCount: collector.bugs.length,
     reportedBugCount: reportedBugs.length,
     toolFailures: reportedBugs.filter((b) => isToolFailure(b)).length,
@@ -535,11 +579,16 @@ function withRequestCounter(
   };
 }
 
-async function writeReports(root: string, bugs: BugFinding[], format: 'markdown' | 'json' | 'both'): Promise<void> {
+async function writeReports(
+  root: string,
+  bugs: BugFinding[],
+  format: 'markdown' | 'json' | 'both',
+  tierDecisions: TierDecisionRecord[] = [],
+): Promise<void> {
   const dir = join(root, 'reports');
   if (!existsSync(dir)) await mkdir(dir, { recursive: true });
   if (format === 'markdown' || format === 'both') {
-    const md = reportToMarkdown(bugs, { project: root.split('/').pop() ?? 'project' });
+    const md = reportToMarkdown(bugs, { project: root.split('/').pop() ?? 'project' }, { tierDecisions });
     await writeFile(join(dir, 'sentinel-latest.md'), md, 'utf8');
   }
   if (format === 'json' || format === 'both') {

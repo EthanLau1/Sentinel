@@ -19,6 +19,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
 import type { Subagent, KernelContext, FixOption } from '@sentinel/core';
+import { ensureTrailingNewline } from './diff.js';
 
 export function validPatch(patch: unknown): patch is string {
   if (typeof patch !== 'string' || !patch.trim()) return false;
@@ -67,14 +68,16 @@ export interface TierDecision {
 // 注意：JS 正则里汉字属于非 word 字符，`\b` 在汉字前不成立 ——
 // 中文关键词一律不写前导 `\b`，否则「生成 app.map」这种最典型的低风险修复会漏判。
 /** 一律仅建议（改这些等于改地基，出错的代价远高于收益） */
+// 中文关键词同样要覆盖：LLM 用中文描述「数据库迁移」时，英文规则一律漏判，
+// 实测中文 fix 描述（含 description/whyRecommended）完全命中不了这些正则。
 const HARD_RISK_RULES: Array<{ re: RegExp; why: string }> = [
-  { re: /\b(migrat\w*|schema\.sql|alembic|flyway|liquibase)\b/i, why: '数据库迁移' },
-  { re: /\b(permission|permissions|rbac|acl|authorize|authorisation|authorization)\b/i, why: '权限模型' },
-  { re: /\b(auth|login|session|jwt|oauth|sso)\b/i, why: '登录/会话' },
-  { re: /\b(secret|credential|password|api[\s_-]?key|private[\s_-]?key)\b|\.env\b/i, why: '凭据' },
-  { re: /\b(security|vulnerab\w*|cve|sanitiz\w*|xss|csrf|cors)\b/i, why: '安全相关' },
+  { re: /\b(migrat\w*|schema\.sql|alembic|flyway|liquibase)\b|数据库迁移|数据迁移|迁移脚本/i, why: '数据库迁移' },
+  { re: /\b(permission|permissions|rbac|acl|authorize|authorisation|authorization)\b|权限模型|权限校验|授权/i, why: '权限模型' },
+  { re: /\b(auth|login|session|jwt|oauth|sso)\b|登录|会话|鉴权|认证/i, why: '登录/会话' },
+  { re: /\b(secret|credential|password|api[\s_-]?key|private[\s_-]?key)\b|\.env\b|密钥|凭据|凭证/i, why: '凭据' },
+  { re: /\b(security|vulnerab\w*|cve|sanitiz\w*|xss|csrf|cors)\b|安全漏洞|安全审计/i, why: '安全相关' },
   { re: /\b(lock\.json|lock\.yaml|package-lock|yarn\.lock|pnpm-lock|Cargo\.lock|go\.sum)\b/i, why: '依赖锁文件' },
-  { re: /\b(ci|pipeline|dockerfile|compose)\b|\.github\/workflows/i, why: '构建/部署配置' },
+  { re: /\b(ci|pipeline|dockerfile|compose)\b|\.github\/workflows|流水线|部署配置/i, why: '构建/部署配置' },
 ];
 
 /** 可以自动修（低风险、可验证、可回滚） */
@@ -88,6 +91,7 @@ const LOW_RISK_RULES: Array<{ re: RegExp; why: string }> = [
 ];
 
 export function classifyTier(opt: FixOption): TierDecision {
+  const llmTier = opt.tier;
   const text = [
     opt.title,
     opt.description,
@@ -100,15 +104,87 @@ export function classifyTier(opt: FixOption): TierDecision {
       return { tier: 3, reason: `命中硬规则「${rule.why}」→ 仅建议，不自动改` };
     }
   }
+  // LLM 判 Tier 3 是「更保守」的信号 —— 硬规则只能收紧，不能放宽它。
+  // 宪法第 58 行「高风险只能建议」：放宽会把架构/安全类改动降级成"写个 patch 等人看"，
+  // 那已经越过了 Tier 3 的边界。
+  if (llmTier === 3) {
+    return { tier: 3, reason: 'LLM 判定为高风险（Tier 3，仅建议），硬规则不放宽 → 仅建议，不自动改' };
+  }
   for (const rule of LOW_RISK_RULES) {
     if (rule.re.test(text)) {
       return { tier: 1, reason: `命中低风险规则「${rule.why}」→ 可自动修` };
     }
   }
+  if (isRenameOnlyPatch(opt.patch)) {
+    return { tier: 1, reason: '命中补丁形状规则「单文件单 hunk 且仅标识符不同（拼写/重命名类）」→ 可自动修' };
+  }
   return {
     tier: 2,
-    reason: `未命中任何低风险规则（LLM 原判 Tier ${opt.tier}）→ 降级为需人工确认`,
+    // 措辞必须与实际一致：只有真的从 Tier 1 降下来才写"降级"，
+    // 否则 LLM 本来就判 Tier 2 还写"降级"，报告会误导人。
+    reason: llmTier === 1
+      ? '未命中任何低风险规则（LLM 原判 Tier 1）→ 降级为需人工确认'
+      : '未命中任何低风险规则 → 需人工确认',
   };
+}
+
+// ── 补丁形状判定 ────────────────────────────────────────────────────────────
+// 为什么用形状而不是关键词：中文 LLM 描述「把 postList 改成 posts」不会写"拼写"，
+// 关键词法必然漏判（实测 run12–run14 全部漏判，Tier 1 永远触发不了）。
+// 补丁形状是确定性的：单文件、单 hunk、差异只在标识符 → 就是拼写/重命名类改动。
+//
+// 关键词表：JS/TS 关键字必须保留原样，否则 `null` → `undefined` 会被误判成"重命名"。
+const JS_KEYWORDS = new Set([
+  'as', 'async', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue',
+  'declare', 'default', 'delete', 'do', 'else', 'enum', 'export', 'extends',
+  'false', 'finally', 'for', 'from', 'function', 'get', 'if', 'implements',
+  'import', 'in', 'instanceof', 'interface', 'is', 'keyof', 'let', 'namespace',
+  'new', 'null', 'of', 'private', 'protected', 'public', 'readonly', 'require',
+  'return', 'satisfies', 'set', 'static', 'super', 'switch', 'this', 'throw',
+  'true', 'try', 'type', 'typeof', 'undefined', 'var', 'void', 'while', 'yield',
+]);
+
+/** 把标识符替换成占位符（关键字保持原样），用于比较两行是否"只差名字" */
+function tokenizeLine(line: string): string {
+  return line.replace(/[A-Za-z_$][A-Za-z0-9_$]*/g, (m) => (JS_KEYWORDS.has(m) ? m : '⟨ID⟩'));
+}
+
+/**
+ * 判定一个 patch 是否只是「改了名字」（拼写/重命名类）——
+ * 单文件、单 hunk、增删行数量相同，且逐对比较时除了标识符以外完全一致。
+ */
+export function isRenameOnlyPatch(patch: unknown): boolean {
+  if (!validPatch(patch)) return false;
+  const lines = patch.trimEnd().split('\n');
+  const minus: string[] = [];
+  const plus: string[] = [];
+  let files = 0;
+  let hunks = 0;
+
+  for (let i = 0; i < lines.length;) {
+    if (!lines[i]!.startsWith('--- a/')) {
+      i += 1;
+      continue;
+    }
+    files += 1;
+    i += 2; // 跳过 +++ b/...
+    while (i < lines.length && lines[i]!.startsWith('@@ ')) {
+      hunks += 1;
+      i += 1;
+      while (i < lines.length && !lines[i]!.startsWith('@@ ') && !lines[i]!.startsWith('--- a/')) {
+        const line = lines[i]!;
+        if (line.startsWith('-')) minus.push(line.slice(1));
+        else if (line.startsWith('+')) plus.push(line.slice(1));
+        i += 1;
+      }
+    }
+  }
+
+  if (files !== 1 || hunks !== 1) return false;
+  if (minus.length === 0 || minus.length !== plus.length) return false;
+  // 至少有一行真的变了（否则是无操作 patch）
+  if (!minus.some((m, idx) => m !== plus[idx])) return false;
+  return minus.every((m, idx) => tokenizeLine(m) === tokenizeLine(plus[idx]!));
 }
 
 /** 允许被自动修改的文件类型（白名单） */
@@ -203,7 +279,10 @@ async function applyPatch(projectRoot: string, patch: string, targets: string[])
     }
   }
 
-  const check = await runCommand(projectRoot, 'git', ['apply', '--check', '-p1', '-'], patch);
+  // git apply 要求 patch 以换行结束，少一个换行就报 "corrupt patch at line N"
+  const patchText = ensureTrailingNewline(patch);
+
+  const check = await runCommand(projectRoot, 'git', ['apply', '--check', '-p1', '-'], patchText);
   if (check.code !== 0) {
     return {
       applied: false,
@@ -213,7 +292,7 @@ async function applyPatch(projectRoot: string, patch: string, targets: string[])
     };
   }
 
-  const applied = await runCommand(projectRoot, 'git', ['apply', '-p1', '-'], patch);
+  const applied = await runCommand(projectRoot, 'git', ['apply', '-p1', '-'], patchText);
   if (applied.code !== 0) {
     return {
       applied: false,
@@ -247,7 +326,7 @@ async function restoreBackup(projectRoot: string, backup: Map<string, string | n
 }
 
 export interface ExecutorConfig {
-  /** 允许的最高 Tier（默认 1） */
+  /** 允许处理的最高 Tier（默认 3 = 宪法定义的 Tier 1/2/3 全部产出对应产物） */
   maxTier?: 0 | 1 | 2 | 3;
   /** 被测项目根目录（Tier 1 自动修复需要） */
   projectRoot?: string;
@@ -258,7 +337,10 @@ export interface ExecutorConfig {
 }
 
 export function createExecutor(config: ExecutorConfig = {}): Subagent {
-  const maxTier = config.maxTier ?? 1;
+  // 默认 3，不是 1 —— 宪法第 130 行要求「Tier 2 自动写 patch，但需要人确认」。
+  // 曾经默认 1，导致 Tier 2 的分支整个被跳过：patch 文件永不落盘，
+  // 报告却写着"Tier 2 — 写 patch 待审核"，报告说能做、实际没做。
+  const maxTier = config.maxTier ?? 3;
   const projectRoot = config.projectRoot ? resolve(config.projectRoot) : undefined;
   const autoApply = config.autoApply === true;
   const createPr = config.createPr === true;
@@ -310,7 +392,24 @@ export function createExecutor(config: ExecutorConfig = {}): Subagent {
             traceId: event.traceId,
           });
 
-          if (tier > maxTier || tier === 0) continue;
+          if (tier > maxTier) {
+            // 被 maxTier 拦下也必须有出口 —— 静默跳过等于"报告说能做、实际没做"
+            await ctx.bus.publish({
+              type: 'patch.rejected',
+              payload: {
+                fixId: opt.id,
+                reason: `Tier ${tier} 超出本次允许的最高 Tier（maxTier=${maxTier}）→ 未产出补丁`,
+                tier,
+                maxTier,
+              },
+              source: 'executor',
+              traceId: event.traceId,
+            });
+            continue;
+          }
+          // Tier 0 = 只报告不修（宪法定义），这不是"被拒绝"，
+          // 它的出口是 executor.tier_decided，不重复记成 rejected。
+          if (tier === 0) continue;
 
           if (tier === 1 && opt.patch) {
             await handleTier1(
@@ -319,9 +418,17 @@ export function createExecutor(config: ExecutorConfig = {}): Subagent {
             );
           } else if (tier === 2 && opt.patch) {
             await writePatchFile(ctx, opt, event.traceId);
-            if (createPr && projectRoot) {
+            // 只给推荐方案建 PR —— 一个 bug 对应一个 PR，否则会一次推多个 PR
+            const recommendedId =
+              event.payload.bug.recommendedFixId
+              ?? (event.payload.options.length === 1 ? event.payload.options[0]!.id : undefined);
+            if (createPr && projectRoot && isRecommended(recommendedId, opt.id)) {
               await handlePr(ctx, opt, projectRoot, event.traceId);
             }
+          } else if (tier === 2) {
+            // Tier 2 但 LLM 没给 patch → 也要说出来（否则报告说"Tier 2 写 patch"，
+            // 磁盘上什么都没有）
+            await rejectFix(ctx, opt, event.traceId, 'Tier 2 方案没有可用 patch（LLM 未产出或格式非法）→ 未落盘');
           } else if (tier === 3) {
             await writeSuggestion(ctx, opt, event.traceId);
           }
@@ -419,49 +526,92 @@ async function handlePr(
 
 async function writeAutoPatchFile(ctx: KernelContext, opt: FixOption, traceId: string): Promise<void> {
   const fs = ctx.providers.mcp.get('fs');
-  if (!fs || !validPatch(opt.patch) || !/^[a-zA-Z0-9_-]+$/.test(opt.id)) return;
+  if (!fs) return rejectFix(ctx, opt, traceId, 'fs provider 不可用 → 待审 patch 未落盘');
+  if (!validPatch(opt.patch)) {
+    return rejectFix(ctx, opt, traceId, 'patch 格式非法（不是合法的 unified diff）→ 待审 patch 未落盘');
+  }
+  if (!/^[a-zA-Z0-9_-]+$/.test(opt.id)) {
+    return rejectFix(ctx, opt, traceId, `fixId 非法（${opt.id}）→ 待审 patch 未落盘`);
+  }
   // Tier 1 仍不直接改源代码，只写到 .sentinel/auto-patches/<id>.diff，交给用户审核后 git apply。
   const path = `.sentinel/auto-patches/${opt.id}.diff`;
   try {
     const result = await fs.call('write', { path, content: opt.patch ?? '' });
-    if (!result || typeof result !== 'object' || !('written' in result) || result.written !== true) return;
+    if (!result || typeof result !== 'object' || !('written' in result) || result.written !== true) {
+      return rejectFix(ctx, opt, traceId, `待审 patch 落盘失败：fs.write 未返回 written=true（${path}）`);
+    }
     await ctx.bus.publish({
       type: 'patch.generated',
       payload: { fixId: opt.id, files: [path], applied: false, approvalRequired: true },
       source: 'executor',
       traceId,
     });
-  } catch {
-    // 失败 → 仅报告，不抛
+  } catch (err) {
+    await rejectFix(ctx, opt, traceId, `待审 patch 落盘失败：${errText(err)}`);
   }
 }
 
 async function writePatchFile(ctx: KernelContext, opt: FixOption, traceId: string): Promise<void> {
   const fs = ctx.providers.mcp.get('fs');
-  if (!fs || !validPatch(opt.patch) || !/^[a-zA-Z0-9_-]+$/.test(opt.id)) return;
+  if (!fs) return rejectFix(ctx, opt, traceId, 'fs provider 不可用 → Tier 2 patch 未落盘');
+  if (!validPatch(opt.patch)) {
+    return rejectFix(ctx, opt, traceId, 'patch 格式非法（不是合法的 unified diff）→ Tier 2 patch 未落盘');
+  }
+  if (!/^[a-zA-Z0-9_-]+$/.test(opt.id)) {
+    return rejectFix(ctx, opt, traceId, `fixId 非法（${opt.id}）→ Tier 2 patch 未落盘`);
+  }
   const path = `reports/patches/${opt.id}.patch`;
   try {
     const result = await fs.call('write', { path, content: opt.patch ?? '' });
-    if (!result || typeof result !== 'object' || !('written' in result) || result.written !== true) return;
+    if (!result || typeof result !== 'object' || !('written' in result) || result.written !== true) {
+      return rejectFix(ctx, opt, traceId, `Tier 2 patch 落盘失败：fs.write 未返回 written=true（${path}）`);
+    }
     await ctx.bus.publish({
       type: 'patch.generated',
       payload: { fixId: opt.id, files: [path], applied: false, approvalRequired: true },
       source: 'executor',
       traceId,
     });
-  } catch {
-    // 忽略
+  } catch (err) {
+    await rejectFix(ctx, opt, traceId, `Tier 2 patch 落盘失败：${errText(err)}`);
   }
 }
 
-async function writeSuggestion(ctx: KernelContext, opt: FixOption, _traceId: string): Promise<void> {
+async function writeSuggestion(ctx: KernelContext, opt: FixOption, traceId: string): Promise<void> {
   const fs = ctx.providers.mcp.get('fs');
-  if (!fs) return;
+  if (!fs) return rejectFix(ctx, opt, traceId, 'fs provider 不可用 → Tier 3 建议未落盘');
   const path = `reports/suggestions/${opt.id}.md`;
   const md = `# ${opt.title}\n\n${opt.description}\n\n**Tier 3 建议（不自动修复）**\n\n## 为什么\n${opt.whyRecommended ?? ''}\n`;
   try {
-    await fs.call('write', { path, content: md });
-  } catch {
-    // 忽略
+    const result = await fs.call('write', { path, content: md });
+    if (!result || typeof result !== 'object' || !('written' in result) || result.written !== true) {
+      return rejectFix(ctx, opt, traceId, `Tier 3 建议落盘失败：fs.write 未返回 written=true（${path}）`);
+    }
+  } catch (err) {
+    await rejectFix(ctx, opt, traceId, `Tier 3 建议落盘失败：${errText(err)}`);
   }
+}
+
+/**
+ * 统一出口：产物没产出 = patch.rejected。
+ * 以前这些路径全是静默 return —— 事件发出去了没人知道，
+ * 报告却写着"Tier 2 — 写 patch 待审核"，磁盘上什么都没有。
+ */
+async function rejectFix(ctx: KernelContext, opt: FixOption, traceId: string, reason: string): Promise<void> {
+  await ctx.bus.publish({
+    type: 'patch.rejected',
+    payload: { fixId: opt.id, reason },
+    source: 'executor',
+    traceId,
+  });
+}
+
+/** 推荐方案判定：只给被标记为推荐（或唯一）的方案建 PR —— 一个 bug 对应一个 PR */
+function isRecommended(recommendedFixId: string | undefined, fixId: string): boolean {
+  return recommendedFixId === fixId;
+}
+
+function errText(err: unknown): string {
+  const s = err instanceof Error ? err.message : String(err);
+  return s.slice(0, 200);
 }

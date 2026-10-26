@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { BugFinding, Evidence, FixOption } from '@sentinel/core';
-import { bugToMarkdown, reportToMarkdown, aggregateDuplicateBugs, isToolFailure, mergeBugFinding, createBugCollector } from '../src/index.js';
+import { bugToMarkdown, reportToMarkdown, aggregateDuplicateBugs, isToolFailure, mergeBugFinding, createBugCollector, applyTierDecisions } from '../src/index.js';
 
 function evidence(kind: 'console' | 'http', message: string): Evidence {
   if (kind === 'console') {
@@ -180,5 +180,46 @@ describe('报告收集器（真实代码路径）', () => {
     const c = createBugCollector();
     c.onConfirmed(makeBug({ id: 'b1', affectedFeature: 'flow_page_0' }));
     expect(c.coveredFlows.has('flow_page_0')).toBe(true);
+  });
+});
+
+describe('Tier 判定用硬规则的结果，而不是 LLM 自报的', () => {
+  const FIX: FixOption = {
+    id: 'fix1', title: '把 postList 改成 posts', description: '变量名拼写错误',
+    effort: 'low', risk: 'low', runtimeCost: 'none', regressionRisk: 'low', maintenanceCost: 'none',
+    stageFit: 'MVP', tier: 1, confidence: 0.9, score: 0.8, sources: [],
+  };
+
+  function bugWithTier(tier: number): BugFinding {
+    return makeBug({ id: 'b1', rootCauseStatus: 'confirmed', fixOptions: [{ ...FIX, tier: tier as FixOption['tier'] }], recommendedFixId: 'fix1' });
+  }
+
+  it('硬规则判成 Tier 2 时，报告里显示 Tier 2 而不是 LLM 说的 Tier 1', () => {
+    const bugs = applyTierDecisions([bugWithTier(1)], [
+      { fixId: 'fix1', tier: 2, reason: '未命中任何低风险规则（LLM 原判 Tier 1）→ 降级为需人工确认', llmTier: 1 },
+    ]);
+    expect(bugs[0]!.fixOptions[0]!.tier).toBe(2);
+    const md = reportToMarkdown(bugs, {}, { tierDecisions: [
+      { fixId: 'fix1', tier: 2, reason: '未命中任何低风险规则 → 降级为需人工确认', llmTier: 1 },
+    ] });
+    expect(md).toContain('Tier 2');
+    expect(md).toContain('未命中任何低风险规则');
+    // LLM 原判与硬规则不一致时，这个差异本身要写出来
+    expect(md).toContain('LLM 原判 Tier 1');
+  });
+
+  it('没有硬规则判定时，报告保持 LLM 的 tier（不凭空改）', () => {
+    const md = reportToMarkdown([bugWithTier(1)]);
+    expect(md).toContain('Tier 1');
+  });
+
+  it('applyTierDecisions 只改匹配的 fixId', () => {
+    const bugs = applyTierDecisions([bugWithTier(1)], [{ fixId: 'other', tier: 3, reason: 'x' }]);
+    expect(bugs[0]!.fixOptions[0]!.tier).toBe(1);
+  });
+
+  it('空判定列表时原样返回', () => {
+    const input = [bugWithTier(1)];
+    expect(applyTierDecisions(input, [])).toBe(input);
   });
 });

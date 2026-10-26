@@ -33,7 +33,7 @@
 |---|---|---|---|
 | `evidence.requested` | sensor | mcp registry | `{ kind: EvidenceKind, target: string }` |
 | `evidence.collected` | sensor | (内部) | `Evidence` |
-| `evidence.ready` | sensor | runner / analyst | `Evidence[]` |
+| `evidence.ready` | sensor | (内部) | `Evidence[]` |
 | `evidence.failed` | sensor | reporter | `{ error: string, kind: EvidenceKind }` |
 
 ### 流程执行阶段（M3.5）
@@ -74,8 +74,10 @@
 |---|---|---|---|
 | `executor.tier_decided` | executor | (内部) | `{ fixId: string, tier: 0 \| 1 \| 2 \| 3 }` |
 | `patch.applied` | executor | reporter | `{ fixId: string, files: string[] }` |
-| `patch.generated` | executor | reporter | `{ fixId: string, files: string[] }` (created for review, not applied) |
-| `pr.created` | executor | reporter | `{ url: string }` |
+| `patch.generated` | executor | reporter | `{ fixId: string, files: string[], applied: boolean, approvalRequired: boolean }`（落盘待审，未应用） |
+| `patch.rejected` | executor | reporter | `{ fixId: string, reason: string }`（补丁被拒：不在白名单 / 应用失败 / 格式非法 / 落盘失败 / 超出 maxTier / Tier 2 无可用 patch） |
+| `patch.reverted` | executor | reporter | `{ fixId: string, files: string[], flowId?: string, reason: string }`（修复后重跑仍失败 → 已回滚） |
+| `pr.created` | executor | reporter | `{ fixId: string, title: string, dryRun: boolean }` |
 | `report.ready` | reporter | cli | `{ path: string }` |
 
 ### 监控/调度
