@@ -611,6 +611,161 @@ if (!exists('packages/reporters/src/html.ts')) {
   }
 }
 
+// ── 21. README 声称的数字 × 代码实际值 ────────────────────────────────
+//
+// 为什么要有这一组：README 里"巡检规则（10 条）"曾与代码的 11 条不符
+// （表格里 11 行都对，只有标题数字数错了）——
+// 数字错了读者就会以为少了一类检测能力，或以为表格多了一行。
+// 凡是 README 里出现的"可数的东西"，数字都必须由代码核对。
+{
+  const readme = read('README.md');
+  const inspectorSrc = read('packages/subagents/src/inspector.ts');
+
+  // 21.1 巡检规则条数
+  const ruleNames = new Set(
+    [...inspectorSrc.matchAll(/rule:\s*'([a-z-]+)'/g)].map((m) => m[1]),
+  );
+  const ruleCount = ruleNames.size;
+  const claimed = /巡检规则（(\d+) 条）/.exec(readme);
+  if (claimed && Number(claimed[1]) !== ruleCount) {
+    add(
+      'readme',
+      'inspection-rule-count',
+      `README 说"巡检规则（${claimed[1]} 条）"，代码里实际 ${ruleCount} 条 —— 数字与实现不符`,
+    );
+  }
+  const claimedEn = /The (ten|eleven|twelve|nine|eight) inspection rules/.exec(readme);
+  if (claimedEn) {
+    const enNum = { eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 }[claimedEn[1]] ?? 0;
+    if (enNum !== ruleCount) {
+      add(
+        'readme',
+        'inspection-rule-count-en',
+        `README 英文说"${claimedEn[1]} inspection rules"，代码里实际 ${ruleCount} 条`,
+      );
+    }
+  }
+  // 表格里必须真的列全了所有规则（不只是数字对）
+  // 只查规则表那一段 —— 全文包含会漏判：
+  // 规则名在别处（正文、宪法引用）出现过，就算表格里删了一行也查不出来。
+  // 中文表和英文表是两张独立的表，两张都要查。
+  const ruleTables = [];
+  const cnStart = readme.indexOf('**巡检规则（');
+  if (cnStart !== -1) {
+    const cnEnd = readme.indexOf('**The ', cnStart);
+    ruleTables.push(readme.slice(cnStart, cnEnd === -1 ? undefined : cnEnd));
+  }
+  const enStart = readme.indexOf('**The eleven inspection rules**');
+  if (enStart !== -1) {
+    const enEnd = readme.indexOf('**怎么确认这次跑的是离线', enStart);
+    ruleTables.push(readme.slice(enStart, enEnd === -1 ? undefined : enEnd));
+  }
+  if (ruleTables.length === 0) {
+    add('readme', 'rule-table-not-found', 'README 里找不到巡检规则表 —— 无法核对规则是否列全');
+  }
+  for (const rule of ruleNames) {
+    for (const [i, table] of ruleTables.entries()) {
+      if (!table.includes(`\`${rule}\``)) {
+        add(
+          'readme',
+          `rule-not-documented:${rule}:table${i}`,
+          `巡检规则 ${rule} 在代码里有，但 README 的规则表（第 ${i + 1} 张：${i === 0 ? '中文' : '英文'}）里没有`,
+        );
+      }
+    }
+  }
+
+  // 21.2 报告字段数（README 说 11 个）
+  const md = read('packages/reporters/src/markdown.ts');
+  const fieldNos = new Set(
+    [...md.matchAll(/\*\*(\d+)\.\s/g)].map((m) => Number(m[1])),
+  );
+  const maxField = Math.max(...fieldNos);
+  const fieldClaim = /报告的 (\d+) 个字段/.exec(readme);
+  if (fieldClaim && Number(fieldClaim[1]) !== maxField) {
+    add(
+      'readme',
+      'report-field-count',
+      `README 说"报告的 ${fieldClaim[1]} 个字段"，markdown reporter 实际输出到第 ${maxField} 个字段`,
+    );
+  }
+
+  // 21.3 Tier 档数（README 说 4 档）
+  const tierClaim = /分 (\d+) 档/.exec(readme);
+  if (tierClaim && Number(tierClaim[1]) !== 4) {
+    add('readme', 'tier-count', `README 说"分 ${tierClaim[1]} 档"，宪法定义的 Tier 是 4 档（0/1/2/3）`);
+  }
+
+  // 21.4 工作流步骤数：README 的流程图必须列全代码里装配的角色
+  //     漏一个角色 = 读者按图理解会缺一块（比如少了 Inspector，
+  //     就会以为"访问成功 = 页面没毛病"）。
+  const runSrc = read('packages/cli/src/run.ts');
+  // Sensor 不单独成步 —— 它就是流程图里的 "Runner + Browser/HTTP"：
+  // Runner 访问页面时发 evidence.requested，Sensor 收集证据。
+  const pipelineRoles = [
+    'Mapper', 'Runner', 'Inspector', 'Analyst',
+    'Critic', 'Verifier', 'Planner', 'Enhancer', 'Executor',
+  ];
+  const stepsClaim = /这 (\d+) 步（每一步只干一件事）/.exec(readme);
+  const expectedSteps = pipelineRoles.length;
+  if (stepsClaim && Number(stepsClaim[1]) !== expectedSteps) {
+    add(
+      'readme',
+      'workflow-step-count',
+      `README 说"这 ${stepsClaim[1]} 步"，代码里装配的流水线角色是 ${expectedSteps} 个 —— 数字与实现不符`,
+    );
+  }
+  // 每个角色都要在 README 的步骤表里出现
+  // 按行取表格范围 —— 用 indexOf('---') 会被表头分隔行 |---| 截断
+  const readmeLines = readme.split('\n');
+  const stepStartLine = readmeLines.findIndex((l) => l.includes('对着人话看这'));
+  const stepTable =
+    stepStartLine === -1
+      ? ''
+      : readmeLines.slice(stepStartLine, stepStartLine + 20).join('\n');
+  for (const role of pipelineRoles) {
+    if (!stepTable.includes(`| ${role} |`)) {
+      add('readme', `workflow-role-missing:${role}`, `流水线角色 ${role} 在代码里装配了，但 README 的步骤表里没有`);
+    }
+  }
+
+  // 21.5 "已经能用"里不许出现 baseline 里记着的"能力未实现"项
+  //     这条防的是本项目最严重的缺陷类型："报告说能做、实际没做"。
+  //     README 的"已经能用"小节是读者判断"这工具现在能干嘛"的唯一依据，
+  //     把未实现的能力写进去 = 骗读者。
+  //
+  //     为什么用显式映射而不是关键词猜测：
+  //     baseline 里大部分条目是"覆盖率门槛 / 死事件"这类工程债，
+  //     不是 README 会声称的用户能力；用关键词猜会既漏又误报。
+  //     这里只列**用户能感知的能力**，每个都对应 baseline 里的一条。
+  const unimplementedCapabilities = [
+    {
+      baselineId: 'enhancer::no-rate-limit',
+      // README 里出现这些短语 = 声称该能力已具备
+      claimedPhrases: ['最多触发 30%', 'at most 30% of flows', '30% 的流程'],
+      detail: '宪法要求知识增强每次 run 的触发流程占比 ≤30%，代码里没有这个限流（只看平均置信度 <0.7）',
+    },
+  ];
+  const workingStart = readme.indexOf('**已经能用');
+  const workingEnd = readme.indexOf('**还没有', workingStart);
+  const workingSection =
+    workingStart === -1 ? '' : readme.slice(workingStart, workingEnd === -1 ? undefined : workingEnd);
+  if (workingSection) {
+    for (const cap of unimplementedCapabilities) {
+      for (const phrase of cap.claimedPhrases) {
+        if (workingSection.includes(phrase)) {
+          add(
+            'readme',
+            `unimplemented-in-working-section:${cap.baselineId}`,
+            `README 的"已经能用"里出现「${phrase}」—— 声称该能力已具备，` +
+              `但代码里没有（${cap.detail}）`,
+          );
+        }
+      }
+    }
+  }
+}
+
 // ── 输出与基线比对 ─────────────────────────────────────────────────────────
 const key = (f) => `${f.dimension}::${f.id}`;
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');

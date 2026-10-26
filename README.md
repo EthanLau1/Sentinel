@@ -378,7 +378,7 @@ The supported scope is defined by the **13 adapters that actually exist** in `pa
 ## 9. 完整工作流程 / How It Works
 
 ```
-Mapper → Runner + Browser/HTTP → Analyst → Critic → Verifier → Planner → Enhancer → Executor
+Mapper → Runner + Browser/HTTP → Inspector → Analyst → Critic → Verifier → Planner → Enhancer → Executor
 ```
 
 对着人话看这 9 步（每一步只干一件事）/ The nine steps in plain language (each one does a single job):
@@ -387,6 +387,7 @@ Mapper → Runner + Browser/HTTP → Analyst → Critic → Verifier → Planner
 |---|---|
 | Mapper | 先把你的项目读一遍：有哪些页面、哪些接口、用什么框架搭的 / Read your project first: which pages, which endpoints, which framework |
 | Runner | 真的去点页面、发请求，把出错的现场抓下来当证据 / Really click the pages, send the requests, capture the failure as evidence |
+| Inspector | 访问成功≠没毛病：每次打开页面都按 11 条规则巡一遍现场（控制台报错 / 未捕获异常 / 404 / 5xx / 白屏 / 缺 lang） / A successful load does not mean a healthy page: every visit is inspected against the eleven rules |
 | Analyst | 看证据，猜一个"可能是这里坏了" / Look at the evidence, propose what may be broken |
 | Critic | 反方：证据真的支持这个猜测吗？ / The adversary: does the evidence really support that guess? |
 | Verifier | 复核：证据够不够下结论？不够就退回"假设" / The check: is the evidence enough to conclude? If not, it stays a hypothesis |
@@ -489,9 +490,8 @@ like "not needed".
   **`sentinel update` is a stub** — skills / adapters / cache self-update is not implemented.
 - **`--demo` 是硬编码假数据** —— 不做任何真实检测
   **`--demo` is hardcoded fake data** — it performs no real detection.
-- 知识增强每次 run 最多触发 30% 的流程（避免噪音淹没权威来源）
-  Knowledge enhancement fires on at most 30% of flows per run, so noise does not drown out
-  authoritative sources.
+- 知识增强按方案平均置信度决定要不要查（低于 0.7 才查）
+  Knowledge enhancement triggers a lookup when the average confidence of the fix options is below 0.7.
 - **离线模式没有 AI 根因分析** —— 只有确定性规则判定，报告里会写明
   **Offline mode has no AI root-cause analysis** — only deterministic rules apply, and the
   report says so explicitly.
@@ -500,6 +500,13 @@ like "not needed".
   **Offline mode offers no targeted fix and cannot land a patch** — the fix options are generic
   templates ("quick fix (workaround / patch)" and the like), because no model writes a concrete
   patch; field 11 of the report states the reason.
+- **知识增强没有"每次 run 最多 30% 流程"的上限** —— 宪法要求 ≤30%，但当前实现只看
+  方案平均置信度（低于 0.7 就查），**没有按流程比例限流**。
+  文档不宣称这个上限已生效（已知未修项，记在 `scripts/spec-sync-baseline.json`）
+  **Knowledge enhancement has no "at most 30% of flows per run" cap** — the constitution requires
+  ≤30%, but the implementation only looks at the average confidence of the fix options
+  (below 0.7 triggers a lookup); there is no per-run flow-ratio limit. The docs do not claim
+  this cap is in effect (it is a known open item, tracked in `scripts/spec-sync-baseline.json`).
 
 ---
 
@@ -533,7 +540,7 @@ like "not needed".
 - ❌ 不做任何外部检索（`--no-enhance` 自动开启）
 - ❌ **一次外网请求都不发**
 
-**巡检规则（10 条）/ The ten inspection rules**
+**巡检规则（11 条）/ The eleven inspection rules**
 
 | 规则 / Rule | 判定 / Detects | 级别 / Severity |
 |---|---|---|
@@ -579,7 +586,7 @@ class of bug there is.
 - ❌ No external lookups (`--no-enhance` is implied)
 - ❌ **Not a single outbound request**
 
-**The ten inspection rules**
+**The eleven inspection rules**
 
 | Rule | Detects | Severity |
 |---|---|---|
