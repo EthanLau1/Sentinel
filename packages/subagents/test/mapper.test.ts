@@ -95,6 +95,47 @@ describe('mapper subagent', () => {
 
     expect((captured as FeatureMap | null)?.flows.map((f) => f.id)).toEqual(['business.publish-comment']);
   });
+  it('keeps auto-generated flows when the user override only contains an empty array', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'sentinel-mapper-empty-override-'));
+    await writeFile(join(root, 'package.json'), JSON.stringify({
+      name: 'empty-override-app', dependencies: { next: '15.0.0', react: '19.0.0' },
+    }), 'utf8');
+    await mkdir(join(root, 'app'), { recursive: true });
+    await writeFile(join(root, 'app/page.tsx'), 'export default () => null', 'utf8');
+    await mkdir(join(root, '.sentinel'), { recursive: true });
+    // 模板占位：flows 键存在但内容为空，等于"用户没有覆盖"
+    await writeFile(join(root, '.sentinel/app.map.ts'), `
+      export default {
+        flows: [
+          // {
+          //   id: 'critical.create-post',
+          //   steps: [],
+          // },
+        ]
+      };
+    `, 'utf8');
+
+    let captured: FeatureMap | null = null;
+    const capture: Subagent = {
+      name: 'capture',
+      register(ctx) {
+        ctx.bus.subscribe<FeatureMap>('map.ready', (e) => { captured = e.payload; });
+      },
+    };
+
+    const kernel = new Kernel({
+      providers: fakeProviders(),
+      budget: new Budget({}),
+      subagents: [createMapper(), capture],
+    });
+    await kernel.kick('project.scanned', { root }, 'test');
+    await kernel.stop();
+
+    const flows = (captured as FeatureMap | null)?.flows ?? [];
+    expect(flows.length).toBeGreaterThan(0);
+    expect(flows.map((f) => f.id)).toContain('flow_page_page_0');
+  });
+
   it('covers every public concrete route and reports unsafe coverage gaps', async () => {
     const root = await mkdtemp(join(tmpdir(), 'sentinel-mapper-coverage-'));
     const pages = Array.from({ length: 17 }, (_, i) => ({ id: `p${i}`, path: `/p${i}`, requiresAuth: false, criticalCTAs: [] as string[] }));

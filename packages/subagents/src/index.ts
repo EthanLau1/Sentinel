@@ -3,8 +3,9 @@ export { createSensor } from './sensor.js';
 export { createRunner } from './runner.js';
 export { createAnalyst } from './analyst.js';
 export { createCritic } from './critic.js';
+export { extractJson } from './json.js';
 export { createVerifier } from './verifier.js';
-export { createPlanner } from './planner.js';
+export { createPlanner, splitPlannerOutput, extractDiff } from './planner.js';
 export { createEnhancer } from './enhancer.js';
 export { createExecutor } from './executor.js';
 

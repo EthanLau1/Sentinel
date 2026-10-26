@@ -19,6 +19,10 @@ providers:
     baseUrl: https://your-api.com/v1
     apiKey: \${SENTINEL_API_KEY}
     model: gpt-4o
+    # 每百万 token 价格（美元）。不填则美元预算上限不会生效，只剩 token 限制。
+    pricing:
+      pricePerMTokIn: 2.5
+      pricePerMTokOut: 10
 
   local-fast:
     type: ollama-native
@@ -32,7 +36,9 @@ stage: MVP
 limits:
   maxCostUsdPerRun: 0.50
   maxTokensPerRun: 100000
-  maxDurationSecPerRun: 300
+  # 单次 LLM 请求的 token 上限 —— 防止"单次超长响应"打爆预算
+  maxTokensPerRequest: 8000
+  maxDurationSecPerRun: 900
 
 # 可选：自定义权重（默认沿用 stage 对应预设）
 # weights:
@@ -45,6 +51,7 @@ limits:
 
 const APP_MAP_TEMPLATE = `// Sentinel FeatureMap 用户覆盖
 // mapper 的输出会跟这里 merge
+// 留空 = 沿用 mapper 自动识别出的页面、接口与流程。
 
 import type { FeatureMap } from '@sentinel/core';
 
@@ -55,17 +62,18 @@ const overrides: Partial<FeatureMap> = {
   //   sessionStorage: 'cookie',
   //   testCredentials: { email: 'sentinel@example.com', password: '...' },
   // },
-  flows: [
-    // {
-    //   id: 'critical.create-post',
-    //   description: '用户能成功发布帖子',
-    //   steps: [
-    //     { action: 'visit', url: '/posts/new' },
-    //     { action: 'fill', selector: 'textarea', value: 'test' },
-    //     { action: 'click', selector: 'button[type=submit]' },
-    //   ],
-    // },
-  ],
+  // 取消注释并填写即可覆盖自动生成的流程（留空则沿用自动流程）：
+  // flows: [
+  //   {
+  //     id: 'critical.create-post',
+  //     description: '用户能成功发布帖子',
+  //     steps: [
+  //       { action: 'visit', url: '/posts/new' },
+  //       { action: 'fill', selector: 'textarea', value: 'test' },
+  //       { action: 'click', selector: 'button[type=submit]' },
+  //     ],
+  //   },
+  // ],
 };
 
 export default overrides;

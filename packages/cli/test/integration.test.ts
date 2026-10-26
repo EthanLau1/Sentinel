@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { Bus, Budget, Kernel, type Subagent, type BugFinding, type Evidence, type ProviderSet } from '@sentinel/core';
-import { createMapper, createAnalyst, createCritic, createVerifier, createPlanner } from '@sentinel/subagents';
-import { reportToMarkdown, reportToJson } from '@sentinel/reporters';
+import { createMapper, createAnalyst, createCritic, createVerifier, createPlanner, createEnhancer } from '@sentinel/subagents';
+import { reportToMarkdown, reportToJson, createBugCollector } from '@sentinel/reporters';
 
 function fakeProviders(llmContent: string): ProviderSet {
   return {
@@ -146,6 +146,53 @@ describe('Integration: end-to-end vertical slice', () => {
     expect(json.summary.total).toBe(2);
     expect(json.summary.by_severity['P0']).toBe(1);
     expect(json.summary.by_severity['P1']).toBe(1);
+  });
+
+  it('报告层的订阅模式（bug.confirmed + fix.enhanced）不会把 planner 方案抹掉', async () => {
+    // 复现 run.ts 的真实收集器：同时订阅 bug.confirmed 与 fix.enhanced。
+    // bus 顺序 await 分发 → fix.enhanced（带 fixOptions）先到，bug.confirmed（空）后到。
+    // 若用覆盖语义，报告第 7/8 字段会永远显示"待 planner 产出"。
+    const collector = createBugCollector();
+    const captureSub: Subagent = {
+      name: 'capture',
+      register(ctx) {
+        ctx.bus.subscribe<BugFinding>('bug.confirmed', (e) => {
+          collector.onConfirmed(e.payload);
+        });
+        ctx.bus.subscribe<{ bug: BugFinding }>('fix.enhanced', (e) => {
+          collector.onEnhanced(e.payload.bug);
+        });
+      },
+    };
+
+    const kernel = new Kernel({
+      providers: fakeProviders(JSON.stringify({ rootCause: 'x', confidence: 0.8, reproSteps: ['a'] })),
+      budget: new Budget({}),
+      subagents: [
+        createAnalyst(),
+        createCritic(),
+        createVerifier(),
+        createPlanner({ stage: 'MVP', requireVerified: true }),
+        createEnhancer({ skipSearch: true }),
+        captureSub,
+      ],
+    });
+
+    const evidence: Evidence[] = [
+      { kind: 'console', source: 'browser', timestamp: Date.now(), hash: 'h1', level: 'error', message: 'TypeError: x' },
+      { kind: 'file', source: 'fs', timestamp: Date.now(), hash: 'h3', path: 'src/post.ts', snippet: 'const x = undefined;' },
+    ];
+    await kernel.kick('flow.failed', { flowId: 'f1', error: 'click failed', evidence }, 'test');
+    await new Promise((r) => setTimeout(r, 80));
+    await kernel.stop();
+
+    expect(collector.bugs).toHaveLength(1);
+    expect(collector.bugs[0]!.rootCauseStatus).toBe('confirmed');
+    // 关键断言：planner 的 3 个方案没被后到的空版本覆盖
+    expect(collector.bugs[0]!.fixOptions).toHaveLength(3);
+    expect(collector.bugs[0]!.recommendedFixId).toBeDefined();
+    // 报告第 7 字段必须有内容，不能是占位符
+    expect(reportToMarkdown(collector.bugs)).not.toContain('待 planner 产出');
   });
 });
 

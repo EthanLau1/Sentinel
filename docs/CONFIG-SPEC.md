@@ -37,9 +37,20 @@ providers:
     baseUrl: https://your-api.com/v1
     apiKey: ${YOUR_API_KEY}        # 支持 env var 引用
     model: gpt-4o
+    # 单次 LLM 请求超时（毫秒）。不填 = 180s。
+    # 带推理块（<think>）的模型响应更慢 —— 实测 90s 会让 critic 的裁决请求超时，
+    # 那条 bug 就会停在 hypothesis、报告里也没有修复方案。
+    # 调大它可以换取更少误杀；调小它可以缩短"卡住"时的等待。
+    timeoutMs: 180000
+    # 每百万 token 价格（美元）。不填则 budget.yml 里的 maxCostUsdPerRun 不会生效，
+    # 只剩 token 上限。doctor 的「预算护栏」检查会提示补这一项。
+    # 单位 = USD / 每百万 token（与各供应商报价表一致，不要填成"每千 token"）
+    pricing:
+      pricePerMTokIn: 2.5
+      pricePerMTokOut: 10
 
   local-fast:
-    type: ollama
+    type: ollama-native          # 取值只有 openai-compatible / ollama-native
     baseUrl: http://localhost:11434
     model: qwen3:7b
 
@@ -68,9 +79,10 @@ stage: MVP                        # Idea | MVP | Launch | Scale
 
 # 单次跑预算上限
 limits:
-  maxCostUsdPerRun: 0.50
-  maxTokensPerRun: 100000
-  maxDurationSecPerRun: 300
+  maxCostUsdPerRun: 0.50            # 需要 llm.yml 里配了 pricing 才可执行
+  maxTokensPerRun: 100000           # 本次 run 的 token 总量上限
+  maxTokensPerRequest: 8000         # 单次 LLM 请求的输出 token 上限（防止单次超长响应打爆预算）
+  maxDurationSecPerRun: 900      # 一次完整 run ≈ 7 次 LLM 调用 + 浏览器时间，300s 不够用
 
 # 推荐公式权重（可覆盖默认）
 weights:

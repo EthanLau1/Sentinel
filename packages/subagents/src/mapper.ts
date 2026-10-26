@@ -58,17 +58,39 @@ async function applyUserMapOverride(root: string, base: FeatureMap): Promise<Fea
 }
 
 function mergeFeatureMap(base: FeatureMap, override: Partial<FeatureMap>): FeatureMap {
-  return {
+  const merged: FeatureMap = {
     ...base,
     ...override,
     project: { ...base.project, ...(override.project ?? {}) },
     ...(override.auth ? { auth: { ...(base.auth ?? {}), ...override.auth } } : base.auth ? { auth: base.auth } : {}),
-    pages: override.pages ?? base.pages,
-    api: override.api ?? base.api,
-    data: override.data ?? base.data,
-    flows: override.flows ?? base.flows,
-    risks: override.risks ?? base.risks,
+    pages: pickOverride(base.pages, override.pages),
+    api: pickOverride(base.api, override.api),
+    data: pickOverride(base.data, override.data),
+    flows: pickOverride(base.flows, override.flows),
+    risks: pickOverride(base.risks, override.risks),
   };
+  // 用户给了空 flows 数组 → 自动流程被放弃，必须说出来而不是静默少测
+  if (base.flows.length > 0 && override.flows && override.flows.length === 0) {
+    merged.risks = [
+      ...merged.risks,
+      {
+        id: 'coverage_flows_overridden',
+        area: 'ui',
+        severity: 'high',
+        description: 'app.map.ts 提供空的 flows 数组，自动生成的流程未被采用。填入 flows 才会测业务路径。',
+      },
+    ];
+  }
+  return merged;
+}
+
+/**
+ * 空数组视为"用户没有覆盖"。
+ * 模板里的 `flows: []` 只是占位，若当成有效覆盖，会把自动生成的流程全部抹掉，
+ * 让整个项目在没有任何流程的情况下被判定为"扫描完成"。
+ */
+function pickOverride<T>(base: T[], override: T[] | undefined): T[] {
+  return override && override.length > 0 ? override : base;
 }
 
 async function buildFeatureMap(scan: ProjectScan, adapters: Adapter[]): Promise<FeatureMap> {
@@ -89,6 +111,17 @@ async function buildFeatureMap(scan: ProjectScan, adapters: Adapter[]): Promise<
 
   const flows = generateFlows(pages, api);
 
+  const mapRisks: FeatureMap['risks'] = [...risks, ...coverageRisks(pages, api, auth)];
+  // 扫不到任何页面或接口 —— 后面所有流程都会是 0，必须显式说出来
+  if (pages.length === 0 && api.length === 0) {
+    mapRisks.push({
+      id: 'coverage_empty_map',
+      area: 'ui',
+      severity: 'high',
+      description: 'Mapper 未识别到任何页面或 API —— 没有可测目标。检查项目结构、框架识别，或 app.map.ts 覆盖。',
+    });
+  }
+
   return {
     project: profile,
     ...(auth && { auth }),
@@ -96,7 +129,7 @@ async function buildFeatureMap(scan: ProjectScan, adapters: Adapter[]): Promise<
     api,
     data,
     flows,
-    risks: [...risks, ...coverageRisks(pages, api, auth)],
+    risks: mapRisks,
   };
 }
 

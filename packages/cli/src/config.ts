@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
+import { color } from '@sentinel/reporters';
 
 export interface LlmConfig {
   default: string;
@@ -17,7 +18,11 @@ export interface LlmConfig {
       baseUrl?: string;
       apiKey?: string;
       model: string;
-      pricing?: { input: number; output: number };
+      /**
+       * 单价，单位 **USD / 每百万 token**（与各供应商报价表口径一致）。
+       * 不配 → budget.yml 的 maxCostUsdPerRun 不生效，只剩 token 上限。
+       */
+      pricing?: { pricePerMTokIn: number; pricePerMTokOut: number };
     }
   >;
   agents?: Record<string, string>;
@@ -29,6 +34,8 @@ export interface BudgetConfig {
   limits: {
     maxCostUsdPerRun?: number;
     maxTokensPerRun?: number;
+    /** 单次 LLM 请求的 token 上限 —— 防止"单次超长响应"打爆预算 */
+    maxTokensPerRequest?: number;
     maxDurationSecPerRun?: number;
   };
   weights?: {
@@ -41,6 +48,16 @@ export interface BudgetConfig {
 }
 
 const ENV_REF = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+
+/** budget.yml 当前版本真正读取的顶层字段 */
+const KNOWN_BUDGET_KEYS = new Set(['stage', 'preset', 'limits', 'weights']);
+/** budget.yml.limits 当前版本真正读取的字段 */
+const KNOWN_LIMIT_KEYS = new Set([
+  'maxCostUsdPerRun',
+  'maxTokensPerRun',
+  'maxTokensPerRequest',
+  'maxDurationSecPerRun',
+]);
 
 export function expandEnv(value: string): string {
   return value.replace(ENV_REF, (_, name) => process.env[name as string] ?? '');
@@ -129,14 +146,31 @@ export async function loadBudgetConfig(projectRoot: string): Promise<BudgetConfi
   if (!existsSync(path)) {
     return {
       stage: 'MVP',
-      limits: { maxCostUsdPerRun: 0.5, maxTokensPerRun: 100000, maxDurationSecPerRun: 300 },
+      limits: { maxCostUsdPerRun: 0.5, maxTokensPerRun: 100000, maxDurationSecPerRun: 900 },
     };
   }
   const text = await readFile(path, 'utf8');
   const parsed = parseSimpleYaml(text) as unknown as BudgetConfig;
+  // 未知字段会被静默忽略 —— 必须说出来，否则用户以为配了就生效
+  const unknown = Object.keys(parsed).filter((k) => !KNOWN_BUDGET_KEYS.has(k));
+  if (unknown.length > 0) {
+    console.warn(
+      color.yellow(`⚠  budget.yml: 字段 ${unknown.join(', ')} 当前版本不生效（见 CONFIG-SPEC.md）`),
+    );
+  }
+  // limits 内部同样要查：写错层级（比如把 maxTokensPerRequest 写到顶层）同样会静默失效
+  const limits = (parsed.limits ?? {}) as Record<string, unknown>;
+  const unknownLimits = Object.keys(limits).filter((k) => !KNOWN_LIMIT_KEYS.has(k));
+  if (unknownLimits.length > 0) {
+    console.warn(
+      color.yellow(
+        `⚠  budget.yml limits: 字段 ${unknownLimits.join(', ')} 当前版本不生效（见 CONFIG-SPEC.md）`,
+      ),
+    );
+  }
   return {
     stage: parsed.stage ?? 'MVP',
-    limits: parsed.limits ?? { maxCostUsdPerRun: 0.5, maxTokensPerRun: 100000, maxDurationSecPerRun: 300 },
+    limits: parsed.limits ?? { maxCostUsdPerRun: 0.5, maxTokensPerRun: 100000, maxDurationSecPerRun: 900 },
     ...(parsed.preset && { preset: parsed.preset }),
     ...(parsed.weights && { weights: parsed.weights }),
   };

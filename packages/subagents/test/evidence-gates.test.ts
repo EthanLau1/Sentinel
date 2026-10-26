@@ -15,8 +15,9 @@ const bug: BugFinding = {
   symptom: 'failure', reproSteps: ['run'], evidence: [file, runtime], rootCauseStatus: 'hypothesis',
   rootCause: 'broken value', counterEvidence: [], confidence: 0.8, fixOptions: [],
 };
+// title 必须命中 Tier 硬规则的「低风险」项 —— Tier 由硬规则判定，不采信 LLM 给的 tier
 const option: FixOption = {
-  id: 'fix_1', title: 'fix', description: 'change value', effort: 'low', risk: 'low',
+  id: 'fix_1', title: 'format file', description: 'apply format rules', effort: 'low', risk: 'low',
   runtimeCost: 'none', regressionRisk: 'low', maintenanceCost: 'low',
   stageFit: 'MVP', tier: 1, confidence: 0.8, score: 0, sources: [], patch,
 };
@@ -141,5 +142,51 @@ describe('subagent evidence and patch gates', () => {
     expect(writes).toBe(1);
     expect(generated).toBe(1);
     expect(applied).toBe(0);
+  });
+
+  it('Tier 由硬规则判定：LLM 判 Tier 1 但没有低风险特征 → 降级为 Tier 2，不自动修', async () => {
+    let writes = 0;
+    let tierDecided: { tier: number; reason: string; llmTier: number } | undefined;
+    const capture: Subagent = { name: 'capture', register(ctx) {
+      ctx.bus.subscribe('patch.generated' as import('@sentinel/core').EventType, () => { writes++; });
+      ctx.bus.subscribe<{ tier: number; reason: string; llmTier: number }>(
+        'executor.tier_decided' as import('@sentinel/core').EventType,
+        (e) => { tierDecided = e.payload; },
+      );
+    } };
+    const kernel = new Kernel({
+      providers: providers(async () => response({}), async (name) => { if (name === 'write') writes++; return { written: true }; }),
+      budget: new Budget({}), subagents: [createExecutor(), capture],
+    });
+    // title/description 都不命中低风险规则，LLM 却说 tier 1
+    await kernel.kick('fix.enhanced', {
+      bug,
+      options: [{ ...option, title: 'refactor logic', description: 'change behaviour' }],
+    }, 'enhancer');
+    expect(tierDecided?.tier).toBe(2);
+    expect(tierDecided?.llmTier).toBe(1);
+    expect(tierDecided?.reason).toContain('降级');
+    // 默认 maxTier=1 → Tier 2 不自动落盘
+    expect(writes).toBe(0);
+  });
+
+  it('Tier 由硬规则判定：命中高风险特征 → 直接降为 Tier 3，只出建议', async () => {
+    let tierDecided: { tier: number; reason: string } | undefined;
+    const capture: Subagent = { name: 'capture', register(ctx) {
+      ctx.bus.subscribe<{ tier: number; reason: string }>(
+        'executor.tier_decided' as import('@sentinel/core').EventType,
+        (e) => { tierDecided = e.payload; },
+      );
+    } };
+    const kernel = new Kernel({
+      providers: providers(async () => response({}), async () => ({ written: true })),
+      budget: new Budget({}), subagents: [createExecutor({ maxTier: 3 }), capture],
+    });
+    await kernel.kick('fix.enhanced', {
+      bug,
+      options: [{ ...option, title: 'update database migration', description: 'alter schema' }],
+    }, 'enhancer');
+    expect(tierDecided?.tier).toBe(3);
+    expect(tierDecided?.reason).toContain('数据库迁移');
   });
 });

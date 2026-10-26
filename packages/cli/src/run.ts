@@ -10,6 +10,7 @@ import {
   Budget,
   Kernel,
   type BugFinding,
+  type Evidence,
   type FeatureMap,
   type FixOption,
   type Subagent,
@@ -44,9 +45,13 @@ import {
   reportToJson,
   printBug,
   printSummary,
+  aggregateDuplicateBugs,
+  isToolFailure,
+  createBugCollector,
   color,
 } from '@sentinel/reporters';
 import { loadBudgetConfig, loadLlmConfig, projectRoot } from './config.js';
+import { collectConfigChecks } from './doctor.js';
 import { demoBugs } from './demo.js';
 import { autoInit } from './auto-init.js';
 import { startDevServer, type DevServerHandle } from './dev-server.js';
@@ -57,6 +62,10 @@ export interface RunOptions {
   demo?: boolean;
   maxTier?: 0 | 1 | 2 | 3;
   reportFormat?: 'markdown' | 'json' | 'both';
+  /** 允许 Tier 1 真正改动被测项目源码（默认关闭） */
+  autoFix?: boolean;
+  /** 允许为 Tier 2 方案生成 PR（默认关闭） */
+  createPr?: boolean;
 }
 
 function parseRunOptions(): RunOptions {
@@ -70,6 +79,9 @@ function parseRunOptions(): RunOptions {
     detailed: has('--detailed'),
     noEnhance: has('--no-enhance'),
     demo: has('--demo'),
+    // 这两个开关会改动被测项目 / 产生外部可见动作，必须显式开启
+    autoFix: has('--auto-fix'),
+    createPr: has('--create-pr'),
   };
   const tier = get('--tier');
   if (tier !== undefined) {
@@ -119,6 +131,25 @@ export async function runRun(): Promise<number> {
   const stage = budgetCfg.stage;
   const weights = budgetCfg.weights ?? PRESETS[stage.toLowerCase() as keyof typeof PRESETS] ?? DEFAULT_WEIGHTS;
 
+  // 2.5 前置门禁（宪法：配置本身坏了 → run 拒绝启动；LLM 不可达不阻塞，可降级）
+  const configChecks = await collectConfigChecks(root);
+  const configFails = configChecks.filter((c) => c.status === 'fail' && c.blocking !== false);
+  if (configFails.length > 0) {
+    console.error(color.red('✗ Pre-flight checks failed — run refused to start:'));
+    for (const c of configFails) {
+      console.error(`  ${color.red('✗')} ${c.name}: ${c.message}`);
+      if (c.suggestion) console.error(color.dim(`    → ${c.suggestion}`));
+    }
+    console.error(color.dim('   完整自检：sentinel doctor --project=' + root));
+    return 2;
+  }
+  const softFails = configChecks.filter((c) => c.status === 'fail' && c.blocking === false);
+  for (const c of softFails) {
+    console.log(color.yellow(`⚠  ${c.name}: ${c.message}`));
+    if (c.suggestion) console.log(color.dim(`   → ${c.suggestion}`));
+    console.log(color.dim('   该项不阻塞运行，诊断将降级为启发式。'));
+  }
+
   // 3. 自动启动 dev server（如果需要）
   let devServer: DevServerHandle | null = null;
   devServer = await startDevServer(root);
@@ -129,20 +160,45 @@ export async function runRun(): Promise<number> {
   const baseUrl = `http://127.0.0.1:${devServer.port}`;
 
   // 4. 构建 providers
-  const llm = buildLlm(llmCfg);
+  // 两个口径必须分开：
+  //   maxCompletionTokens —— 输出 token，对应 max_tokens 参数（配置上限比的就是它）
+  //   maxTotalTokens      —— 输入+输出，对应预算消耗（budget.consume 用的是 totalTokens）
+  // 之前只记 totalTokens 却和 max_tokens 配置放在一起比，数字看着"超限"其实是口径混用。
+  const llmStats = { requests: 0, maxCompletionTokens: 0, maxTotalTokens: 0 };
+  const llm = withRequestCounter(
+    buildLlm(llmCfg, budgetCfg.limits.maxTokensPerRequest),
+    llmStats,
+  );
   const memory = createNoneMemory();
   const skills = createMarkdownSkills({ root: join(root, '.sentinel/skills') });
   const mcp = createMCPRegistry();
   mcp.register(createHttpMCPServer({ ...(baseUrl ? { baseUrl } : {}) }));
   mcp.register(createFsMCPServer({ root }));
   const browser = createBrowserMCPServer({ detailed: opts.detailed === true, baseUrl });
-  try {
-    await browser.call('visit', { url: baseUrl });
-  } catch (err) {
-    try { await browser.call('close', {}); } catch { /* preserve the preflight error */ }
-    devServer.stop();
-    console.error(color.red(`Browser preflight failed: ${(err as Error).message}`));
-    return 2;
+  let preflight: { message: string; status: number } | null = null;
+  if (devServer.homepageStatus >= 500) {
+    // dev server 已经等过首页（45s）仍返回 5xx —— 应用自身在报错，不必再问浏览器
+    preflight = { message: `首页返回 HTTP ${devServer.homepageStatus}`, status: devServer.homepageStatus };
+    console.log(color.yellow(`⚠  Preflight: ${preflight.message}`));
+    console.log(color.dim('   应用已启动但首页返回 5xx —— 继续执行，将作为 bug 记录。'));
+  } else {
+    try {
+      await browser.call('visit', { url: baseUrl });
+    } catch (err) {
+      const message = (err as Error).message;
+      const status = Number(/returned HTTP (\d{3})/.exec(message)?.[1] ?? 0);
+      if (status < 500) {
+        // 连不上 dev server —— 没有可诊断的对象，直接退出
+        try { await browser.call('close', {}); } catch { /* preserve the preflight error */ }
+        devServer.stop();
+        console.error(color.red(`Browser preflight failed: ${message}`));
+        return 2;
+      }
+      // 应用已启动但首页返回 5xx —— 这是被测项目的缺陷，必须留下诊断而不是静默退出
+      preflight = { message, status };
+      console.log(color.yellow(`⚠  Preflight: ${message}`));
+      console.log(color.dim('   应用已启动但首页返回 5xx —— 继续执行，将作为 bug 记录。'));
+    }
   }
   mcp.register(browser);
   const knowledge = [createGithubKnowledge({}), createStackOverflowKnowledge()];
@@ -150,7 +206,14 @@ export async function runRun(): Promise<number> {
   // 未配置模型价格时仍限制 tokens 与时长，不把未知 API 费用当作 $0。
   const activeProvider = llmCfg.providers[llmCfg.default];
   const costKnown = activeProvider?.type === 'ollama-native' || Boolean(activeProvider?.pricing);
-  if (!costKnown) console.log(color.yellow('API price unknown: USD budget cannot be enforced; token limit remains active.'));
+  if (!costKnown) {
+    console.log(color.yellow('API price unknown: USD budget cannot be enforced; token limit remains active.'));
+    console.log(color.dim('   → 在 .sentinel/llm.yml 的 provider 下加 pricing（USD / 每百万 token）即可启用美元上限'));
+  }
+  if (budgetCfg.limits.maxTokensPerRequest === undefined) {
+    console.log(color.yellow('maxTokensPerRequest not set: a single long response is not capped.'));
+    console.log(color.dim('   → budget.yml 的 limits 加 maxTokensPerRequest（如 8000）可限制单次响应长度'));
+  }
   const budget = new Budget({
     ...(budgetCfg.limits.maxTokensPerRun !== undefined && { maxTokens: budgetCfg.limits.maxTokensPerRun }),
     ...(costKnown && budgetCfg.limits.maxCostUsdPerRun !== undefined && { maxUsd: budgetCfg.limits.maxCostUsdPerRun }),
@@ -160,12 +223,53 @@ export async function runRun(): Promise<number> {
   });
 
   // 4. 收集 BugFinding（带 fixOptions）的捕获器
-  const bugs: BugFinding[] = [];
-  let unresolvedFailures = 0;
+  // 收集逻辑放在 reporters 的 createBugCollector 里 —— 它必须能被真实代码路径的测试直接覆盖。
+  const collector = createBugCollector();
+  const failedFlowIds = new Set<string>();
+  let insufficientEvidenceCount = 0;
+  const insufficientEvidence: Array<{ bugId?: string; reason?: string }> = [];
+  const rejectedBugs: Array<{ bugId: string; reason: string }> = [];
+  const appliedPatches: Array<{
+    fixId: string;
+    files: string[];
+    flowId?: string;
+    status: 'applied' | 'reverted';
+    reason?: string;
+  }> = [];
   let plannedFlows = 0;
   let passedFlows = 0;
   let failedFlows = 0;
   const coverage = { map: null as FeatureMap | null };
+
+  // preflight 发现首页 5xx —— 记为一条可复现的缺陷，不静默退出
+  if (preflight) {
+    const { createHash } = await import('node:crypto');
+    const hash = createHash('sha256').update(`${preflight.status}:${baseUrl}`).digest('hex').slice(0, 16);
+    const evidence: Evidence = {
+      kind: 'http',
+      source: 'api',
+      hash,
+      timestamp: Date.now(),
+      url: baseUrl,
+      method: 'GET',
+      status: preflight.status,
+      bodySummary: preflight.message.slice(0, 400),
+    };
+    collector.bugs.push({
+      id: `bug_preflight_${Date.now().toString(36)}`,
+      title: `首页返回 HTTP ${preflight.status}`,
+      severity: 'P0',
+      source: 'ui',
+      affectedFeature: '首页',
+      symptom: preflight.message,
+      reproSteps: [`访问 ${baseUrl}`, `观察首页返回 HTTP ${preflight.status}`],
+      evidence: [evidence],
+      rootCauseStatus: 'hypothesis',
+      counterEvidence: [],
+      confidence: 0.6,
+      fixOptions: [],
+    });
+  }
   const captureSub: Subagent = {
     name: 'capture',
     register(ctx) {
@@ -176,28 +280,58 @@ export async function runRun(): Promise<number> {
       ctx.bus.subscribe('flow.passed', () => {
         passedFlows += 1;
       });
-      ctx.bus.subscribe('flow.failed', () => {
+      ctx.bus.subscribe<{ flowId: string }>('flow.failed', (e) => {
         failedFlows += 1;
-        unresolvedFailures += 1;
+        failedFlowIds.add(e.payload.flowId);
       });
-      ctx.bus.subscribe('bug.insufficient_evidence', () => {
-        if (unresolvedFailures === 0) unresolvedFailures = 1;
+      // 失败但没有任何 bug 覆盖的 flow 才算"未解决"；有诊断的失败是已处理。
+      ctx.bus.subscribe<{ bugId?: string; reason?: string }>('bug.insufficient_evidence', (e) => {
+        insufficientEvidenceCount += 1;
+        insufficientEvidence.push({
+          ...(e.payload.bugId && { bugId: e.payload.bugId }),
+          ...(e.payload.reason && { reason: e.payload.reason }),
+        });
       });
       // 未确认根因也保留可复现症状与证据，供用户查看与补充诊断。
       ctx.bus.subscribe<BugFinding>('bug.draft', (e) => {
-        if (!bugs.some((b) => b.id === e.payload.id)) bugs.push(e.payload);
+        collector.onDraft(e.payload);
       });
+      // 修复/回滚结果必须落到状态里 —— 否则"改完有没有验证过"查不到
+      ctx.bus.subscribe<{ fixId: string; files: string[]; flowId?: string }>('patch.applied', (e) => {
+        appliedPatches.push({
+          fixId: e.payload.fixId,
+          files: e.payload.files,
+          ...(e.payload.flowId && { flowId: e.payload.flowId }),
+          status: 'applied',
+        });
+      });
+      ctx.bus.subscribe<{ fixId: string; files: string[]; flowId?: string; reason: string }>('patch.reverted', (e) => {
+        const idx = appliedPatches.findIndex((p) => p.fixId === e.payload.fixId);
+        const entry = {
+          fixId: e.payload.fixId,
+          files: e.payload.files,
+          ...(e.payload.flowId && { flowId: e.payload.flowId }),
+          status: 'reverted' as const,
+          reason: e.payload.reason,
+        };
+        if (idx >= 0) appliedPatches[idx] = entry;
+        else appliedPatches.push(entry);
+      });
+      // critic 的裁决理由不能丢 —— 否则"为什么没确认"永远查不到
+      ctx.bus.subscribe<{ bugId: string; reason: string }>('bug.rejected', (e) => {
+        rejectedBugs.push({ bugId: e.payload.bugId, reason: e.payload.reason });
+      });
+      // 合并而不是覆盖 —— bus 顺序 await 分发，事件到达顺序是"深层先到、浅层后到"：
+      // verifier→planner→enhancer→fix.enhanced（带 fixOptions）先到，
+      // critic 的原始 bug.confirmed（fixOptions 仍是空数组）后到。
+      // 覆盖语义会把 planner 的方案抹成空数组 → 报告第 7/8 字段永远显示"待 planner 产出"。
+      // 合并逻辑在 reporters.createBugCollector 里，可被真实代码路径的测试覆盖。
       ctx.bus.subscribe<BugFinding>('bug.confirmed', (e) => {
-        const idx = bugs.findIndex((b) => b.id === e.payload.id);
-        if (idx >= 0) bugs[idx] = e.payload;
-        else bugs.push(e.payload);
+        collector.onConfirmed(e.payload);
       });
       // 再捕获 enhancer 出的最终版本（含 fixOptions + sources）
       ctx.bus.subscribe<{ bug: BugFinding; options: FixOption[] }>('fix.enhanced', (e) => {
-        const idx = bugs.findIndex((b) => b.id === e.payload.bug.id);
-        if (idx >= 0) bugs[idx] = e.payload.bug;
-        else bugs.push(e.payload.bug);
-        unresolvedFailures = Math.max(0, unresolvedFailures - 1);
+        collector.onEnhanced(e.payload.bug);
       });
     },
   };
@@ -213,7 +347,15 @@ export async function runRun(): Promise<number> {
     createPlanner({ stage, weights, requireVerified: true }),
   ];
   subagents.push(createEnhancer({ skipSearch: opts.noEnhance === true }));
-  subagents.push(createExecutor({ maxTier: opts.maxTier ?? 1 }));
+  subagents.push(
+    createExecutor({
+      maxTier: opts.maxTier ?? 1,
+      projectRoot: root,
+      // 改用户源码、推分支、开 PR 都是对外部状态的可见改动 —— 必须显式开启
+      autoApply: opts.autoFix === true,
+      createPr: opts.createPr === true,
+    }),
+  );
   subagents.push(captureSub);
 
   const kernel = new Kernel({
@@ -229,7 +371,22 @@ export async function runRun(): Promise<number> {
     await kernel.kick('project.scanned', { root }, 'cli');
   } catch (err) {
     failed = true;
-    console.error(color.red(`✗ run failed: ${(err as Error).message}`));
+    const message = (err as Error).message;
+    const isBudget = /budget\.(tokens|usd|duration) exceeded/.test(message);
+    console.error(
+      color.red(
+        isBudget
+          ? `✗ run 因预算护栏中断：${message}`
+          : `✗ run failed: ${message}`,
+      ),
+    );
+    if (isBudget) {
+      console.error(
+        color.dim(
+          '   已产出的诊断保留在报告里；未执行完的流程记在 run-status.json 的 untestedFlows。',
+        ),
+      );
+    }
   } finally {
     try {
       await kernel.stop();
@@ -242,37 +399,99 @@ export async function runRun(): Promise<number> {
   }
   const dur = Date.now() - startMs;
 
-  // 7. 输出报告
+  // 7. 输出报告（同源错误先聚合，避免几十条同质问题淹没用户）
+  const reportedBugs = aggregateDuplicateBugs(collector.bugs);
   console.log('');
-  console.log(printSummary(bugs));
+  console.log(printSummary(reportedBugs));
   console.log('');
-  for (const b of bugs) {
+  for (const b of reportedBugs) {
     console.log(printBug(b));
   }
 
-  await writeReports(root, bugs, opts.reportFormat ?? 'both');
+  await writeReports(root, reportedBugs, opts.reportFormat ?? 'both');
 
   // 8. 总结
   const usage = budget.snapshot();
   console.log('');
   console.log(color.dim(`flows: ${passedFlows} passed / ${failedFlows} failed / ${Math.max(0, plannedFlows - passedFlows - failedFlows)} not run; tokens: ${usage.tokens}  cost: ${costKnown ? `$${usage.usd.toFixed(4)}` : 'unknown'}  duration: ${dur}ms`));
+  console.log(
+    color.dim(
+      `llm: ${llmStats.requests} 次请求` +
+        ` / 单次输出最多 ${llmStats.maxCompletionTokens} tokens` +
+        `（配置上限 ${budgetCfg.limits.maxTokensPerRequest ?? '未设'}）` +
+        ` / 单次总计最多 ${llmStats.maxTotalTokens} tokens` +
+        `  → 预算 token 上界 ${llmStats.requests * llmStats.maxTotalTokens}` +
+        `  预算模式 ${costKnown ? 'usd+token' : 'token-only'}`,
+    ),
+  );
+  const uncovered = [...failedFlowIds].filter((id) => !collector.coveredFlows.has(id));
+  if (uncovered.length > 0) {
+    console.log(color.yellow(`   未产生诊断的失败 flow: ${uncovered.join(', ')}`));
+  }
+  if (rejectedBugs.length > 0) {
+    console.log(color.yellow(`   critic 未确认 ${rejectedBugs.length} 条（原因见 run-status.json）:`));
+    for (const r of rejectedBugs.slice(0, 3)) {
+      console.log(color.dim(`     ${r.bugId}: ${r.reason.slice(0, 160)}`));
+    }
+  }
+  if (appliedPatches.length > 0) {
+    const reverted = appliedPatches.filter((p) => p.status === 'reverted').length;
+    console.log(
+      color.yellow(
+        `   已应用 ${appliedPatches.length} 个修复${reverted ? `，其中 ${reverted} 个验证未通过已回滚` : ''}（详见 run-status.json）`,
+      ),
+    );
+  }
+  if (insufficientEvidence.length > 0) {
+    console.log(color.yellow(`   证据不足 ${insufficientEvidence.length} 条（见 run-status.json）`));
+    for (const i of insufficientEvidence.slice(0, 3)) {
+      if (i.reason) console.log(color.dim(`     ${i.reason.slice(0, 160)}`));
+    }
+  }
   console.log(color.dim(`reports/sentinel-latest.{md,json}`));
 
-  const incomplete = failed || unresolvedFailures > 0 || plannedFlows === 0 || passedFlows + failedFlows < plannedFlows;
+  // 未解决 = 失败却没有对应诊断的 flow；证据不足的失败也算未解决。
+  const unresolvedFlowIds = [...failedFlowIds].filter((id) => !collector.coveredFlows.has(id));
+  const unresolvedFailures =
+    unresolvedFlowIds.length + (failedFlowIds.size === 0 ? insufficientEvidenceCount : 0);
+  const notRunFlows = Math.max(0, plannedFlows - passedFlows - failedFlows);
+  const incomplete = failed || unresolvedFailures > 0 || plannedFlows === 0 || notRunFlows > 0;
   await writeFile(join(root, 'reports', 'sentinel-run-status.json'), JSON.stringify({
     status: incomplete ? 'incomplete' : 'complete',
     plannedFlows, passedFlows, failedFlows,
-    untestedFlows: Math.max(0, plannedFlows - passedFlows - failedFlows),
-    bugCount: bugs.length, costUsd: costKnown ? usage.usd : null, durationMs: dur,
+    untestedFlows: notRunFlows,
+    unresolvedFlows: unresolvedFlowIds,
+    insufficientEvidenceCount,
+    // 为什么没拿到根因 / 为什么没被确认 —— 不再静默丢弃
+    insufficientEvidence,
+    rejectedBugs,
+    appliedPatches,
+    bugCount: collector.bugs.length,
+    reportedBugCount: reportedBugs.length,
+    toolFailures: reportedBugs.filter((b) => isToolFailure(b)).length,
+    costUsd: costKnown ? usage.usd : null, durationMs: dur,
+    // 预算护栏口径（可核对，不靠猜）
+    costMode: costKnown ? 'usd+token' : 'token-only',
+    llmRequests: llmStats.requests,
+    // 口径写清楚：观测值分"输出"与"总计"两个字段，不共用一个名字
+    maxCompletionTokensObserved: llmStats.maxCompletionTokens,
+    maxTotalTokensObserved: llmStats.maxTotalTokens,
+    maxTokensPerRequestConfigured: budgetCfg.limits.maxTokensPerRequest ?? null,
+    tokenUpperBound: llmStats.requests * llmStats.maxTotalTokens,
     discoveredPages: coverage.map?.pages.length ?? 0,
     discoveredApi: coverage.map?.api.length ?? 0,
     coverageRisks: coverage.map?.risks.filter((risk) => risk.id.startsWith('coverage_')) ?? [],
   }, null, 2), 'utf8');
   if (incomplete) return 2;
-  return bugs.some((b) => b.severity === 'P0' || b.severity === 'P1') ? 1 : 0;
+  // 工具性失败不是被测项目的缺陷，不应让"项目有问题"的退出码被触发
+  const projectBugs = reportedBugs.filter((b) => !isToolFailure(b));
+  return projectBugs.some((b) => b.severity === 'P0' || b.severity === 'P1') ? 1 : 0;
 }
 
-function buildLlm(llmCfg: NonNullable<Awaited<ReturnType<typeof loadLlmConfig>>>) {
+function buildLlm(
+  llmCfg: NonNullable<Awaited<ReturnType<typeof loadLlmConfig>>>,
+  maxTokensPerRequest?: number,
+) {
   const cfg = llmCfg.providers[llmCfg.default];
   if (!cfg) throw new Error(`provider ${llmCfg.default} not found`);
   if (cfg.type === 'openai-compatible') {
@@ -281,12 +500,39 @@ function buildLlm(llmCfg: NonNullable<Awaited<ReturnType<typeof loadLlmConfig>>>
       apiKey: cfg.apiKey ?? '',
       model: cfg.model,
       ...(cfg.pricing ? { pricing: cfg.pricing } : {}),
+      ...(maxTokensPerRequest !== undefined && { maxTokensPerRequest }),
     });
   }
   return createOllamaNativeProvider({
     ...(cfg.baseUrl && { baseUrl: cfg.baseUrl }),
     model: cfg.model,
   });
+}
+
+/**
+ * 给 provider 包一层计数器 —— LLMProvider 是接口（core 未改），包一层即可统计请求数。
+ * 「请求次数 × 单次最大 token」= 本次 run 的 token 上界，用于核对预算护栏是否够用。
+ */
+function withRequestCounter(
+  provider: ReturnType<typeof buildLlm>,
+  stats: { requests: number; maxCompletionTokens: number; maxTotalTokens: number },
+): typeof provider {
+  return {
+    name: provider.name,
+    supportsTools: provider.supportsTools,
+    estimateCost: (tokens: number) => provider.estimateCost(tokens),
+    async chat(messages, options) {
+      stats.requests += 1;
+      const res = await provider.chat(messages, options);
+      if (res.usage.completionTokens > stats.maxCompletionTokens) {
+        stats.maxCompletionTokens = res.usage.completionTokens;
+      }
+      if (res.usage.totalTokens > stats.maxTotalTokens) {
+        stats.maxTotalTokens = res.usage.totalTokens;
+      }
+      return res;
+    },
+  };
 }
 
 async function writeReports(root: string, bugs: BugFinding[], format: 'markdown' | 'json' | 'both'): Promise<void> {

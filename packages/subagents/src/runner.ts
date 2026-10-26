@@ -26,16 +26,63 @@ export function createRunner(_config: RunnerConfig = {}): Subagent {
     name: 'runner',
 
     register(ctx: KernelContext): void {
+      // 缓存 flow 定义 —— 修复后要能重跑同一条 flow
+      const flowsById = new Map<string, FlowSpec>();
+
       ctx.bus.subscribe<FeatureMap>('map.ready', async (event) => {
+        for (const flow of event.payload.flows) flowsById.set(flow.id, flow);
         for (const flow of event.payload.flows) {
-          await runFlow(ctx, flow, event.traceId);
+          // 单条 flow 的内部异常（如证据采集失败）不能中断整轮，
+          // 否则后续 flow 一个都不会跑，且没有任何日志说明漏了什么。
+          try {
+            await runFlow(ctx, flow, event.traceId);
+          } catch (err) {
+            await ctx.bus.publish({
+              type: 'flow.failed',
+              payload: {
+                flowId: flow.id,
+                error: `runner error: ${(err as Error).message}`,
+                evidence: [],
+              },
+              source: 'runner',
+              traceId: event.traceId,
+            });
+          }
+        }
+      });
+
+      // 修复应用后重跑受影响的 flow —— "改完能验证"才叫闭环。
+      // 只重跑，不改其他 flow；重跑结果带上 phase/patchId，便于对比修复前后。
+      ctx.bus.subscribe<{ fixId: string; flowId: string }>('patch.applied', async (event) => {
+        const flow = flowsById.get(event.payload.flowId);
+        if (!flow) return;
+        try {
+          await runFlow(ctx, flow, event.traceId, { phase: 'after-fix', patchId: event.payload.fixId });
+        } catch (err) {
+          await ctx.bus.publish({
+            type: 'flow.failed',
+            payload: {
+              flowId: flow.id,
+              error: `runner error: ${(err as Error).message}`,
+              evidence: [],
+              phase: 'after-fix',
+              patchId: event.payload.fixId,
+            },
+            source: 'runner',
+            traceId: event.traceId,
+          });
         }
       });
     },
   };
 }
 
-async function runFlow(ctx: KernelContext, flow: FlowSpec, traceId: string): Promise<void> {
+async function runFlow(
+  ctx: KernelContext,
+  flow: FlowSpec,
+  traceId: string,
+  phase?: { phase: 'after-fix'; patchId: string },
+): Promise<void> {
   const start = Date.now();
   await ctx.bus.publish({
     type: 'flow.started',
@@ -45,6 +92,9 @@ async function runFlow(ctx: KernelContext, flow: FlowSpec, traceId: string): Pro
   });
 
   const failureEvidence: Evidence[] = [];
+  // 本次 flow 实际访问的 URL —— 必须一起传下去：
+  // 没有它，analyst/critic 只看到"某处超时"，无法把运行时证据和具体路由/文件对上。
+  const visitedUrl = flow.steps.find((step) => step.action === 'visit')?.url;
 
   try {
     for (const step of flow.steps) {
@@ -52,7 +102,12 @@ async function runFlow(ctx: KernelContext, flow: FlowSpec, traceId: string): Pro
     }
     await ctx.bus.publish({
       type: 'flow.passed',
-      payload: { flowId: flow.id, duration_ms: Date.now() - start },
+      payload: {
+        flowId: flow.id,
+        duration_ms: Date.now() - start,
+        ...(visitedUrl && { url: visitedUrl }),
+        ...(phase ?? {}),
+      },
       source: 'runner',
       traceId,
     });
@@ -68,6 +123,8 @@ async function runFlow(ctx: KernelContext, flow: FlowSpec, traceId: string): Pro
         flowId: flow.id,
         error: (err as Error).message,
         evidence: failureEvidence,
+        ...(visitedUrl && { url: visitedUrl }),
+        ...(phase ?? {}),
       },
       source: 'runner',
       traceId,

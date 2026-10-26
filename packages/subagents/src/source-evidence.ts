@@ -24,8 +24,11 @@ export async function collectSourceEvidence(ctx: KernelContext, flow: FlowSpec):
         const result = await fs.call('read', { path: file }) as { exists?: boolean; content?: unknown };
         if (!result?.exists || typeof result.content !== 'string') continue;
         const lines = result.content.split('\n');
-        const snippet = lines.slice(0, 80).join('\n').slice(0, 4000)
+        const body = lines.slice(0, 80).join('\n').slice(0, 4000)
           .replace(/((?:api[_-]?key|secret|password|token)\s*[:=]\s*)(["'`])[^"'`\r\n]*\2/gi, '$1"<REDACTED>"');
+        // 把"为什么是这个文件"写进证据：访问的 URL ↔ 命中的源文件。
+        // 没有这一行，critic 无法把运行时现象和具体代码对上，因果链断在第一环。
+        const snippet = `// 路由映射：访问 ${route} → ${file}\n${body}`;
         return {
           kind: 'file', source: 'fs', timestamp: Date.now(),
           hash: createHash('sha256').update(file + ':' + snippet).digest('hex').slice(0, 16),

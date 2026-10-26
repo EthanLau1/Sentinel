@@ -163,10 +163,20 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
           const full = config.baseUrl && !target.startsWith('http')
             ? `${config.baseUrl.replace(/\/$/, '')}${target.startsWith('/') ? target : `/${target}`}`
             : target;
-          state.console = [];
-          state.network = [];
-          const response = await page.goto(full, { waitUntil: 'domcontentloaded', timeout: 15000 });
-          if (response && response.status() >= 400) throw new Error(`Page ${full} returned HTTP ${response.status()}`);
+          // dev server 首次访问某个路由要先编译，编译完成前会返回 5xx。
+          // 对 5xx 做有限重试；4xx 是确定性错误，立即抛出。
+          let response: Response | null = null;
+          let status = 0;
+          const retryDelays = [1000, 2000, 3000, 5000];
+          for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
+            if (attempt > 0) await new Promise((r) => setTimeout(r, retryDelays[attempt - 1]!));
+            state.console = [];
+            state.network = [];
+            response = await page.goto(full, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            status = response ? response.status() : 0;
+            if (status < 500) break;
+          }
+          if (response && status >= 400) throw new Error(`Page ${full} returned HTTP ${status}`);
           return { url: page.url(), title: await page.title() };
         }
         case 'click': {

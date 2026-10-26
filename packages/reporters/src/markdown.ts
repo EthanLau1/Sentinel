@@ -4,6 +4,7 @@
  */
 
 import type { BugFinding, FixOption } from '@sentinel/core';
+import { isToolFailure } from './aggregate.js';
 
 export function bugToMarkdown(bug: BugFinding): string {
   const recommended = bug.fixOptions.find((o) => o.id === bug.recommendedFixId) ?? bug.fixOptions[0];
@@ -14,6 +15,12 @@ export function bugToMarkdown(bug: BugFinding): string {
   lines.push('');
   lines.push(`**${bug.title}**`);
   lines.push('');
+
+  // 工具性失败：Sentinel 自身链路的问题，不是被测项目的缺陷 —— 必须说清楚
+  if (isToolFailure(bug)) {
+    lines.push('> ⚠ **工具性失败**：这是 Sentinel 自身链路的问题，不是被测项目的缺陷。请先修工具链再评估项目。');
+    lines.push('');
+  }
 
   // 1. Bug ID
   lines.push(`**1. Bug ID**: \`${bug.id}\``);
@@ -39,16 +46,19 @@ export function bugToMarkdown(bug: BugFinding): string {
   // 6. 根因判断
   const status = bug.rootCauseStatus === 'confirmed' ? '✓ confirmed' : '⚠ hypothesis';
   lines.push(`**6. 根因判断** (${status}, conf=${bug.confidence.toFixed(2)}):`);
-  lines.push(`   ${bug.rootCause ?? '(insufficient evidence)'}`);
+  lines.push(`   ${bug.rootCause?.trim() ? bug.rootCause : '证据不足，未能定位根因（hypothesis）'}`);
 
-  // 7. 推荐方案
+  // 7. 推荐方案 —— 宪法要求 11 字段缺一不行，没有方案时也要出现
   if (recommended) {
     lines.push('**7. 推荐方案** ★:');
     lines.push(formatOption(recommended, '   '));
+  } else {
+    lines.push('**7. 推荐方案** ★: (待 planner 产出)');
   }
 
   // 8. 备选方案
   lines.push(`**8. 备选方案** (${alternatives.length}):`);
+  if (alternatives.length === 0) lines.push('   (无)');
   for (const o of alternatives) {
     lines.push(formatOption(o, '   '));
   }
@@ -56,6 +66,8 @@ export function bugToMarkdown(bug: BugFinding): string {
   // 9. 风险评估
   if (recommended) {
     lines.push(`**9. 风险评估**: effort=${recommended.effort}, risk=${recommended.risk}, regressionRisk=${recommended.regressionRisk}`);
+  } else {
+    lines.push('**9. 风险评估**: (无修复方案，暂无评估)');
   }
 
   // 10. 验证命令
@@ -69,6 +81,8 @@ export function bugToMarkdown(bug: BugFinding): string {
   if (recommended) {
     const tierDesc = ['只报告', '自动修', '写 patch 待审核', '仅建议'][recommended.tier];
     lines.push(`**11. 是否可自动修**: Tier ${recommended.tier} — ${tierDesc}`);
+  } else {
+    lines.push('**11. 是否可自动修**: (无修复方案，暂不判定)');
   }
 
   return lines.join('\n');

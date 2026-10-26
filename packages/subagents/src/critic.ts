@@ -15,6 +15,18 @@ import type {
   Evidence,
 } from '@sentinel/core';
 import { formatEvidence } from './analyst.js';
+import { extractJson } from './json.js';
+
+/** 单个 agent 的 LLM 调用超时（ms）—— 超时必须有，否则一次网络抖动就能挂死整轮 */
+/**
+ * 单个 agent 的 LLM 调用超时（ms）。
+ *
+ * 180s 的依据（2026-10-26 真实 run9 实测）：90s 会误杀带推理块的模型请求 ——
+ * critic 的裁决请求超时 → 那条 bug 停在 hypothesis → 报告第 7 字段又是空的。
+ * 注意 agent 的显式超时必须 ≥ provider 的默认超时，否则 agent 反而更容易误杀。
+ * 超时是**有界失败**：宁可少一条 confirmed，也不能整轮挂死（见 E4）。
+ */
+const AGENT_LLM_TIMEOUT_MS = 180_000;
 
 export interface CriticConfig {
   /** 最低 confidence 阈值，低于此 → reject */
@@ -83,22 +95,46 @@ async function criticReview(ctx: KernelContext, draft: BugFinding): Promise<Crit
   // LLM critic：找反证、判断假设是否过强
   try {
     const llm = await llmCriticism(ctx, draft);
-    const citedCode = draft.evidence.some((e) => e.kind === 'file' && e.snippet.trim() && llm.supportingEvidence.includes(e.hash));
-    const citedRuntime = draft.evidence.some((e) => llm.supportingEvidence.includes(e.hash) && (
-      (e.kind === 'console' && e.level === 'error') || (e.kind === 'network' && e.failed) ||
-      (e.kind === 'http' && e.status >= 400) || (e.kind === 'log' && e.level === 'error') || e.kind === 'trace'
-    ));
-    const verified = llm.verifiedRootCause && citedCode && citedRuntime && !llm.shouldReject;
+
+    // ── 确定性部分（代码判定，不交给 LLM） ──
+    // "根因成立" 的两个实质条件，证据里必须真的同时存在：
+    //   ① 代码证据（文件片段）
+    //   ② 运行时错误证据（console error / 失败请求 / 4xx+ / trace）
+    const codeEvidence = draft.evidence.filter(
+      (e) => e.kind === 'file' && Boolean(e.snippet?.trim()),
+    );
+    const runtimeEvidence = draft.evidence.filter(
+      (e) =>
+        (e.kind === 'console' && e.level === 'error') ||
+        (e.kind === 'network' && e.failed) ||
+        (e.kind === 'http' && e.status >= 400) ||
+        (e.kind === 'log' && e.level === 'error') ||
+        e.kind === 'trace',
+    );
+    const hasCode = codeEvidence.length > 0;
+    const hasRuntime = runtimeEvidence.length > 0;
+    // LLM 是否精确复制了这两类 hash —— 作为加分项记录，不作为必要条件：
+    // 引用 hash 是形式，"证据齐不齐"才是实质，后者由代码判定更可靠。
+    const citedCode = codeEvidence.some((e) => llm.supportingEvidence.includes(e.hash));
+    const citedRuntime = runtimeEvidence.some((e) => llm.supportingEvidence.includes(e.hash));
+
+    const verified =
+      llm.verifiedRootCause && hasCode && hasRuntime && !llm.shouldReject;
+
+    const detail = `verifiedRootCause=${llm.verifiedRootCause}, hasCode=${hasCode}, hasRuntime=${hasRuntime}, citedCode=${citedCode}, citedRuntime=${citedRuntime}, citedHashes=${llm.supportingEvidence.length}`;
+
     return {
       action: verified ? 'confirm' : 'reject',
-      reason: verified ? llm.reason : 'root cause remains a hypothesis; code and runtime evidence must both be cited',
+      reason: verified
+        ? llm.reason
+        : `${llm.reason || 'root cause remains a hypothesis; code and runtime evidence must both be cited'}（判定明细：${detail}）`,
       adjustedConfidence: Math.min(draft.confidence, llm.adjustedConfidence),
       counterEvidence: [],
     };
-  } catch {
+  } catch (err) {
     return {
       action: 'reject',
-      reason: 'critic verification unavailable; hypothesis not confirmed',
+      reason: `critic verification unavailable; hypothesis not confirmed（${(err as Error).message}）`,
       adjustedConfidence: 0,
       counterEvidence: [],
     };
@@ -113,6 +149,22 @@ async function llmCriticism(
     .map(formatEvidence)
     .join('\n');
 
+  // 可引用的 hash 清单 —— 必须单独列出来。
+  // 只把 hash 混在长 JSON 里，模型经常一个都不引用，
+  // 于是"代码证据 + 运行时证据都被引用"的条件永远不成立 → 永远停在 hypothesis。
+  const hashIndex = draft.evidence.map((e) => {
+    const runtime =
+      (e.kind === 'console' && e.level === 'error') ||
+      (e.kind === 'network' && e.failed) ||
+      (e.kind === 'http' && e.status >= 400) ||
+      (e.kind === 'log' && e.level === 'error') ||
+      e.kind === 'trace';
+    const code = e.kind === 'file' && Boolean(e.snippet?.trim());
+    const level = e.kind === 'console' || e.kind === 'log' ? `/${e.level}` : '';
+    const tags = [code ? '代码证据' : '', runtime ? '运行时错误证据' : ''].filter(Boolean);
+    return `- ${e.hash}  [${e.kind}${level}]${tags.length ? '  ← ' + tags.join(' + ') : ''}`;
+  });
+
   const prompt = `你是 Sentinel 调试系统的 Critic 子代理。
 你的任务：反向验证 analyst 的根因假设是否真的能被 evidence 支持。
 
@@ -120,17 +172,21 @@ Bug 摘要:
   id: ${draft.id}
   title: ${draft.title}
   symptom: ${draft.symptom}
+  复现步骤: ${(draft.reproSteps ?? []).join(' → ') || '(无)'}
   分析师假设的根因: ${draft.rootCause ?? '(无)'}
   分析师置信度: ${draft.confidence}
 
 Evidence (${draft.evidence.length} 条):
 ${evidenceSummary}
 
+可引用的 Evidence hash（supportingEvidence 里只能复制下面清单中的 hash，一个字符都不能改）：
+${hashIndex.join('\n')}
+
 请回答以下问题（用 JSON）：
 {
   "shouldReject": false,
   "verifiedRootCause": false,
-  "supportingEvidence": ["实际代码证据的 hash"],
+  "supportingEvidence": ["从上面清单里复制的 hash"],
   "reason": "为什么 confirm 或 reject 的简短理由",
   "adjustedConfidence": 0.0-1.0,
   "ruledOut": ["排除掉的其他可能根因 1", "..."],
@@ -139,29 +195,41 @@ ${evidenceSummary}
 
 红线：
 - 如果 evidence 完全不支持 rootCause，shouldReject = true
-- 只有代码证据与独立运行时证据共同定位根因、并引用各自 hash 时 verifiedRootCause = true；否则保留 hypothesis
+- 只有代码证据与独立运行时证据共同定位根因时 verifiedRootCause = true；否则保留 hypothesis
+- supportingEvidence 填被根因支持的那些证据的 hash（用于交叉核对），但不要因为"填不全"就否定根因
+- 判断"证据能否支撑根因"时看的是**因果链是否闭合**，不是证据条数：
+  运行时现象（访问某 URL 时出错）→ 对应的路由/源文件 → 该文件里的具体代码，三环能对上才算支撑
 - 即使 analyst confidence 很高，如果 evidence 单一（只有 1 条或 1 类），adjustedConfidence ≤ 0.6
 - 不要编造证据中没有的事实`;
 
   const resp = await ctx.providers.llm.chat([
     { role: 'system', content: '你是 Sentinel critic 子代理，对每个根因假设保持怀疑态度。' },
     { role: 'user', content: prompt },
-  ]);
+  ], { timeoutMs: AGENT_LLM_TIMEOUT_MS });
 
   ctx.budget.consume(resp.usage.totalTokens, resp.costUsd);
 
-  const cleaned = resp.content
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```$/, '')
-    .trim();
-  const parsed = JSON.parse(cleaned) as {
+  const extracted = extractJson<{
     shouldReject?: boolean;
     verifiedRootCause?: boolean;
     supportingEvidence?: string[];
     reason?: string;
     adjustedConfidence?: number;
-  };
+  }>(resp.content);
+
+  if (!extracted.ok) {
+    // 解析失败 ≠ 假设成立。保守判为"无法验证"，但必须把失败原因说出来。
+    console.warn(`[sentinel] critic: ${extracted.reason}`);
+    return {
+      shouldReject: true,
+      verifiedRootCause: false,
+      supportingEvidence: [],
+      reason: `critic 裁决解析失败，无法验证根因：${extracted.reason}`,
+      adjustedConfidence: 0,
+    };
+  }
+
+  const parsed = extracted.value;
   return {
     shouldReject: parsed.shouldReject === true,
     verifiedRootCause: parsed.verifiedRootCause === true && parsed.shouldReject === false,

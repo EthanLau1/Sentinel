@@ -3,6 +3,7 @@
  * 用于需要本地推理且不想走 OpenAI 协议的场景。
  */
 
+import { DEFAULT_LLM_TIMEOUT_MS } from './openai-compatible.js';
 import type {
   ChatMessage,
   ChatOptions,
@@ -41,9 +42,9 @@ export function createOllamaNativeProvider(config: OllamaNativeConfig): LLMProvi
       };
 
       const ctrl = new AbortController();
-      const timer = options.timeoutMs
-        ? setTimeout(() => ctrl.abort(), options.timeoutMs)
-        : undefined;
+      // 不设超时的后果不是"失败"，而是"永久挂起" —— 整个 run 永远不返回
+      const timeoutMs = options.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 
       try {
         const res = await fetch(url, {
@@ -68,8 +69,13 @@ export function createOllamaNativeProvider(config: OllamaNativeConfig): LLMProvi
           },
           costUsd: 0, // 本地无成本
         };
+      } catch (err) {
+        if (ctrl.signal.aborted) {
+          throw new Error(`LLM 请求超时（${timeoutMs}ms，model=${config.model}）—— 请求已中止`);
+        }
+        throw err;
       } finally {
-        if (timer) clearTimeout(timer);
+        clearTimeout(timer);
       }
     },
 
