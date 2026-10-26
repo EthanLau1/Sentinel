@@ -273,6 +273,28 @@ describe('L3 闭环：应用 → 验证失败 → 回滚', () => {
     expect(expanded).toBe(zeroCtx);
   });
 
+  it('E30：模型给的行号不准时，按内容找锚点 → 补丁真能 git apply', async () => {
+    // 实测事故：模型声称改第 42 行，实际那行在第 3 行；
+    // 零上下文补丁 git 不做偏移匹配 → "patch does not apply" → Tier 1 自动改码失效。
+    const wrongLineNo = '--- a/app/page.tsx\n+++ b/app/page.tsx\n@@ -42,1 +42,1 @@\n-  return null;\n+  return <main>fixed</main>;\n';
+    const expanded = await expandZeroContextHunks(root, wrongLineNo);
+
+    // 行号必须被纠正到真实位置（真实内容在第 3 行）
+    expect(expanded).toContain('@@ -1,4 +1,4 @@');
+    expect(expanded).toContain(' // 占位');
+
+    // 真跑 git —— 静态检查不��证明外部工具能接受
+    execFileSync('git', ['apply', '-p1', '-'], { cwd: root, input: expanded, stdio: ['pipe', 'pipe', 'pipe'] });
+    expect(readFileSync(join(root, 'app', 'page.tsx'), 'utf8')).toContain('return <main>fixed</main>;');
+  });
+
+  it('E30：内容在文件里找不到时，仍按模型给的行号补上下文（不瞎猜）', async () => {
+    const notFound = '--- a/app/page.tsx\n+++ b/app/page.tsx\n@@ -42,1 +42,1 @@\n-  这行根本不存在\n+  改成这样\n';
+    const expanded = await expandZeroContextHunks(root, notFound);
+    // 找不到锚点 → 保持原样，交给 git 报错（不产出"看起来能用"的假补丁）
+    expect(expanded).toBe(notFound);
+  });
+
   it('白名单外的文件被拒绝（不越界改）', async () => {
     const rejected: Array<{ reason?: string }> = [];
     const capture: Subagent = {

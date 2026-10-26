@@ -348,15 +348,18 @@ export async function expandZeroContextHunks(
         continue;
       }
 
-      // 零上下文 → 补前后真实内容
+      // 零上下文 → 按内容找锚点，再补前后真实内容
+      const removed = body.filter((l) => l.startsWith('-') && !l.startsWith('---')).map((l) => l.slice(1));
+      const anchor = locateAnchor(fileLines, removed, oldStart);
+      const delta = anchor - oldStart;
       const before: string[] = [];
       const after: string[] = [];
-      for (let n = oldStart - 1; n >= 1 && before.length < contextLines; n -= 1) {
+      for (let n = anchor - 1; n >= 1 && before.length < contextLines; n -= 1) {
         const c = fileLines[n - 1];
         if (c === undefined) break;
         before.unshift(c);
       }
-      const oldEnd = oldStart + oldCount - 1;
+      const oldEnd = anchor + oldCount - 1;
       for (let n = oldEnd + 1; n <= fileLines.length && after.length < contextLines; n += 1) {
         const c = fileLines[n - 1];
         if (c === undefined) break;
@@ -365,8 +368,8 @@ export async function expandZeroContextHunks(
 
       const beforeCtx = before.map((c) => ` ${c}`);
       const afterCtx = after.map((c) => ` ${c}`);
-      const newOldStart = oldStart - before.length;
-      const newNewStart = newStart - before.length;
+      const newOldStart = oldStart + delta - before.length;
+      const newNewStart = newStart + delta - before.length;
       const newOldCount = oldCount + before.length + after.length;
       const newNewCount = newCount + before.length + after.length;
 
@@ -378,6 +381,35 @@ export async function expandZeroContextHunks(
   }
 
   return changed ? out.join('\n') + '\n' : patch;
+}
+
+/**
+ * 在文件里按**内容**定位 hunk 的真实位置。
+ *
+ * 为什么必须按内容找：模型给的行号经常不准。
+ * 实测（virtual-event-starter-kit）：补丁声称改第 42 行，实际那行在第 39 行，
+ * 而零上下文补丁 git 不会做偏移匹配 → 直接 "patch does not apply"。
+ * 如果按声称的行号去补上下文，补出来的上下文和 hunk 内容根本不在一处 → 补丁照样打不上。
+ */
+function locateAnchor(fileLines: string[], removed: string[], stated: number): number {
+  if (removed.length === 0) return stated;
+  const hits: number[] = [];
+  for (let i = 0; i + removed.length <= fileLines.length; i += 1) {
+    let ok = true;
+    for (let k = 0; k < removed.length; k += 1) {
+      if (fileLines[i + k] !== removed[k]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) hits.push(i + 1);
+  }
+  if (hits.length === 0) return stated;
+  let best = hits[0]!;
+  for (const h of hits) {
+    if (Math.abs(h - stated) < Math.abs(best - stated)) best = h;
+  }
+  return best;
 }
 
 /**
