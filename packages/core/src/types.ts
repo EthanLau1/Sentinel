@@ -238,6 +238,8 @@ export type EventType =
   | 'executor.tier_decided'
   | 'patch.generated'
   | 'patch.applied'
+  | 'patch.rejected'
+  | 'patch.reverted'
   | 'pr.created'
   | 'report.ready'
   // 监控

@@ -147,9 +147,17 @@ describe('Sentinel WebUI HTTP', () => {
       await new Promise(done => setTimeout(done, 50));
     }
     expect(devPid).toBeGreaterThan(0);
-    const activeStatus = await (await fetch(base + '/api/projects/' + id + '/run/status')).json() as { active: { mode: string; events: unknown[] } };
-    expect(activeStatus.active.mode).toBe('run');
-    expect(activeStatus.active.events.length).toBeGreaterThan(0);
+    // 事件流是异步写入的：拿到 dev pid 不代表 run 的事件已经落进状态文件，
+    // 这里轮询等待，避免"读得太快"造成的假失败。
+    let activeStatus: { active: { mode: string; events: unknown[] } } | undefined;
+    for (let i = 0; i < 100; i++) {
+      const s = await (await fetch(base + '/api/projects/' + id + '/run/status')).json() as { active: { mode: string; events: unknown[] } };
+      activeStatus = s;
+      if (s.active?.mode === 'run' && s.active.events.length > 0) break;
+      await new Promise(done => setTimeout(done, 50));
+    }
+    expect(activeStatus?.active.mode).toBe('run');
+    expect(activeStatus?.active.events.length).toBeGreaterThan(0);
     expect((await post('/api/projects/' + id + '/run')).status).toBe(409);
     const cancelled = await post('/api/projects/' + id + '/run/cancel');
     expect(cancelled.status).toBe(200);
