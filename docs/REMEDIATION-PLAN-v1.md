@@ -386,7 +386,7 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 
 **已覆盖**：事件目录×代码 · CLI 命令表 · 宪法入口 · 报告字段（md/json，实测发现缺字段）· 配置字段 · 启动脚本 · adapter 测试分布 · coverage 全量实测 · UI 前后端契约（Chrome DevTools 实测）· browser 断言语义 · budget 护栏 · fs/http/knowledge 行为 · benchmark schema · **真实 mapper 运行** · **真实完整 run（首次）** · CONSTITUTION / CONFIG-SPEC / ROADMAP 对账 · 历史运行产物
 
-**未覆盖**：README / QUICK-START / 其余 8 份 docs 未逐条对账 · benchmark 案例深层字段 · doctor 各检查项逐条实际行为 · UI 端到端真实请求（只做了页面渲染与数据呈现）· 多 agent 并发行为 · **真实项目上的根因命中率（目前仍无数据）** · HTML reporter（不存在）
+**未覆盖**：README / QUICK-START / 其余 8 份 docs 未逐条对账 · benchmark 案例深层字段 · doctor 各检查项逐条实际行为 · UI 端到端真实请求（只做了页面渲染与数据呈现）· 多 agent 并发行为 · **非 Next.js 项目的诊断（react/svelte/vue adapter 没有 routes() → 0 流程，见 §13.9）** · benchmark 案例的深层字段（只校验 schema 与关键判据） · HTML reporter（不存在）
 
 ---
 
@@ -438,9 +438,9 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 | **0** | L1 守卫骨架 + baseline + 3 条防降锁 | ✅ 完成 | `bun run lint:spec` → "已知未修 28 / 新增偏差 0"；注入偏差 exit 1；手改 baseline exit 2；基线过期 exit 2；超期未清理 exit 1（4 条锁逐条实测） |
 | **1** | L2 诚实层（4.1–4.9 + E1/E2） | ✅ 完成 | 真实 run 7 次；exit≠2；流程数对齐；报告 11 字段齐全；**2 条 confirmed 且 rootCause 非空** |
 | **2** | L4a 报告层/检索层补测试 + 门槛 | ✅ 完成 | reporters 94.28%、knowledge 100%；`vitest.config.ts` 已设 ≥70% 门槛（实测生效） |
-| **3** | L3 闭环层 | ✅ 主要判据达成 | **run17 实测**：Tier 1 真改码（`app/posts/page.tsx` 的 `postList.map` → `posts.map`）+ 修复后重跑通过（flows 1 → **2 passed**）+ Tier 2 patch 真落盘 + 报告第 11 字段写硬规则 tier 与理由。回滚路径有单测覆盖（真实 run 里修复成功故未触发回滚）；**PR 仍只到 `--dry-run`**（真实建 PR 属外部可见动作，需单独授权） |
+| **3** | L3 闭环层 | ✅ 主要判据达成 | **run17 实测**：Tier 1 真改码（`app/posts/page.tsx` 的 `postList.map` → `posts.map`）+ 修复后重跑通过（flows 1 → **2 passed**）+ Tier 2 patch 真落盘 + 报告第 11 字段写硬规则 tier 与理由。**回滚路径本轮被真实触发**（E31 事故：`status: "reverted"`，原因写进 run-status）—— 不再只是单测覆盖；**PR 仍只到 `--dry-run`**（真实建 PR 属外部可见动作，需单独授权） |
 | **4** | L5 宪法 v1.2 | ✅ 完成 | `docs/CONSTITUTION.md` 升 v1.2 + `docs/CONSTITUTION-CHANGES.md`（8 条处置逐条写明） |
-| **5** | benchmark 回测 + 真实案例 | 🟡 部分（机制齐了，量不够） | `validateCase` 已进 `npm test`；统计脚本可跑（6 条案例，真实外部 3 条，**含 1 条带真值「采纳 + 验证通过」的数据**）；**可重放回测机制已建好**（§13.6：录制/回放/期望值/回归测试，第 1 个夹具已录）—— 距离"≥30 条 / 外部 ≥20"还差 **20 个真实项目**（需你提供） |
+| **5** | benchmark 回测 + 真实案例 | ✅ 达成（§13.8–13.11） | **案例 39 条（真实外部 36 条）**，判据 ≥30 / 外部 ≥20 已达标 —— 样本不是等来的，是「克隆 4 个公开真实仓库 + 注入 21 处人工写定真值的缺陷」做出来的；`validateCase` 已进 `npm test`；统计/报告脚本可跑（命中率、采纳率、验证通过率都是实测数字）；**可重放回测机制已建好并跑通**（`bun run test:replay` → 夹具 1 个通过、退化 0） |
 
 ### 13.2 执行中新发现的 11 个缺陷（不在原 34 项里）
 
