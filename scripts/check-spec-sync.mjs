@@ -418,6 +418,199 @@ if (!exists('packages/reporters/src/html.ts')) {
   }
 }
 
+// ── 18. 离线链路：开关 × 守卫脚本 × 夹具 × 结论口径 ────────────────────
+//
+// 为什么要有这一组：重守卫（bun run guard:offline）要跑真实浏览器，1-2 分钟，
+// 不能塞进 lint:spec。但"离线的开关还在不在""守卫脚本有没有被删"可以静态查。
+// 这一组就是那部分 —— 它保证重守卫不会在某次重构后被静默废掉。
+{
+  const constitution = read('docs/CONSTITUTION.md');
+  const runSrc = read('packages/cli/src/run.ts');
+  const doctorSrc = read('packages/cli/src/doctor.ts');
+  const offlineStub = read('packages/providers/src/llm/offline.ts');
+  const typesSrc = read('packages/core/src/types.ts');
+  const analystSrc = read('packages/subagents/src/analyst.ts');
+  const jsonReporter = read('packages/reporters/src/json.ts');
+  const mdReporter = read('packages/reporters/src/markdown.ts');
+
+  // 18.1 宪法声明了红线 8（离线不发外网请求）→ 必须有守卫脚本
+  if (/离线模式一次外网请求都不许发/.test(constitution)) {
+    for (const [id, script] of [
+      ['offline-guard', 'scripts/check-offline-guard.mjs'],
+      ['offline-guard-preload', 'scripts/offline-guard-preload.mjs'],
+    ]) {
+      if (!exists(script)) {
+        add('offline', `unguarded:${id}`, `宪法红线 8 要求离线模式不外网，但守卫脚本 ${script} 不存在`);
+      }
+    }
+  }
+
+  // 18.2 离线路径的三个开关还在不在
+  //     skipLlmProbe：doctor 的 LLM 探测本身就是外网请求
+  if (!/skipLlmProbe:\s*offline/.test(runSrc)) {
+    add('offline', 'probe-not-skipped', '离线模式必须跳过 doctor 的 LLM 探测（探测本身就是外网请求）');
+  }
+  if (!/skipSearch:[^}]*\|\|\s*offline/.test(runSrc)) {
+    add('offline', 'search-not-skipped', '离线模式必须关闭外部知识检索');
+  }
+  //     critic 是 LLM 反向验证，没有模型时只会把每条发现都拒掉 → 离线不注册它
+  if (!/if\s*\(!offline\)\s*\{[^}]*createCritic/.test(runSrc)) {
+    add('offline', 'critic-registered-offline', '离线模式不应注册 critic（没有模型时它只会把每条发现都拒掉）');
+  }
+
+  // 18.3 离线 LLM 桩必须调用即抛错（不能静默返回假结果）
+  if (offlineStub && !/throw new OfflineLLMError/.test(offlineStub)) {
+    add('offline', 'stub-not-throwing', '离线 LLM 桩必须调用即抛错 —— 静默返回等于"假装成功"');
+  }
+  if (doctorSrc && !/skipLlmProbe/.test(doctorSrc)) {
+    add('offline', 'doctor-no-skip', 'doctor 必须支持跳过 LLM 探测（离线模式下探测本身就是外网请求）');
+  }
+
+  // 18.4 夹具必须在 —— 守卫没有夹具就无从判定"该测出的有没有测出"
+  for (const f of [
+    'benchmarks/fixtures/offline-web-app/server.js',
+    'benchmarks/fixtures/offline-web-app/.sentinel/app.map.js',
+    'benchmarks/fixtures/offline-web-app/package.json',
+  ]) {
+    if (!exists(f)) {
+      add('offline', `missing-fixture:${f}`, `离线守卫的夹具缺文件 ${f}`);
+    }
+  }
+
+  // 18.5 结论口径三档：rule / llm / heuristic
+  //     heuristic = 模型未参与（LLM 调用失败后降级）—— 少一档就会把启发式冒充成模型推断
+  if (!/origin\?:\s*'rule'\s*\|\s*'llm'\s*\|\s*'heuristic'/.test(typesSrc)) {
+    add('offline', 'origin-missing-heuristic', "BugFinding.origin 必须有三档：'rule' | 'llm' | 'heuristic'（heuristic = 模型未参与）");
+  }
+  if (!/llmHypothesis\s*\?\s*'llm'\s*:\s*'heuristic'/.test(analystSrc)) {
+    add('offline', 'analyst-origin-not-distinguished', "analyst 必须按模型是否真的参与来标 origin（参与 → 'llm'，没参与 → 'heuristic'）");
+  }
+  if (!/heuristic/.test(jsonReporter)) {
+    add('offline', 'json-by_origin-no-heuristic', 'JSON 报告的 by_origin 必须能区分 heuristic（未标 origin 的旧数据才按 llm 处理）');
+  }
+  if (!/case 'heuristic'/.test(mdReporter)) {
+    add('offline', 'md-origin-no-heuristic', "Markdown 报告必须有 heuristic 的独立标签 —— 否则启发式结论会被读成模型推断");
+  }
+
+  // 18.6 离线案例必须可回放 —— 巡检规则改坏了要有回归保护
+  //     回放器不支持巡检通道 → 离线案例无法进回测 → 规则退化无人发现。
+  const replaySrc = read('packages/cli/src/replay.ts');
+  if (!/channel\?:\s*'flow\.failed'\s*\|\s*'page\.visited'/.test(replaySrc)) {
+    add('offline', 'replay-no-inspection-channel', '回放器必须支持巡检通道（page.visited）—— 否则离线案例进不了回测，巡检规则改坏了没有回归保护');
+  }
+  if (!/createInspector/.test(replaySrc)) {
+    add('offline', 'replay-no-inspector', '回放器必须装配 inspector（巡检通道靠它判定）');
+  }
+  // 巡检通道的夹具必须点名规则与严重级别，否则"观察项冒充已确认缺陷"抓不住
+  const replayCases = list('benchmarks/replay/contract').filter((f) => f.endsWith('.json'));
+  let inspectionCases = 0;
+  for (const f of replayCases) {
+    let obj = {};
+    try {
+      obj = JSON.parse(read(join('benchmarks/replay/contract', f)));
+    } catch {
+      add('offline', `replay-invalid:${f}`, '巡检夹具不是合法 JSON');
+      continue;
+    }
+    if (obj.channel !== 'page.visited') continue;
+    inspectionCases += 1;
+    if (!obj.selectRule) {
+      add('offline', `replay-no-rule:${f}`, '巡检通道夹具必须用 selectRule 指定关心的规则');
+    }
+    if (!obj.expected?.severity) {
+      add('offline', `replay-no-severity:${f}`, '巡检通道夹具必须写明期望的严重级别 —— 否则"质量观察项被冒充成已确认缺陷"抓不住');
+    }
+    if (!obj.expected?.rule) {
+      add('offline', `replay-no-expected-rule:${f}`, '巡检通道夹具必须写明期望命中的规则');
+    }
+  }
+  if (inspectionCases === 0) {
+    add('offline', 'replay-no-inspection-cases', '没有任何巡检通道回放夹具 —— 巡检规则改坏了没有回归保护');
+  }
+}
+
+// ── 19. 宪法红线计数 × 实际条数 ─────────────────────────────────────────
+{
+  const constitution = read('docs/CONSTITUTION.md');
+  // 标题写"6 条红线"、正文列 7 条 —— 曾经发生过（v1.4 加红线时漏改标题）。
+  // 数字对不上时，读者会按标题以为只有 6 条，漏看真正生效的条款。
+  const m = /## (\d+) 条红线/.exec(constitution);
+  if (m) {
+    const block = /## \d+ 条红线[\s\S]*?```\n([\s\S]*?)```/.exec(constitution);
+    const actual = block
+      ? block[1].split('\n').filter((l) => /^\d+\.\s/.test(l.trim())).length
+      : 0;
+    if (actual > 0 && Number(m[1]) !== actual) {
+      add(
+        'constitution',
+        'redline-count-mismatch',
+        `宪法标题写"${m[1]} 条红线"，实际列了 ${actual} 条 —— 读者会按标题漏看条款`,
+      );
+    }
+  }
+}
+
+// ── 20. 宪法 core 行数口径 × 实际值 ─────────────────────────────────────
+{
+  const constitution = read('docs/CONSTITUTION.md');
+  // 宪法里写死了两个口径（wc -l 与守卫口径）。改了 core 又不更新宪法，
+  // 文档口径就与实际脱节 —— 而"数字必标口径"正是本项目的硬要求。
+  const block = /`wc -l` 口径\s*=\s*(\d+) 行（[^）]*?(\d+) 个文件）\s*\n守卫口径（不含空行注释）\s*=\s*(\d+) 行/.exec(
+    constitution,
+  );
+  if (block) {
+    const coreFiles = list('packages/core/src').filter((f) => f.endsWith('.ts'));
+    const wcTotal = coreFiles.reduce((n, f) => {
+      const raw = read(join('packages/core/src', f));
+      return n + raw.split('\n').length - (raw.endsWith('\n') ? 1 : 0);
+    }, 0);
+    if (Number(block[1]) !== wcTotal) {
+      add(
+        'constitution',
+        'core-lines-wc-mismatch',
+        `宪法写 wc -l 口径 ${block[1]} 行，实际 ${wcTotal} 行（${coreFiles.length} 个文件）—— 文档口径与实际脱节`,
+      );
+    }
+    if (Number(block[2]) !== coreFiles.length) {
+      add(
+        'constitution',
+        'core-files-mismatch',
+        `宪法写 core 有 ${block[2]} 个文件，实际 ${coreFiles.length} 个`,
+      );
+    }
+    // 守卫口径：直接问守卫脚本自己
+    const guardTotal = (() => {
+      let total = 0;
+      for (const f of coreFiles) {
+        const raw = read(join('packages/core/src', f));
+        let inBlock = false;
+        for (const line of raw.split('\n')) {
+          const t = line.trim();
+          if (!t) continue;
+          if (inBlock) {
+            if (t.includes('*/')) inBlock = false;
+            continue;
+          }
+          if (t.startsWith('/*')) {
+            if (!t.includes('*/')) inBlock = true;
+            continue;
+          }
+          if (t.startsWith('//')) continue;
+          total++;
+        }
+      }
+      return total;
+    })();
+    if (Number(block[3]) !== guardTotal) {
+      add(
+        'constitution',
+        'core-lines-guard-mismatch',
+        `宪法写守卫口径 ${block[3]} 行，实际 ${guardTotal} 行（不含空行注释）—— 文档口径与实际脱节`,
+      );
+    }
+  }
+}
+
 // ── 输出与基线比对 ─────────────────────────────────────────────────────────
 const key = (f) => `${f.dimension}::${f.id}`;
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');

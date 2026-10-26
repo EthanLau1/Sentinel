@@ -149,6 +149,12 @@ async function analyseDraft(
     ...(llmHypothesis?.rootCause && { rootCause: llmHypothesis.rootCause }),
     counterEvidence: [],
     confidence: llmHypothesis?.confidence ?? heuristic.confidence,
+    // 结论来源必须说准：
+    //   模型真的给出了根因 → 'llm'
+    //   模型没参与（离线模式 / 调用失败兜底）→ 'heuristic'
+    // 标错的后果很具体：离线模式 llmRequests=0，报告却把这条算成"模型推断"，
+    // 那是在冒充一件根本没发生的事。
+    origin: llmHypothesis ? 'llm' : 'heuristic',
     fixOptions: [], // planner 后续填
   };
 }

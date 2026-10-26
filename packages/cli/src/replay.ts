@@ -30,6 +30,8 @@ import {
   createPlanner,
   createEnhancer,
   createExecutor,
+  createInspector,
+  type InspectionSnapshot,
   validPatch,
   applyPatch,
   patchTargets,
@@ -43,11 +45,24 @@ import { dirname, join } from 'node:path';
 export interface ReplayFixture {
   caseId: string;
   description?: string;
+  /**
+   * 走哪条通道。
+   *
+   * - `flow.failed`（默认）：老链路 —— runner 报流程失败 → analyst → critic → …
+   * - `page.visited`：巡检链路 —— runner 访问成功后发现场 → inspector 按规则判定。
+   *   离线模式的发现全部走这条通道（inspector 不依赖 LLM），
+   *   所以离线案例要能回放，回放器就必须支持这条通道。
+   */
+  channel?: 'flow.failed' | 'page.visited';
   /** 触发链路用的输入（来自真实 run 产物） */
   input: {
     flowId: string;
     error: string;
     evidence: Evidence[];
+    /** channel='page.visited' 时必填：本次访问的页面现场 */
+    snapshot?: InspectionSnapshot;
+    /** channel='page.visited' 时必填：本次访问的 URL */
+    url?: string;
   };
   /** 录制的模型回复，按实际调用顺序（analyst → critic → planner×2） */
   llmResponses: string[];
@@ -58,15 +73,34 @@ export interface ReplayFixture {
    * 只有真跑 git apply 才暴露）。
    */
   snapshot?: { files: Record<string, string> };
+  /**
+   * 巡检通道专用：一次 visit 会命中多条规则，这里指定**只关心哪一条**。
+   * 例如 `console-error`。挑不出这条规则时要报错 —— 静默取最后一条会让判据失真。
+   */
+  selectRule?: string;
   /** 期望输出 —— 回测的判据 */
   expected: ReplayExpected;
   recordedAt?: string;
+}
+
+/** 从 finding id 里取出规则名 —— inspector 生成的 id 形如 `bug_rule_<rule>_<hash>` */
+function ruleIdOf(bugId: string): string {
+  const m = /^bug_rule_(.+)_[0-9a-f]{8}$/.exec(bugId);
+  return m ? m[1]! : '';
 }
 
 export interface ReplayExpected {
   rootCauseStatus: string;
   rootCauseContains?: string[];
   fixCount: number;
+  /**
+   * 期望的严重级别（巡检通道必填）。
+   * 为什么必须比对：把"质量观察项"（缺 lang）误标成"运行时故障"（confirmed），
+   * 报告会失真 —— 而根因状态那一条判据抓不到这种退化（它只看 confirmed/hypothesis）。
+   */
+  severity?: string;
+  /** 期望命中的巡检规则名（巡检通道必填） */
+  rule?: string;
   /**
    * 推荐方案里必须点名的关键词（人工真值：被改坏的文件/标识符）。
    * 查的是**标题 + 说明**：planner 的契约是"方案必须点名具体文件与改什么"，
@@ -75,15 +109,23 @@ export interface ReplayExpected {
   recommendedMentions?: string[];
   /** 硬规则判出的 tier（executor.tier_decided） */
   hardTier?: number;
-  /** 推荐方案的 patch 是否是合法 unified diff */
-  patchValid?: boolean;
+  /**
+   * 推荐方案的 patch 是否是合法 unified diff。
+   * `null` = 方案**根本没有 patch**（离线模式的通用模板就没有 patch）——
+   * 这与"有 patch 但不合法"是两回事，必须能区分。
+   */
+  patchValid?: boolean | null;
   /** 推荐方案的 patch 能不能真的应用到快照上（要 snapshot 才有意义） */
-  patchApplies?: boolean;
+  patchApplies?: boolean | null;
 }
 
 export interface ReplayActual {
   rootCauseStatus: string;
   rootCause: string;
+  /** 严重级别（巡检通道的关键判据：P1/P2 运行时故障 vs P3 质量观察） */
+  severity: string | null;
+  /** 命中的巡检规则名（从 finding id 里解出来的） */
+  rule: string | null;
   fixCount: number;
   recommendedTitle: string;
   recommendedDescription: string;
@@ -203,6 +245,9 @@ export async function replayFixture(
   // 回放模式自己维护取回复的下标 —— 不能和"调用次数"共用一个计数器，
   // 否则包装层先自增，取回复时就跳过了第 0 条（实测整个链路错位一格）。
   const replayIndex = { n: 0 };
+  // 巡检通道：inspector 不调 LLM，planner 在离线场景本来就没有模型 ——
+  // 它会失败并回退到通用模板。这属于**预期行为**，不能算回放报错。
+  const isInspection = fixture.channel === 'page.visited';
   const inner = options.provider ?? createReplayProvider(fixture.llmResponses, replayIndex);
   // 两种模式都要能数出调用次数（录制模式尤其需要：录到几条、用掉几条）
   const providerErrors: string[] = [];
@@ -217,7 +262,13 @@ export async function replayFixture(
       } catch (err) {
         // provider 的失败（回放时最常见的是"录制的回复不够"）必须被回测看见 ——
         // agent 会把 LLM 报错当成"证据不足"吞掉，产出看着只是"空"，看不出原因。
-        providerErrors.push((err as Error).message);
+        //
+        // 例外：巡检通道里 planner 调 LLM 失败是**预期**的 ——
+        // 巡检发现本来就来自确定性规则，方案走通用模板兜底。
+        // 那种情况下记成错误，等于把"离线模式正常工作"判成回放失败。
+        if (!isInspection) {
+          providerErrors.push((err as Error).message);
+        }
         throw err;
       }
     },
@@ -228,34 +279,73 @@ export async function replayFixture(
   // 只盯 fix.enhanced 会让这类案例的实际产出恒为"(无)"，判据形同虚设。
   let draft: BugFinding | undefined;
   const tierByFix = new Map<string, number>();
+  // 巡检通道下一次 visit 会命中多条规则 —— 每个案例只关心自己那一条。
+  // 用夹具里的 selectRule 挑出来（挑不出就是真出问题了，不能静默取最后一条）。
+  const wantedRule = fixture.selectRule;
   const captureSub: Subagent = {
     name: 'capture',
     register(ctx) {
-      ctx.bus.subscribe<{ bug: BugFinding }>('fix.enhanced', (e) => { bug = e.payload.bug; });
-      ctx.bus.subscribe<BugFinding>('bug.draft', (e) => { draft = e.payload; });
+      ctx.bus.subscribe<{ bug: BugFinding }>('fix.enhanced', (e) => {
+        if (wantedRule && !ruleIdOf(e.payload.bug.id).includes(wantedRule)) return;
+        bug = e.payload.bug;
+      });
+      ctx.bus.subscribe<BugFinding>('bug.draft', (e) => {
+        if (wantedRule && !ruleIdOf(e.payload.id).includes(wantedRule)) return;
+        draft = e.payload;
+      });
       ctx.bus.subscribe<{ fixId: string; tier: number }>('executor.tier_decided', (e) => {
         tierByFix.set(e.payload.fixId, e.payload.tier);
       });
     },
   };
 
+  // 巡检通道（page.visited）：inspector 判定的发现走的是另一条路 ——
+  // 它不经过 analyst（analyst 只处理 flow.failed），直接产出 bug.confirmed / bug.draft。
+  // 离线模式的发现全部来自这条通道，所以回放器必须能重放它，
+  // 否则"巡检规则改坏了"这件事永远没有回归保护。
+  const subagents: Subagent[] = isInspection
+    ? [
+        // inspector → bug.confirmed（确定性规则判定，不调 LLM）
+        createInspector(),
+        // verifier 放行 origin='rule' 的结论（否则白屏这类真故障会被误杀）
+        createVerifier(),
+        createPlanner({ stage: options.stage ?? 'MVP', requireVerified: true }),
+        createEnhancer({ skipSearch: true }),
+        createExecutor(),
+        captureSub,
+      ]
+    : [
+        createAnalyst(),
+        createCritic(),
+        createVerifier(),
+        createPlanner({ stage: options.stage ?? 'MVP', requireVerified: true }),
+        createEnhancer({ skipSearch: true }),
+        createExecutor(),
+        captureSub,
+      ];
+
   const kernel = new Kernel({
     providers: fakeProviders(llm),
     budget: new Budget({}),
-    subagents: [
-      createAnalyst(),
-      createCritic(),
-      createVerifier(),
-      createPlanner({ stage: options.stage ?? 'MVP', requireVerified: true }),
-      createEnhancer({ skipSearch: true }),
-      createExecutor(),
-      captureSub,
-    ],
+    subagents,
   });
 
   let error: string | undefined;
   try {
-    await kernel.kick('flow.failed', fixture.input, 'replay');
+    if (isInspection) {
+      const snap = fixture.input.snapshot;
+      const url = fixture.input.url;
+      if (!snap || !url) {
+        throw new Error('巡检通道的夹具必须带 input.snapshot 与 input.url');
+      }
+      await kernel.kick(
+        'page.visited',
+        { flowId: fixture.input.flowId, url, snapshot: snap },
+        'replay',
+      );
+    } else {
+      await kernel.kick('flow.failed', fixture.input, 'replay');
+    }
     // 等到 executor 判完 tier（它一定在 planner 之后跑）；
     // provider 报错时链路已经终止，不必再干等
     await waitFor(() => tierByFix.size > 0 || providerErrors.length > 0, 8000);
@@ -264,6 +354,12 @@ export async function replayFixture(
   }
   await kernel.stop();
   if (!error && providerErrors.length > 0) error = providerErrors[0];
+
+  // 巡检通道：指定的规则一条都没命中 → 规则被改坏了（或被关掉了），
+  // 必须报出来。静默产出"(无)"会让判据形同虚设。
+  if (!error && wantedRule && !bug && !draft) {
+    error = `巡检通道没有命中指定的规则「${wantedRule}」—— 规则被改坏或关掉了`;
+  }
 
   // 没有 fix.enhanced 时退回 bug.draft —— hypothesis 案例的产出就在这里
   const finalBug = bug ?? draft;
@@ -278,6 +374,8 @@ export async function replayFixture(
   const actual: ReplayActual = {
     rootCauseStatus: finalBug?.rootCauseStatus ?? '(无)',
     rootCause: finalBug?.rootCause ?? '',
+    severity: finalBug?.severity ?? null,
+    rule: finalBug ? ruleIdOf(finalBug.id) : null,
     fixCount: finalBug?.fixOptions?.length ?? 0,
     recommendedTitle: recommended?.title ?? '',
     recommendedDescription: recommended?.description ?? '',
@@ -298,6 +396,15 @@ export function compareReplay(actual: ReplayActual, expected: ReplayExpected): s
   if (actual.error) out.push(`回放过程报错：${actual.error}`);
   if (actual.rootCauseStatus !== expected.rootCauseStatus) {
     out.push(`根因状态：期望 ${expected.rootCauseStatus}，实际 ${actual.rootCauseStatus}`);
+  }
+  // 严重级别必须比对：把 P3 质量观察项误报成 P1/P2 运行时故障，报告会失真。
+  // 根因状态那一条抓不到这种退化（它只看 confirmed / hypothesis）。
+  if (expected.severity !== undefined && actual.severity !== expected.severity) {
+    out.push(`严重级别：期望 ${expected.severity}，实际 ${actual.severity}`);
+  }
+  // 命中的规则必须比对：规则改名或张冠李戴时，靠标题关键词是抓不住的。
+  if (expected.rule !== undefined && actual.rule !== expected.rule) {
+    out.push(`命中规则：期望 ${expected.rule}，实际 ${actual.rule}`);
   }
   // 关键词是**同一组真值标识符的不同写法** → 命中任意一个即算命中，
   // 与归档时的命中判定（bench-external.mjs 用 .some()）同一口径。

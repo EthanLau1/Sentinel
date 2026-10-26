@@ -1,0 +1,45 @@
+{
+  "caseId": "2026-10-26-007-3",
+  "kind": "contract",
+  "channel": "page.visited",
+  "selectRule": "uncaught-exception",
+  "description": "offline-web-app · 文章页未捕获异常（D3）",
+  "input": {
+    "flowId": "flow_page_posts",
+    "error": "",
+    "evidence": [],
+    "url": "http://127.0.0.1:3000/posts",
+    "snapshot": {
+      "url": "http://127.0.0.1:3000/posts",
+      "title": "离线守卫文章页",
+      "console": [],
+      "pageErrors": [
+        "posts 组件初始化失败"
+      ],
+      "network": [],
+      "meta": {
+        "lang": "zh-CN",
+        "viewport": "width=device-width, initial-scale=1",
+        "hasTitle": true,
+        "bodyTextLength": 30,
+        "bodyVisible": true
+      }
+    }
+  },
+  "llmResponses": [],
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "未捕获异常",
+      "posts 组件初始化失败"
+    ],
+    "fixCount": 3,
+    "severity": "P1",
+    "rule": "uncaught-exception",
+    "hardTier": 2,
+    "patchValid": null,
+    "patchApplies": null
+  },
+  "note": "巡检通道夹具（contract）：现场快照按夹具 benchmarks/fixtures/offline-web-app/server.js 的真实注入构造 —— /posts 的 setTimeout 里 throw new Error('posts 组件初始化失败')，浏览器记为 pageerror。走 inspector 的 uncaught-exception 规则（origin=rule）。这条的证据价值最高：pageerror（未捕获异常）以前根本没有采集，旧链路连「页面崩了」都不知道。修复未落盘：离线模式没有模型生成补丁，方案来自通用模板，模板不带 patch，所以 patchValid=null。",
+  "recordedAt": "2026-10-26T15:29:27.704Z"
+}

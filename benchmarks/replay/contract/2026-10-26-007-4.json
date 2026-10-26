@@ -1,0 +1,62 @@
+{
+  "caseId": "2026-10-26-007-4",
+  "kind": "contract",
+  "channel": "page.visited",
+  "selectRule": "missing-lang",
+  "description": "offline-web-app · 首页 <html> 缺 lang（D4）",
+  "input": {
+    "flowId": "flow_page_home",
+    "error": "",
+    "evidence": [],
+    "url": "http://127.0.0.1:3000/",
+    "snapshot": {
+      "url": "http://127.0.0.1:3000/",
+      "title": "离线守卫首页",
+      "console": [
+        {
+          "level": "error",
+          "message": "离线守卫演示：前端配置加载失败"
+        }
+      ],
+      "pageErrors": [],
+      "network": [
+        {
+          "url": "http://127.0.0.1:3000/assets/missing-image.png",
+          "method": "GET",
+          "status": 404,
+          "duration_ms": 12,
+          "failed": true
+        },
+        {
+          "url": "http://127.0.0.1:3000/api/posts",
+          "method": "GET",
+          "status": 500,
+          "duration_ms": 18,
+          "failed": true
+        }
+      ],
+      "meta": {
+        "lang": null,
+        "viewport": "width=device-width, initial-scale=1",
+        "hasTitle": true,
+        "bodyTextLength": 63,
+        "bodyVisible": true
+      }
+    }
+  },
+  "llmResponses": [],
+  "expected": {
+    "rootCauseStatus": "hypothesis",
+    "rootCauseContains": [
+      "lang"
+    ],
+    "fixCount": 0,
+    "severity": "P3",
+    "rule": "missing-lang",
+    "hardTier": null,
+    "patchValid": null,
+    "patchApplies": null
+  },
+  "note": "巡检通道夹具（contract）：现场快照按夹具 benchmarks/fixtures/offline-web-app/server.js 的真实注入构造 —— 首页 <html> 故意没写 lang（对照：/posts 页面写了 lang=\"zh-CN\"）。走 inspector 的 missing-lang 规则。注意 rootCauseStatus 是 hypothesis 而不是 confirmed —— 这是有意为之：缺 lang 属于质量观察项，不是运行时故障，按宪法「结论口径」只能作假设。fixCount=0：观察项走 bug.draft 通道，不进 planner，不产出修复方案。hardTier=null：没有方案就没有 tier 判定。",
+  "recordedAt": "2026-10-26T15:29:27.704Z"
+}

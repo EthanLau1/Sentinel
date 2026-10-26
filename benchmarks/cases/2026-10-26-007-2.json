@@ -1,0 +1,31 @@
+{
+  "id": "2026-10-26-007-2",
+  "project": "offline-web-app",
+  "feature": "flow_page_home",
+  "stage": "MVP",
+  "symptom": "页面加载时请求 /assets/missing-image.png 返回 HTTP 404（资源或接口不存在/被拒绝）",
+  "realRootCause": "benchmarks/fixtures/offline-web-app/server.js 的 HOME_HTML 里，首页 <img src=\"/assets/missing-image.png\"> 指向一张不存在的图片，而 server.js 对该路径故意返回 404。这是夹具**故意注入**的缺陷 D2。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "页面加载时请求 /assets/missing-image.png 返回 HTTP 404（资源或接口不存在/被拒绝）",
+    "confidence": 0.6,
+    "evidenceCount": 1,
+    "evidenceKinds": [
+      "network"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "bug_rule_client-error_e7506ed5_fix_quick",
+    "title": "快速修复（绕过/补丁）",
+    "tier": 2,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.46199999999999997
+  },
+  "fixAdopted": false,
+  "fixPassedVerification": false,
+  "notes": "人工确认（2026-10-26）：真实根因由人工读 benchmarks/fixtures/offline-web-app/server.js 源码核实 —— 故意注入的 D2，真值唯一确定。Sentinel 判断为 confirmed，根因文本点名了具体路径 /assets/missing-image.png，与人工结论一致 → hit=true。严重级别 P2（client-error）：资源缺失不影响页面主要功能，与 D1/D3/D5 的 P1 区分开。修复未采纳（离线模式无模型生成补丁，硬规则 tier=2 但无可用 patch，未落盘）。证据形态：1 条 network 证据。结论来源 origin=rule。",
+  "createdAt": "2026-10-26T15:29:27.702Z",
+  "sentinelVersion": "0.2.0"
+}

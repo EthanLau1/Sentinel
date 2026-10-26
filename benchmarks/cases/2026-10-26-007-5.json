@@ -1,0 +1,31 @@
+{
+  "id": "2026-10-26-007-5",
+  "project": "offline-web-app",
+  "feature": "flow_page_home",
+  "stage": "MVP",
+  "symptom": "页面加载时请求 /api/posts 返回 HTTP 500（服务端错误）",
+  "realRootCause": "benchmarks/fixtures/offline-web-app/server.js 里，首页 <script> 主动 fetch('/api/posts')，而 server.js 对该路径故意返回 500（响应体 {\"error\":\"posts service unavailable\"}）。这是夹具**故意注入**的缺陷 D5。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "页面加载时请求 /api/posts 返回 HTTP 500（服务端错误）",
+    "confidence": 0.85,
+    "evidenceCount": 1,
+    "evidenceKinds": [
+      "network"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "bug_rule_server-error_a8580b5a_fix_quick",
+    "title": "快速修复（绕过/补丁）",
+    "tier": 2,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.5894999999999999
+  },
+  "fixAdopted": false,
+  "fixPassedVerification": false,
+  "notes": "人工确认（2026-10-26）：真实根因由人工读 benchmarks/fixtures/offline-web-app/server.js 源码核实 —— 故意注入的 D5，真值唯一确定。Sentinel 判断为 confirmed，根因文本点名了具体接口 /api/posts 与状态码 500，与人工结论一致 → hit=true。这条证明巡检能看见**页面内部发出的失败请求**：接口失败不是访问页面时发生的，是页面自己的 JS 请求的 —— 旧链路只检查\"访问有没有失败\"，这种一条都测不到。修复未采纳（离线模式无模型生成补丁）。结论来源 origin=rule。",
+  "createdAt": "2026-10-26T15:29:27.705Z",
+  "sentinelVersion": "0.2.0"
+}

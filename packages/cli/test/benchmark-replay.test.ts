@@ -73,8 +73,30 @@ describe('benchmark 回测（可重放夹具）', () => {
       if (confirmed && f.snapshot) {
         expect(f.expected.patchApplies, `${f.caseId} 有快照就必须有 patchApplies 期望`).toBe(true);
       }
+      // 巡检通道：必须点名「命中哪条规则」和「什么严重级别」。
+      // 少了这两条，"把质量观察项冒充成已确认缺陷"这种退化抓不住 ——
+      // 根因状态那一条判据只看 confirmed / hypothesis，看不出 P3 被报成 P1。
+      if (f.channel === 'page.visited') {
+        expect(f.selectRule, `${f.caseId} 是巡检通道夹具，必须用 selectRule 指定关心的规则`).toBeTruthy();
+        expect(f.expected.rule, `${f.caseId} 必须写明期望命中的规则`).toBe(f.selectRule);
+        expect(f.expected.severity, `${f.caseId} 必须写明期望的严重级别`).toBeTruthy();
+      }
     }
   });
+
+  it('巡检通道夹具必须真的经过 inspector 判定（不能退化成恒真判据）', async () => {
+    const inspectionFixtures = loadFixtures().filter((f) => f.channel === 'page.visited');
+    expect(
+      inspectionFixtures.length,
+      '没有任何巡检通道夹具 —— 巡检规则改坏了没有回归保护',
+    ).toBeGreaterThan(0);
+    for (const f of inspectionFixtures) {
+      const result = await replayFixture(f);
+      expect(result.passed, `巡检夹具 ${f.caseId} 退化：${result.mismatches.join('；')}`).toBe(true);
+      // 实际产出的规则必须就是夹具点名的那条 —— 不能是"(无)"或别的规则
+      expect(result.actual.rule, `巡检夹具 ${f.caseId} 没有命中指定规则`).toBe(f.selectRule);
+    }
+  }, 30000);
 
   it('录制回复不够时必须报错（不能悄悄返回空内容）', async () => {
     const f = loadFixtures()[0]!;
@@ -143,5 +165,30 @@ describe('compareReplay —— 判据本身要能判出差异', () => {
   it('tier 变了要报出来（LLM tier 换成硬规则 tier 就会命中）', () => {
     const out = compareReplay({ ...base, hardTier: 2 }, { rootCauseStatus: 'confirmed', fixCount: 3, hardTier: 1 });
     expect(out.join(' ')).toContain('硬规则 tier');
+  });
+
+  it('严重级别变了要报出来（质量观察项被冒充成运行时故障）', () => {
+    const out = compareReplay(
+      { ...base, severity: 'P1' },
+      { rootCauseStatus: 'confirmed', fixCount: 3, severity: 'P3' },
+    );
+    expect(out.join(' ')).toContain('严重级别');
+  });
+
+  it('命中规则变了要报出来（规则改名或张冠李戴）', () => {
+    const out = compareReplay(
+      { ...base, rule: 'console-error' },
+      { rootCauseStatus: 'confirmed', fixCount: 3, rule: 'missing-lang' },
+    );
+    expect(out.join(' ')).toContain('命中规则');
+  });
+
+  it('没写 severity / rule 期望时不做这项比对（老夹具不能因此全挂）', () => {
+    expect(
+      compareReplay({ ...base, severity: 'P1', rule: 'console-error' }, {
+        rootCauseStatus: 'confirmed',
+        fixCount: 3,
+      }),
+    ).toEqual([]);
   });
 });

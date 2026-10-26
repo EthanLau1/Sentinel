@@ -54,8 +54,9 @@ export function bugToMarkdown(bug: BugFinding, opts: MarkdownOptions = {}): stri
 
   // 6. 根因判断
   const status = bug.rootCauseStatus === 'confirmed' ? '✓ confirmed' : '⚠ hypothesis';
-  // 结论来源必须标出来：规则判定（确定性事实）和模型推断（假设）不是一回事
-  const originTag = bug.origin === 'rule' ? '，确定性规则判定' : '';
+  // 结论来源必须标出来：规则判定（确定性事实）、模型推断、启发式回退不是一回事。
+  // 离线模式下模型根本没参与（llmRequests=0），标成"模型推断"就是在冒充。
+  const originTag = originLabel(bug.origin);
   lines.push(`**6. 根因判断** (${status}${originTag}, conf=${bug.confidence.toFixed(2)}):`);
   lines.push(`   ${bug.rootCause?.trim() ? bug.rootCause : '证据不足，未能定位根因（hypothesis）'}`);
 
@@ -158,8 +159,29 @@ function formatOption(o: FixOption, indent: string): string {
   return `${indent}- **${o.title}** (${tier}, score=${o.score.toFixed(2)})\n${indent}  ${o.description}${sources}`;
 }
 
-function describeEvidence(e: import('@sentinel/core').Evidence): string {
-  switch (e.kind) {
+/**
+ * 结论来源的展示文案。
+ *
+ * 三种来源必须说清楚：
+ *   rule      → 确定性规则判定（运行时事实）
+ *   llm       → 模型推断
+ *   heuristic → 启发式结论（**模型没有参与**：离线模式，或 LLM 调用失败后的兜底）
+ *   未标注     → 旧数据，按模型推断处理
+ */
+function originLabel(origin: BugFinding['origin']): string {
+  switch (origin) {
+    case 'rule':
+      return '，确定性规则判定';
+    case 'heuristic':
+      return '，启发式判定（未调用模型）';
+    case 'llm':
+      return '，模型推断';
+    default:
+      return '';
+  }
+}
+
+function describeEvidence(e: import('@sentinel/core').Evidence): string {  switch (e.kind) {
     case 'console':
       return `${e.level}: ${e.message.slice(0, 120)}`;
     case 'network':

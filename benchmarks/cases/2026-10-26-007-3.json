@@ -1,0 +1,31 @@
+{
+  "id": "2026-10-26-007-3",
+  "project": "offline-web-app",
+  "feature": "flow_page_posts",
+  "stage": "MVP",
+  "symptom": "页面加载后抛出未捕获异常：posts 组件初始化失败",
+  "realRootCause": "benchmarks/fixtures/offline-web-app/server.js 的 POSTS_HTML 里，文章页的 <script> 用 setTimeout 抛了一个 Error('posts 组件初始化失败')。异常在页面加载后触发，属于**故意注入**的缺陷 D3 —— 也正是旧检测链路完全测不到的那一类（页面返回 200，但 JS 崩了）。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "页面加载后抛出未捕获异常：posts 组件初始化失败",
+    "confidence": 0.9,
+    "evidenceCount": 1,
+    "evidenceKinds": [
+      "console"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "bug_rule_uncaught-exception_a735e527_fix_quick",
+    "title": "快速修复（绕过/补丁）",
+    "tier": 2,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.603
+  },
+  "fixAdopted": false,
+  "fixPassedVerification": false,
+  "notes": "人工确认（2026-10-26）：真实根因由人工读 benchmarks/fixtures/offline-web-app/server.js 源码核实 —— 故意注入的 D3，真值唯一确定。Sentinel 判断为 confirmed，根因文本点名了异常信息 posts 组件初始化失败，与人工结论一致 → hit=true。这条的证据价值最高：pageerror（未捕获异常）以前**根本没有采集**，所以旧链路连「页面崩了」都不知道 —— 现在由 browser MCP 的 inspect 工具补上 pageerror 监听才测得出来。修复未采纳（离线模式无模型生成补丁）。结论来源 origin=rule。",
+  "createdAt": "2026-10-26T15:29:27.703Z",
+  "sentinelVersion": "0.2.0"
+}

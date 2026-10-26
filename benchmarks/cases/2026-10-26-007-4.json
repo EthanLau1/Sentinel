@@ -1,0 +1,31 @@
+{
+  "id": "2026-10-26-007-4",
+  "project": "offline-web-app",
+  "feature": "flow_page_home",
+  "stage": "MVP",
+  "symptom": "<html> 元素没有 lang 属性，屏幕阅读器无法确定朗读语种",
+  "realRootCause": "benchmarks/fixtures/offline-web-app/server.js 的 HOME_HTML 里，首页的 <html> 标签故意没有写 lang 属性（对比 POSTS_HTML 写了 lang=\"zh-CN\"）。这是夹具**故意注入**的缺陷 D4，属于可访问性问题。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "hypothesis",
+    "rootCause": "<html> 元素没有 lang 属性，屏幕阅读器无法确定朗读语种",
+    "confidence": 0.9,
+    "evidenceCount": 1,
+    "evidenceKinds": [
+      "dom-snapshot"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "bug_rule_missing-lang_e81c655f_fix_1",
+    "title": "TODO-人工确认推荐方案",
+    "tier": 0,
+    "effort": "low",
+    "risk": "low",
+    "score": 0
+  },
+  "fixAdopted": false,
+  "fixPassedVerification": false,
+  "notes": "人工确认（2026-10-26）：真实根因由人工读 benchmarks/fixtures/offline-web-app/server.js 源码核实 —— 故意注入的 D4，真值唯一确定。Sentinel 的**事实判断是对的**（确实缺 lang，点名了具体元素），所以 hit=true。但 rootCauseStatus 是 hypothesis 而不是 confirmed —— 这是**有意为之**：缺 lang 属于质量观察项，不是运行时故障，按宪法「结论口径」一节只能作假设，不能冒充已确认的缺陷。recommendedFix 为占位（tier 0 / score 0）—— 真实产物里这条的 fixOptions 为空、recommendedFixId 为 null（它走的是 bug.draft 通道，不进 planner 的 fixOptions），离线模式下也没有模型来生成修法，所以不编造具体方案标题，留待人工确认。修复未采纳。结论来源 origin=rule。这条同时验证了守卫不会误报：对照组 /posts 页面有 lang，首页没有 —— 只有首页这一条被报出来。",
+  "createdAt": "2026-10-26T15:29:27.704Z",
+  "sentinelVersion": "0.2.0"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "offline-web-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "离线检测用的最小被测项目：零依赖，故意注入确定性缺陷",
+  "scripts": {
+    "dev": "node server.js --port=41337"
+  }
+}

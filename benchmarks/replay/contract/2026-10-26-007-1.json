@@ -1,0 +1,63 @@
+{
+  "caseId": "2026-10-26-007-1",
+  "kind": "contract",
+  "channel": "page.visited",
+  "selectRule": "console-error",
+  "description": "offline-web-app · 离线守卫首页控制台报错（D1）",
+  "input": {
+    "flowId": "flow_page_home",
+    "error": "",
+    "evidence": [],
+    "url": "http://127.0.0.1:3000/",
+    "snapshot": {
+      "url": "http://127.0.0.1:3000/",
+      "title": "离线守卫首页",
+      "console": [
+        {
+          "level": "error",
+          "message": "离线守卫演示：前端配置加载失败"
+        }
+      ],
+      "pageErrors": [],
+      "network": [
+        {
+          "url": "http://127.0.0.1:3000/assets/missing-image.png",
+          "method": "GET",
+          "status": 404,
+          "duration_ms": 12,
+          "failed": true
+        },
+        {
+          "url": "http://127.0.0.1:3000/api/posts",
+          "method": "GET",
+          "status": 500,
+          "duration_ms": 18,
+          "failed": true
+        }
+      ],
+      "meta": {
+        "lang": null,
+        "viewport": "width=device-width, initial-scale=1",
+        "hasTitle": true,
+        "bodyTextLength": 63,
+        "bodyVisible": true
+      }
+    }
+  },
+  "llmResponses": [],
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "控制台",
+      "离线守卫演示：前端配置加载失败"
+    ],
+    "fixCount": 3,
+    "severity": "P1",
+    "rule": "console-error",
+    "hardTier": 2,
+    "patchValid": null,
+    "patchApplies": null
+  },
+  "note": "巡检通道夹具（contract）：现场快照按夹具 benchmarks/fixtures/offline-web-app/server.js 的真实注入构造 —— 首页 console.error('离线守卫演示：前端配置加载失败')。这条走 inspector 的 console-error 规则（origin=rule），不调 LLM，所以 llmResponses 为空数组（planner 的 LLM 失败是预期行为，方案回退到通用模板）。patchValid=null：离线模式没有模型生成补丁，通用模板不带 patch —— 与「有 patch 但不合法」是两回事，所以用 null 而不是 false。hardTier=2 是 executor 硬规则的判定（模板原判 Tier 1，未命中低风险规则 → 降级为需人工确认）。",
+  "recordedAt": "2026-10-26T15:29:27.703Z"
+}

@@ -477,6 +477,9 @@ like "not needed".
   service degrades instead of blocking.
 - **离线模式**：没有 LLM、没有网络也能检测（见第 14 节）
   **Offline mode**: detects problems with no LLM and no network at all (see section 14).
+- **离线模式有机器守卫**：断网实跑验证"一次外网请求都不发"（`bun run guard:offline`）
+  **The offline mode has a machine guard**: a real disconnected run proves that not a single
+  outbound request is made (`bun run guard:offline`).
 
 **还没有 / 只是占位 / Not there yet**
 
@@ -492,6 +495,11 @@ like "not needed".
 - **离线模式没有 AI 根因分析** —— 只有确定性规则判定，报告里会写明
   **Offline mode has no AI root-cause analysis** — only deterministic rules apply, and the
   report says so explicitly.
+- **离线模式给不出针对性的修法，也落不了 patch** —— 修复方案只有通用模板
+  （"快速修复（绕过/补丁）"这类），因为没有模型来写具体补丁；报告第 11 字段会写明原因
+  **Offline mode offers no targeted fix and cannot land a patch** — the fix options are generic
+  templates ("quick fix (workaround / patch)" and the like), because no model writes a concrete
+  patch; field 11 of the report states the reason.
 
 ---
 
@@ -596,6 +604,54 @@ grep 运行模式 reports/sentinel-latest.md
 grep llmMode reports/sentinel-run-status.json
 ```
 
+**"一次外网请求都不发"这句话有守卫吗？ / Is "not a single outbound request" actually enforced?**
+
+**中文**：有。这条是宪法**红线 8**，并且有专门的守卫脚本证明它 ——
+不是靠实现里的自觉。
+
+```bash
+bun run guard:offline
+```
+
+守卫做四件事，**每件都从被测进程外面取证，不信代码自报**：
+
+| 步骤 | 做法 |
+|---|---|
+| 1. 准备 | 把零依赖夹具 `benchmarks/fixtures/offline-web-app/`（故意注入 5 个缺陷）复制到临时目录 |
+| 2. 断网 | macOS 用 `sandbox-exec` 真断网（只放行本机回环）；其它平台退化为只靠探针，并会明确提示"缺少 OS 层断网" |
+| 3. 取证 | 探针从**进程外**记录每一个出网请求（`fetch` / `http.request` / `https.request`） |
+| 4. 对账 | 出网记录里不允许有非回环地址；`llmRequests=0`；`knowledgeRequests=0`；5 个注入缺陷必须全部检出 |
+
+> 为什么不能只看 `llmRequests`？离线分支根本没挂这个计数器，读它永远是 0 ——
+> 那是个**恒真判据**，看着在守卫，其实什么都没验。所以出网记录必须从外面取。
+
+守卫自己也会失败：注入一个外网 `fetch` → 守卫报错；关掉一条检测规则 → 守卫报"漏检"。
+一个永远通过的守卫等于没有守卫。
+
+**English**：Yes. It is **red line 8** of the constitution, and a dedicated guard proves it —
+it does not rely on the implementation remembering to behave.
+
+```bash
+bun run guard:offline
+```
+
+The guard takes every piece of evidence **from outside the process under test** — it never
+trusts the code's own self-report:
+
+| Step | What it does |
+|---|---|
+| 1. Prepare | Copies the zero-dependency fixture `benchmarks/fixtures/offline-web-app/` (5 deliberately injected bugs) to a temp directory |
+| 2. Cut the network | On macOS, `sandbox-exec` really blocks outbound traffic (loopback only); elsewhere it falls back to the probe alone and says plainly that OS-level blocking is missing |
+| 3. Observe | A probe records every outbound request (`fetch` / `http.request` / `https.request`) from **outside** the process |
+| 4. Reconcile | No non-loopback address may appear; `llmRequests=0`; `knowledgeRequests=0`; all five injected bugs must be detected |
+
+> Why not just read `llmRequests`? The offline branch never attaches that counter, so it always
+> reads 0 — a **vacuously true check** that looks like a guard but verifies nothing. That is why
+> the outbound traffic has to be observed from outside.
+
+The guard can fail too: inject an outbound `fetch` and the guard fails; disable one detection
+rule and the guard reports "not detected". A guard that can never fail is not a guard.
+
 ---
 
 ## 15. 常见报错 / Common Errors
@@ -673,9 +729,18 @@ Sentinel/
 bun run lint:core     # core/ 纯度：不许依赖具体框架/平台 / core purity: no framework or platform dependencies
 bun run lint:lines    # core/ 行数 ≤ 500 / core line count ≤ 500
 bun run lint:spec     # 规范 ↔ 实现 ↔ 运行时 三方对账 / three-way reconciliation of spec, implementation, runtime
+bun run guard:offline # 断网实跑：离线模式不许发外网请求 + 离线检测能力不退化 / offline network guard (runs a real browser pass)
 bun run test          # 全量单测 + 集成测试 / full unit and integration test suite
 bun run test:replay   # 用录制的真实案例回放，验证没有退化 / replay recorded real cases to prove no regression
 ```
+
+`guard:offline` 会跑一次真实浏览器流程（约 1-2 分钟），所以没放进 `lint:spec` ——
+`lint:spec` 必须快。`lint:spec` 里另有**静态断言**检查离线的开关都还在
+（少一个开关就报错），重的部分由 `guard:offline` 单独跑。
+
+`guard:offline` takes about 1-2 minutes because it drives a real browser, so it is not part
+of `lint:spec` (`lint:spec` has to stay fast). `lint:spec` still contains **static assertions**
+that the offline switches are all still in place; the heavy check runs separately.
 
 ### 文档 / Documentation
 

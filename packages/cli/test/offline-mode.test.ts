@@ -60,4 +60,57 @@ describe('离线模式', () => {
     expect(md).toContain('离线');
     expect(md).toContain('确定性规则判定');
   });
+
+  it('模型没参与的结论不许冒充"模型推断"（离线模式 llmRequests=0 却标 llm）', () => {
+    // 真实踩过的坑：离线模式下 analyst 的 LLM 桩抛错 → 回退启发式 →
+    // 这条 finding 根本没经过模型，但 origin 没标 → 报告按 'llm' 计入 by_origin。
+    // 报告于是声称"有模型参与"，而 llmRequests 明明是 0 —— 报告说能做、实际没做。
+    const heuristicBug: BugFinding = {
+      id: 'bug_flow_api_x',
+      title: 'flow_api_x: API GET /api/posts returned 500',
+      severity: 'P2',
+      source: 'api',
+      affectedFeature: 'flow_api_x',
+      symptom: 'boom',
+      reproSteps: ['访问 /api/posts'],
+      evidence: [{ kind: 'console', source: 'browser', timestamp: 1, hash: 'h2', level: 'error', message: 'boom' }],
+      rootCauseStatus: 'hypothesis',
+      origin: 'heuristic',
+      counterEvidence: [],
+      confidence: 0.4,
+      fixOptions: [],
+    };
+
+    const json = reportToJson([heuristicBug], { project: 'demo', llmMode: 'offline' });
+    expect(json.summary.by_origin['heuristic']).toBe(1);
+    // 关键断言：不能被算成模型推断
+    expect(json.summary.by_origin['llm']).toBeUndefined();
+
+    const md = reportToMarkdown([heuristicBug], { project: 'demo', llmMode: 'offline' });
+    expect(md).toContain('启发式判定（未调用模型）');
+  });
+
+  it('三种结论来源在 markdown 里都要标出来', () => {
+    const mk = (origin: BugFinding['origin']): BugFinding => ({
+      id: `bug_${origin}`,
+      title: 't',
+      severity: 'P1',
+      source: 'ui',
+      affectedFeature: 'f',
+      symptom: 's',
+      reproSteps: ['r'],
+      evidence: [{ kind: 'console', source: 'browser', timestamp: 1, hash: `h_${origin}`, level: 'error', message: 'm' }],
+      rootCauseStatus: 'confirmed',
+      ...(origin ? { origin } : {}),
+      rootCause: 'rc',
+      counterEvidence: [],
+      confidence: 0.7,
+      fixOptions: [],
+    });
+
+    const md = reportToMarkdown([mk('rule'), mk('llm'), mk('heuristic')], { project: 'demo' });
+    expect(md).toContain('确定性规则判定');
+    expect(md).toContain('模型推断');
+    expect(md).toContain('启发式判定（未调用模型）');
+  });
 });

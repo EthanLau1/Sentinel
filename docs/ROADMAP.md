@@ -344,16 +344,30 @@ Sentinel 判断 / 是否命中 / 推荐方案 / 是否被采纳
 | 10.5 离线 LLM 桩（调用即抛错，不静默） | ✅ 已落地 |
 | 10.6 报告与 run-status 写明 `llmMode` | ✅ 已落地 |
 | 10.7 verifier 放行规则判定（`origin='rule'`） | ✅ 已落地 |
-| 10.8 断网守卫：离线模式不得发起外网请求 | ⬜ 待做（建议加进 `lint:spec` 或运行时断言） |
-| 10.9 离线模式进 `benchmarks/cases/` 永久留档 | ⬜ 待做 |
+| 10.8 断网守卫：离线模式不得发起外网请求 | ✅ 已落地（`bun run guard:offline`，宪法红线 8） |
+| 10.9 离线模式进 `benchmarks/cases/` 永久留档 | ✅ 已落地（`2026-10-26-007-1..5.json`） |
 
 **完成标准**:
 - 断网（`sandbox-exec` deny network-outbound）下 `sentinel run` 正常产出报告
 - `llmRequests = 0`、`knowledgeRequests = 0`
 - 注入缺陷项目（5 类确定性缺陷）全部被测出
 
-**已验证**（2026-10-26，Next.js 示例项目副本 + 5 处注入缺陷）：
-断网沙箱下 5/5 全部测出，`llmRequests: 0`、`knowledgeRequests: 0`、退出码 1（P1 存在）。
+**已验证**（2026-10-26，零依赖夹具 `benchmarks/fixtures/offline-web-app/` + 5 处注入缺陷）：
+断网沙箱下 5/5 全部测出，`llmRequests: 0`、`knowledgeRequests: 0`、退出码 1（P1 存在）、
+出网记录 1 条且全为回环、`by_origin = {rule: 5, heuristic: 1, llm: 0}`。
+
+**M10 收尾时改掉的两个真问题**：
+
+1. **报告在冒充模型推断** —— 离线时 `by_origin.llm = 1` 但 `llmRequests = 0`：
+   那条 finding 实为 analyst 的启发式降级（LLM 桩抛错后回退），报告却标成"模型推断"。
+   修法：`origin` 从两档增到三档，新增 `heuristic`（模型未参与），报告如实标注。
+2. **"不发外网请求"只是一句承诺** —— 靠实现自觉，没有机检。
+   修法：`bun run guard:offline` 从进程外取证（preload 探针记录每一个出网请求）
+   + macOS `sandbox-exec` 真断网，双向反证过（注入外网请求、破坏检测规则都会让守卫失败）。
+
+**未做（有意留到后面）**：
+- 离线模式下的**修复模板库**（让离线模式给出针对具体 bug 的修法，而不只是通用模板）
+- 离线模式**自动落 patch**（当前 Tier 2 方案在离线时无 patch 可写，报告如实写明原因）
 
 ---
 

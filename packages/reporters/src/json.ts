@@ -13,7 +13,7 @@ export interface JsonReport {
     total: number;
     by_severity: Record<string, number>;
     by_root_cause_status: Record<string, number>;
-    /** 按结论来源分：rule = 确定性规则判定，llm = 模型推断 */
+    /** 按结论来源分：rule = 确定性规则判定，llm = 模型推断，heuristic = 模型未参与的启发式结论 */
     by_origin: Record<string, number>;
   };
   bugs: BugFinding[];
@@ -29,6 +29,7 @@ export function reportToJson(
   for (const b of bugs) {
     by_severity[b.severity] = (by_severity[b.severity] ?? 0) + 1;
     by_root_cause_status[b.rootCauseStatus] = (by_root_cause_status[b.rootCauseStatus] ?? 0) + 1;
+    // 没标 origin = 旧数据，按 'llm' 处理（保持向后兼容）
     const origin = b.origin ?? 'llm';
     by_origin[origin] = (by_origin[origin] ?? 0) + 1;
   }

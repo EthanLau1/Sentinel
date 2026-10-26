@@ -1,0 +1,31 @@
+{
+  "id": "2026-10-26-007-1",
+  "project": "offline-web-app",
+  "feature": "flow_page_home",
+  "stage": "MVP",
+  "symptom": "页面加载后控制台输出 error：离线守卫演示：前端配置加载失败",
+  "realRootCause": "benchmarks/fixtures/offline-web-app/server.js 的 HOME_HTML 里，首页 <script> 块主动调用了 console.error('离线守卫演示：前端配置加载失败')。这是夹具**故意注入**的缺陷 D1，与 Sentinel 无关。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "页面加载后控制台输出 error：离线守卫演示：前端配置加载失败",
+    "confidence": 0.7,
+    "evidenceCount": 1,
+    "evidenceKinds": [
+      "console"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "bug_rule_console-error_cf00a712_fix_quick",
+    "title": "快速修复（绕过/补丁）",
+    "tier": 2,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.5489999999999999
+  },
+  "fixAdopted": false,
+  "fixPassedVerification": false,
+  "notes": "人工确认（2026-10-26）：这是**离线模式**链路的第一批入档案例。真实根因由人工读 benchmarks/fixtures/offline-web-app/server.js 源码核实 —— 缺陷是夹具故意注入的（D1），所以真值唯一确定，不存在\"猜\"的余地。Sentinel 的判断为 confirmed，根因文本（页面加载后控制台输出 error：离线守卫演示：前端配置加载失败）与人工结论一致 → hit=true。修复未采纳（fixAdopted=false）：离线模式没有模型生成补丁，硬规则判 tier=2「需要人工确认」但无可用 patch，未落盘任何改动，fixPassedVerification 相应为 false。证据形态：1 条 console 证据。结论来源 origin=rule（确定性规则判定），不是模型推断 —— 离线模式本次 llmRequests=0。",
+  "createdAt": "2026-10-26T15:29:27.701Z",
+  "sentinelVersion": "0.2.0"
+}

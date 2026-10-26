@@ -1,0 +1,63 @@
+{
+  "caseId": "2026-10-26-007-5",
+  "kind": "contract",
+  "channel": "page.visited",
+  "selectRule": "server-error",
+  "description": "offline-web-app · 首页接口 500（D5）",
+  "input": {
+    "flowId": "flow_page_home",
+    "error": "",
+    "evidence": [],
+    "url": "http://127.0.0.1:3000/",
+    "snapshot": {
+      "url": "http://127.0.0.1:3000/",
+      "title": "离线守卫首页",
+      "console": [
+        {
+          "level": "error",
+          "message": "离线守卫演示：前端配置加载失败"
+        }
+      ],
+      "pageErrors": [],
+      "network": [
+        {
+          "url": "http://127.0.0.1:3000/assets/missing-image.png",
+          "method": "GET",
+          "status": 404,
+          "duration_ms": 12,
+          "failed": true
+        },
+        {
+          "url": "http://127.0.0.1:3000/api/posts",
+          "method": "GET",
+          "status": 500,
+          "duration_ms": 18,
+          "failed": true
+        }
+      ],
+      "meta": {
+        "lang": null,
+        "viewport": "width=device-width, initial-scale=1",
+        "hasTitle": true,
+        "bodyTextLength": 63,
+        "bodyVisible": true
+      }
+    }
+  },
+  "llmResponses": [],
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "/api/posts",
+      "500"
+    ],
+    "fixCount": 3,
+    "severity": "P1",
+    "rule": "server-error",
+    "hardTier": 2,
+    "patchValid": null,
+    "patchApplies": null
+  },
+  "note": "巡检通道夹具（contract）：现场快照按夹具 benchmarks/fixtures/offline-web-app/server.js 的真实注入构造 —— 首页 fetch('/api/posts')，该路由故意返回 500。走 inspector 的 server-error 规则（origin=rule）。修复未落盘：离线模式没有模型生成补丁，方案来自通用模板，模板不带 patch，所以 patchValid=null。",
+  "recordedAt": "2026-10-26T15:29:27.704Z"
+}
