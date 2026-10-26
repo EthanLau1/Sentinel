@@ -54,6 +54,13 @@ describe('Tier 硬规则 — 宪法要求 Tier 不靠 LLM 给', () => {
     expect(classifyTier(opt({ title: 'format file' })).reason).toContain('低风险');
     expect(classifyTier(opt({ title: 'update database migration' })).reason).toContain('数据库迁移');
   });
+
+  it('离线模式：理由不能说"LLM 原判"—— 方案来自模板，没有模型参与', () => {
+    const d = classifyTier(opt({ tier: 1, title: 'refactor logic' }), { offline: true });
+    expect(d.tier).toBe(2);
+    expect(d.reason).toContain('方案模板 原判');
+    expect(d.reason).not.toContain('LLM');
+  });
 });
 
 describe('E20 — 硬规则不得放宽 LLM 的「仅建议」判定', () => {

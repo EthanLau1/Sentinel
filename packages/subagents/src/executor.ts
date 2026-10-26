@@ -90,8 +90,11 @@ const LOW_RISK_RULES: Array<{ re: RegExp; why: string }> = [
   { re: /\bREADME\b|文档|documentation/i, why: '文档' },
 ];
 
-export function classifyTier(opt: FixOption): TierDecision {
+export function classifyTier(opt: FixOption, options?: { offline?: boolean }): TierDecision {
   const llmTier = opt.tier;
+  // 方案是谁给的？在线 = 模型判的；离线 = 通用模板给的。
+  // 报告里必须说对，否则离线模式会出现"LLM 原判"这种根本没发生过的说法。
+  const sourceLabel = options?.offline === true ? '方案模板' : 'LLM';
   const text = [
     opt.title,
     opt.description,
@@ -108,7 +111,7 @@ export function classifyTier(opt: FixOption): TierDecision {
   // 宪法第 58 行「高风险只能建议」：放宽会把架构/安全类改动降级成"写个 patch 等人看"，
   // 那已经越过了 Tier 3 的边界。
   if (llmTier === 3) {
-    return { tier: 3, reason: 'LLM 判定为高风险（Tier 3，仅建议），硬规则不放宽 → 仅建议，不自动改' };
+    return { tier: 3, reason: `${sourceLabel}判定为高风险（Tier 3，仅建议），硬规则不放宽 → 仅建议，不自动改` };
   }
   for (const rule of LOW_RISK_RULES) {
     if (rule.re.test(text)) {
@@ -122,8 +125,9 @@ export function classifyTier(opt: FixOption): TierDecision {
     tier: 2,
     // 措辞必须与实际一致：只有真的从 Tier 1 降下来才写"降级"，
     // 否则 LLM 本来就判 Tier 2 还写"降级"，报告会误导人。
+    // 离线模式同理：方案来自模板，不是模型判的，写"LLM 原判"就是撒谎。
     reason: llmTier === 1
-      ? '未命中任何低风险规则（LLM 原判 Tier 1）→ 降级为需人工确认'
+      ? `未命中任何低风险规则（${sourceLabel} 原判 Tier 1）→ 降级为需人工确认`
       : '未命中任何低风险规则 → 需人工确认',
   };
 }
@@ -483,6 +487,12 @@ export interface ExecutorConfig {
   autoApply?: boolean;
   /** 是否允许生成 PR（默认 false） */
   createPr?: boolean;
+  /**
+   * 离线模式（没有模型）—— 只影响**措辞**：
+   * 离线时方案来自通用模板，不是模型生成的，
+   * 报告里再写"LLM 原判 Tier 1"就是撒谎。
+   */
+  offline?: boolean;
 }
 
 export function createExecutor(config: ExecutorConfig = {}): Subagent {
@@ -493,6 +503,11 @@ export function createExecutor(config: ExecutorConfig = {}): Subagent {
   const projectRoot = config.projectRoot ? resolve(config.projectRoot) : undefined;
   const autoApply = config.autoApply === true;
   const createPr = config.createPr === true;
+  // 没有 patch 的原因要说准：离线时压根没有模型来生成补丁，
+  // 说成"LLM 未产出"会让人以为模型试过了但失败。
+  const noPatchReason = config.offline === true
+    ? '离线模式没有模型生成补丁'
+    : 'LLM 未产出或格式非法';
   /** 已应用 patch 的备份 —— 验证不通过时按它还原 */
   const appliedBackups = new Map<string, { root: string; backup: Map<string, string | null> }>();
 
@@ -525,8 +540,8 @@ export function createExecutor(config: ExecutorConfig = {}): Subagent {
 
       ctx.bus.subscribe<{ bug: import('@sentinel/core').BugFinding; options: FixOption[] }>('fix.enhanced', async (event) => {
         for (const opt of event.payload.options) {
-          // Tier 由硬规则判定 —— 不采信 LLM 给的 tier
-          const decision = classifyTier(opt);
+          // Tier 由硬规则判定 —— 不采信方案里自带的 tier
+          const decision = classifyTier(opt, { offline: config.offline === true });
           const tier = decision.tier;
 
           await ctx.bus.publish({
@@ -570,7 +585,7 @@ export function createExecutor(config: ExecutorConfig = {}): Subagent {
             // 原来这里四个分支全不命中 → 静默跳过：报告第 11 字段写着
             // "Tier 1 — 自动修"，磁盘上既没有补丁也没改过代码，
             // 而 run-status 里 rejectedPatches 也是空的 —— 查不到任何原因。
-            await rejectFix(ctx, opt, event.traceId, 'Tier 1 方案没有可用 patch（LLM 未产出或格式非法）→ 未落盘、未修改代码');
+            await rejectFix(ctx, opt, event.traceId, `Tier 1 方案没有可用 patch（${noPatchReason}）→ 未落盘、未修改代码`);
           } else if (tier === 2 && opt.patch) {
             await writePatchFile(ctx, opt, event.traceId);
             // 只给推荐方案建 PR —— 一个 bug 对应一个 PR，否则会一次推多个 PR
@@ -581,9 +596,9 @@ export function createExecutor(config: ExecutorConfig = {}): Subagent {
               await handlePr(ctx, opt, projectRoot, event.traceId);
             }
           } else if (tier === 2) {
-            // Tier 2 但 LLM 没给 patch → 也要说出来（否则报告说"Tier 2 写 patch"，
+            // Tier 2 但没有 patch → 也要说出来（否则报告说"Tier 2 写 patch"，
             // 磁盘上什么都没有）
-            await rejectFix(ctx, opt, event.traceId, 'Tier 2 方案没有可用 patch（LLM 未产出或格式非法）→ 未落盘');
+            await rejectFix(ctx, opt, event.traceId, `Tier 2 方案没有可用 patch（${noPatchReason}）→ 未落盘`);
           } else if (tier === 3) {
             await writeSuggestion(ctx, opt, event.traceId);
           }

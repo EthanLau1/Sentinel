@@ -458,6 +458,8 @@ export async function runRun(): Promise<number> {
       // 改用户源码、推分支、开 PR 都是对外部状态的可见改动 —— 必须显式开启
       autoApply: opts.autoFix === true,
       createPr: opts.createPr === true,
+      // 离线模式：方案来自模板而不是模型，报告措辞要跟着变
+      offline,
     }),
   );
   subagents.push(captureSub);
@@ -673,7 +675,7 @@ async function writeReports(
     const md = reportToMarkdown(
       bugs,
       { project: root.split('/').pop() ?? 'project', llmMode },
-      { tierDecisions },
+      { tierDecisions, llmMode },
     );
     await writeFile(join(dir, 'sentinel-latest.md'), md, 'utf8');
   }

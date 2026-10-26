@@ -213,6 +213,21 @@ describe('Tier 判定用硬规则的结果，而不是 LLM 自报的', () => {
     expect(md).toContain('Tier 1');
   });
 
+  it('离线模式不说"LLM 原判" —— 离线时方案来自模板，不是模型', () => {
+    const bugs = applyTierDecisions([bugWithTier(1)], [
+      { fixId: 'fix1', tier: 2, reason: '未命中任何低风险规则（方案模板 原判 Tier 1）→ 降级为需人工确认', llmTier: 1 },
+    ]);
+    const md = reportToMarkdown(
+      bugs,
+      { llmMode: 'offline' },
+      { llmMode: 'offline', tierDecisions: [
+        { fixId: 'fix1', tier: 2, reason: '未命中任何低风险规则（方案模板 原判 Tier 1）→ 降级为需人工确认', llmTier: 1 },
+      ] },
+    );
+    expect(md).toContain('方案模板 原判 Tier 1');
+    expect(md).not.toContain('LLM 原判');
+  });
+
   it('applyTierDecisions 只改匹配的 fixId', () => {
     const bugs = applyTierDecisions([bugWithTier(1)], [{ fixId: 'other', tier: 3, reason: 'x' }]);
     expect(bugs[0]!.fixOptions[0]!.tier).toBe(1);

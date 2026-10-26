@@ -9,8 +9,10 @@ import { findTierDecision, type TierDecisionRecord } from './tier.js';
 
 /** 报告选项：带上 executor 硬规则的 tier 判定（决定实际会不会改代码） */
 export interface MarkdownOptions {
-  /** executor 的硬规则判定结果 —— 报告必须展示它，而不是 LLM 自报的 tier */
+  /** executor 的硬规则判定结果 —— 报告必须展示它，而不是方案自报的 tier */
   tierDecisions?: TierDecisionRecord[];
+  /** 运行模式：offline 时方案来自模板而不是模型，措辞要跟着变 */
+  llmMode?: 'llm' | 'offline';
 }
 
 export function bugToMarkdown(bug: BugFinding, opts: MarkdownOptions = {}): string {
@@ -93,8 +95,10 @@ export function bugToMarkdown(bug: BugFinding, opts: MarkdownOptions = {}): stri
     const tier = decision?.tier ?? recommended.tier;
     const tierDesc = ['只报告', '自动修', '写 patch 待审核', '仅建议'][tier];
     const reason = decision ? `（依据：${decision.reason}）` : '';
+    // 离线模式没有模型，方案来自通用模板 —— 写"LLM 原判"是撒谎
+    const sourceLabel = opts.llmMode === 'offline' ? '方案模板' : 'LLM';
     const mismatch = decision?.llmTier !== undefined && decision.llmTier !== tier
-      ? ` [LLM 原判 Tier ${decision.llmTier}，硬规则已降级]`
+      ? ` [${sourceLabel} 原判 Tier ${decision.llmTier}，硬规则已降级]`
       : '';
     lines.push(`**11. 是否可自动修**: Tier ${tier} — ${tierDesc}${reason}${mismatch}`);
   } else {
