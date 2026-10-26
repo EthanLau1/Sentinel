@@ -77,7 +77,7 @@
 | `patch.generated` | executor | reporter | `{ fixId: string, files: string[], applied: boolean, approvalRequired: boolean }`（落盘待审，未应用） |
 | `patch.rejected` | executor | reporter | `{ fixId: string, reason: string }`（补丁被拒：不在白名单 / 应用失败 / 格式非法 / 落盘失败 / 超出 maxTier / Tier 2 无可用 patch） |
 | `patch.reverted` | executor | reporter | `{ fixId: string, files: string[], flowId?: string, reason: string }`（修复后重跑仍失败 → 已回滚） |
-| `pr.created` | executor | reporter | `{ fixId: string, title: string, dryRun: boolean }` |
+| `pr.created` | executor | reporter | `{ fixId: string, title: string, url?: string, branch?: string }`（真实建好的 PR；地址与分支都可能为空） |
 | `report.ready` | reporter | cli | `{ path: string }` |
 
 ### 监控/调度

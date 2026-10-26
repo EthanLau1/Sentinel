@@ -27,7 +27,10 @@ export interface RejectedPatch {
 export interface CreatedPr {
   fixId: string;
   title: string;
-  dryRun: boolean;
+  /** 真实 PR 的地址（`gh pr create` 输出） */
+  url?: string;
+  /** 承载修复的分支名 */
+  branch?: string;
 }
 
 export interface BudgetExceededInfo {
@@ -50,7 +53,7 @@ export interface StatusEventCollector {
   onTierDecided(payload: { fixId: string; tier: 0 | 1 | 2 | 3; reason: string; llmTier?: number }): void;
   onPatchGenerated(payload: { fixId: string; files: string[]; applied: boolean; approvalRequired: boolean }): void;
   onPatchRejected(payload: { fixId: string; reason: string }): void;
-  onPrCreated(payload: { fixId: string; title: string; dryRun: boolean }): void;
+  onPrCreated(payload: { fixId: string; title: string; url?: string; branch?: string }): void;
   onBudgetExceeded(payload: { kind: string; limit: number }): void;
   onEvidenceFailed(payload: { error: string; kind: string }): void;
 }
@@ -89,7 +92,12 @@ export function createStatusEventCollector(): StatusEventCollector {
       rejectedPatches.push({ fixId: payload.fixId, reason: payload.reason });
     },
     onPrCreated(payload) {
-      createdPrs.push({ fixId: payload.fixId, title: payload.title, dryRun: payload.dryRun });
+      createdPrs.push({
+        fixId: payload.fixId,
+        title: payload.title,
+        ...(payload.url !== undefined && { url: payload.url }),
+        ...(payload.branch !== undefined && { branch: payload.branch }),
+      });
     },
     onBudgetExceeded(payload) {
       budgetExceeded.push({ kind: payload.kind, limit: payload.limit });

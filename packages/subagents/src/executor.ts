@@ -9,7 +9,7 @@
  * 红线：
  *   - **Tier 由硬规则判定**（classifyTier），不采信 LLM 给的 tier
  *   - 只改被测项目，且只改白名单文件类型
- *   - 永远不直接 push 到受保护分支；PR 由独立分支承载
+ *   - 永远不直接 push 到受保护分支；PR 走**新建的独立分支**（sentinel/fix-*）
  *   - 改动前备份原文件，验证不通过自动还原
  *   - 数据库迁移 / 权限 / 凭据相关一律降级为 Tier 3（仅建议）
  */
@@ -647,6 +647,27 @@ async function handleTier1(
   });
 }
 
+/** PR 分支名：fixId 可能带非法字符，先净化 */
+function prBranchName(fixId: string): string {
+  const safe = fixId.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  return `sentinel/fix-${safe || 'unknown'}`;
+}
+
+/**
+ * 真正建一个 PR（Tier 2，需人工审查）。
+ *
+ * 为什么要真做：之前这里写死了 `gh pr create --dry-run`，
+ * 于是 CLI 的 `--create-pr` 传了也没用 —— 报告写着"已建 PR"，
+ * 磁盘上什么都没有（"报告说能做、实际没做"）。
+ * 现在 `--create-pr` = 真的建 PR，链路是：
+ *   建独立分支 → 应用补丁 → 提交 → 推送分支 → gh pr create → 切回原分支
+ *
+ * 红线：
+ *   - 只推**新建的分支**，绝不推当前分支（受保护分支）
+ *   - 目标文件必须过白名单（isAllowedTarget）
+ *   - 被改动的**已跟踪文件**必须没有未提交改动（否则会把用户的半成品混进 PR）
+ *   - 任何一步失败都要切回原分支并说清楚原因，不留半成品状态
+ */
 async function handlePr(
   ctx: KernelContext,
   opt: FixOption,
@@ -655,19 +676,113 @@ async function handlePr(
 ): Promise<void> {
   const title = `chore(sentinel): ${opt.title}`;
   const body = `${opt.description}\n\n${opt.whyRecommended ?? ''}\n\n---\n由 Sentinel 自动生成（Tier 2，需人工审查）`;
-  const gh = await runCommand(projectRoot, 'gh', ['pr', 'create', '--title', title, '--body', body, '--dry-run']);
-  if (gh.code !== 0) {
-    await ctx.bus.publish({
-      type: 'patch.rejected',
-      payload: { fixId: opt.id, reason: `gh pr create 失败：${gh.stderr.slice(0, 300)}` },
-      source: 'executor',
-      traceId,
-    });
+
+  if (!opt.patch || !validPatch(opt.patch)) {
+    await rejectFix(ctx, opt, traceId, 'Tier 2 方案没有合法 patch → 未建 PR');
     return;
   }
+  const targets = patchTargets(opt.patch);
+  for (const t of targets) {
+    const check = isAllowedTarget(t);
+    if (!check.allowed) {
+      await rejectFix(ctx, opt, traceId, `PR 涉及不允许改动的文件（${t}）：${check.reason} → 未建 PR`);
+      return;
+    }
+  }
+
+  // ── 前置检查：仓库状态、远端、gh ──────────────────────────────────────
+  const inRepo = await runCommand(projectRoot, 'git', ['rev-parse', '--show-toplevel']);
+  if (inRepo.code !== 0) {
+    await rejectFix(ctx, opt, traceId, '被测目录不是 git 仓库 → 未建 PR');
+    return;
+  }
+  // 只看已跟踪文件的改动：未跟踪文件不会被我们提交（只 add 补丁涉及的文件）
+  const dirty = await runCommand(projectRoot, 'git', ['status', '--porcelain', '--untracked-files=no']);
+  if (dirty.stdout.trim() !== '') {
+    await rejectFix(
+      ctx, opt, traceId,
+      `工作区有未提交的改动（${dirty.stdout.trim().split('\n')[0]}）→ 未建 PR（避免把无关改动混进 PR）`,
+    );
+    return;
+  }
+  const currentRes = await runCommand(projectRoot, 'git', ['rev-parse', '--abbrev-ref', 'HEAD']);
+  const currentBranch = currentRes.stdout.trim();
+  const remote = await runCommand(projectRoot, 'git', ['remote', 'get-url', 'origin']);
+  if (remote.code !== 0) {
+    await rejectFix(ctx, opt, traceId, '没有 origin 远端 → 未建 PR');
+    return;
+  }
+  const gh = await runCommand(projectRoot, 'gh', ['--version']);
+  if (gh.code !== 0) {
+    await rejectFix(ctx, opt, traceId, '找不到 gh CLI → 未建 PR');
+    return;
+  }
+
+  // 基础分支：优先用 origin/HEAD，认不出来就用当前分支
+  const baseRes = await runCommand(projectRoot, 'git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
+  const base = baseRes.code === 0 ? baseRes.stdout.trim().replace(/^origin\//, '') : currentBranch;
+
+  // ── 建分支 → 应用补丁 → 提交 → 推送 → 建 PR ───────────────────────────
+  const branch = prBranchName(opt.id);
+  const sw = await runCommand(projectRoot, 'git', ['switch', '-c', branch]);
+  if (sw.code !== 0) {
+    await rejectFix(ctx, opt, traceId, `创建分支 ${branch} 失败 → 未建 PR：${(sw.stderr || sw.stdout).slice(0, 200)}`);
+    return;
+  }
+
+  const applied = await applyPatch(projectRoot, opt.patch, targets);
+  if (!applied.applied) {
+    await restoreBackup(projectRoot, applied.backup);
+    await runCommand(projectRoot, 'git', ['switch', currentBranch]);
+    await rejectFix(ctx, opt, traceId, `补丁应用失败 → 未建 PR：${(applied.error ?? '').slice(0, 200)}`);
+    return;
+  }
+
+  await runCommand(projectRoot, 'git', ['add', '--', ...targets]);
+  const commit = await runCommand(projectRoot, 'git', ['commit', '-m', title]);
+  if (commit.code !== 0) {
+    await restoreBackup(projectRoot, applied.backup);
+    await runCommand(projectRoot, 'git', ['reset', '-q']);
+    await runCommand(projectRoot, 'git', ['switch', currentBranch]);
+    await rejectFix(
+      ctx, opt, traceId,
+      `git commit 失败 → 未建 PR：${(commit.stderr || commit.stdout).slice(0, 200)}（git 需要先配置 user.email / user.name）`,
+    );
+    return;
+  }
+
+  const push = await runCommand(projectRoot, 'git', ['push', '-u', 'origin', branch]);
+  if (push.code !== 0) {
+    await runCommand(projectRoot, 'git', ['switch', currentBranch]);
+    await rejectFix(
+      ctx, opt, traceId,
+      `推送分支失败 → 未建 PR：${(push.stderr || push.stdout).slice(0, 200)}（分支 ${branch} 已在本地提交，可手动建 PR）`,
+    );
+    return;
+  }
+
+  const pr = await runCommand(
+    projectRoot, 'gh',
+    ['pr', 'create', '--base', base, '--head', branch, '--title', title, '--body', body],
+  );
+  if (pr.code !== 0) {
+    await runCommand(projectRoot, 'git', ['switch', currentBranch]);
+    await rejectFix(
+      ctx, opt, traceId,
+      `gh pr create 失败 → 未建 PR：${(pr.stderr || pr.stdout).slice(0, 200)}（分支 ${branch} 已推送，可手动建 PR）`,
+    );
+    return;
+  }
+  const url = pr.stdout.trim().split('\n').filter((l) => l.trim() !== '').pop()?.trim() ?? '';
+
+  // 用户的检出状态复原：修复内容留在 PR 分支上，工作区回到原分支
+  if (currentBranch && currentBranch !== 'HEAD') {
+    await runCommand(projectRoot, 'git', ['switch', currentBranch]);
+  }
+
   await ctx.bus.publish({
     type: 'pr.created',
-    payload: { fixId: opt.id, title, dryRun: true },
+    payload: { fixId: opt.id, title, url, branch },
     source: 'executor',
     traceId,
   });

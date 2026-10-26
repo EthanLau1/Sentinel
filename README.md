@@ -71,6 +71,8 @@ For power users who prefer the terminal:
 | `sentinel run --project=/path` | Full debug pipeline |
 | `sentinel run --demo` | 3 hardcoded sample reports (no LLM key, no real bug detection) |
 | `sentinel run --tier 0` | Report only, no patches |
+| `sentinel run --auto-fix` | Allow Tier 1 to actually edit the target project's source (changes are backed up and auto-reverted if the re-check fails) |
+| `sentinel run --create-pr` | For the recommended Tier 2 fix: create a branch, commit the patch, push it and open a real PR with `gh` (external action — only with this flag) |
 | `sentinel map --project=/path` | Generate FeatureMap only |
 | `sentinel doctor` | Check environment & config |
 | `sentinel hello` | Test LLM connectivity |

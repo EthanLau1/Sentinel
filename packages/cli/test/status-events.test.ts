@@ -35,10 +35,11 @@ describe('run 过程事件收集器', () => {
     expect(c.rejectedPatches[0]!.reason).toContain('白名单');
   });
 
-  it('PR 记录 dry-run 标志', () => {
+  it('PR 记录地址与分支', () => {
     const c = createStatusEventCollector();
-    c.onPrCreated({ fixId: 'fix1', title: 't', dryRun: true });
-    expect(c.createdPrs[0]!.dryRun).toBe(true);
+    c.onPrCreated({ fixId: 'fix1', title: 't', url: 'https://github.com/o/r/pull/7', branch: 'sentinel/fix-fix1' });
+    expect(c.createdPrs[0]!.url).toBe('https://github.com/o/r/pull/7');
+    expect(c.createdPrs[0]!.branch).toBe('sentinel/fix-fix1');
   });
 
   it('预算超限记录是哪一项、上限是多少', () => {

@@ -360,8 +360,8 @@ export async function runRun(): Promise<number> {
       ctx.bus.subscribe<{ fixId: string; reason: string }>('patch.rejected', (e) => {
         statusEvents.onPatchRejected(e.payload);
       });
-      // PR —— 建了哪个 PR、是不是 dry-run
-      ctx.bus.subscribe<{ fixId: string; title: string; dryRun: boolean }>('pr.created', (e) => {
+      // PR —— 建了哪个 PR、地址与分支
+      ctx.bus.subscribe<{ fixId: string; title: string; url?: string; branch?: string }>('pr.created', (e) => {
         statusEvents.onPrCreated(e.payload);
       });
       // 预算超限 —— 哪一项超了、上限是多少
