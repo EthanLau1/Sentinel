@@ -1,0 +1,49 @@
+{
+  "id": "2026-10-26-006-1",
+  "project": "nextjs-blog",
+  "feature": "flow_page_page_0",
+  "stage": "MVP",
+  "symptom": "访问 /posts 时：Page http://127.0.0.1:3000/posts returned HTTP 500",
+  "realRootCause": "app/posts/page.tsx 里声明的是 const posts = [...] 数组，JSX 中却写成 {postList.map((p) => (}；postList 在该文件及作用域内从未声明（已读源码核实），Next.js 服务端渲染时求值即抛 ReferenceError: postList is not defined，导致 /posts 返回 HTTP 500。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "confirmed",
+    "rootCause": "app/posts/page.tsx 中声明了 posts，却在渲染时调用未定义的 postList.map，触发服务器端 ReferenceError，导致 /posts 返回 HTTP 500。",
+    "confidence": 0.97,
+    "evidenceCount": 6,
+    "evidenceKinds": [
+      "console",
+      "screenshot",
+      "a11y",
+      "network",
+      "file"
+    ]
+  },
+  "hit": true,
+  "recommendedFix": {
+    "id": "fix-post-list-typo",
+    "title": "在 app/posts/page.tsx 将 postList.map 修正为 posts.map",
+    "tier": 1,
+    "effort": "low",
+    "risk": "low",
+    "score": 0.7489999999999999
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "notes": "人工确认（2026-10-26）：真实根因由人工读 app/posts/page.tsx 源码核实；Sentinel 的判断为 confirmed，根因文本（引用未定义的 postList → ReferenceError → HTTP 500）与人工结论一致 → hit=true。修复被采纳：run17 用 --auto-fix 真把 patch 应用到了 app/posts/page.tsx（postList.map → posts.map），run-status.json 的 appliedPatches 有记录。验证通过：修复后重跑该 flow 成功（flows 由 1 passed / 2 failed 变为 2 passed / 2 failed），且改后文件引用的是确实存在的 posts 数组。这是本库第一个带「采纳 + 验证通过」真值数据的真实外部案例。硬规则 tier=1（命中低风险规则「拼写」→ 可自动修）。",
+  "createdAt": "2026-10-26T08:48:38.301Z",
+  "sentinelVersion": "0.2.0",
+  "replayExpectation": {
+    "rootCauseContains": [
+      "app/posts/page.tsx",
+      "postList",
+      "posts"
+    ],
+    "recommendedTitleContains": [
+      "postList",
+      "posts"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "note": "关键词由人工指定：根因必须同时点名文件与出错变量；方案标题必须点名被修的标识符。"
+  }
+}

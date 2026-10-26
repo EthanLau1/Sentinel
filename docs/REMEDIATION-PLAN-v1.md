@@ -440,7 +440,7 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 | **2** | L4a 报告层/检索层补测试 + 门槛 | ✅ 完成 | reporters 94.28%、knowledge 100%；`vitest.config.ts` 已设 ≥70% 门槛（实测生效） |
 | **3** | L3 闭环层 | ✅ 主要判据达成 | **run17 实测**：Tier 1 真改码（`app/posts/page.tsx` 的 `postList.map` → `posts.map`）+ 修复后重跑通过（flows 1 → **2 passed**）+ Tier 2 patch 真落盘 + 报告第 11 字段写硬规则 tier 与理由。回滚路径有单测覆盖（真实 run 里修复成功故未触发回滚）；**PR 仍只到 `--dry-run`**（真实建 PR 属外部可见动作，需单独授权） |
 | **4** | L5 宪法 v1.2 | ✅ 完成 | `docs/CONSTITUTION.md` 升 v1.2 + `docs/CONSTITUTION-CHANGES.md`（8 条处置逐条写明） |
-| **5** | benchmark 回测 + 真实案例 | 🟡 部分 | `validateCase` 已进 `npm test`（5 个用例）；统计脚本可跑；**真实外部案例仅 1 个项目**，距离"≥30 条 / 外部 ≥20"差得远 —— 见 §13.4 |
+| **5** | benchmark 回测 + 真实案例 | 🟡 部分（机制齐了，量不够） | `validateCase` 已进 `npm test`；统计脚本可跑（6 条案例，真实外部 3 条，**含 1 条带真值「采纳 + 验证通过」的数据**）；**可重放回测机制已建好**（§13.6：录制/回放/期望值/回归测试，第 1 个夹具已录）—— 距离"≥30 条 / 外部 ≥20"还差 **20 个真实项目**（需你提供） |
 
 ### 13.2 执行中新发现的 11 个缺陷（不在原 34 项里）
 
@@ -458,7 +458,7 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 | **E13**【P1】 | **planner 的方案解析失败 → 报告里是"与本项目无关的通用话术"** | run10 真实 run：报告第 7 字段是"快速修复（绕过/补丁）"—— 看着有方案，其实对 `app/posts/page.tsx` 毫无参考价值 | planner 的**单次**调用同时要求"输出 JSON 数组"和"追加 unified diff 段"。MiniMax-M3 在这种双重约束下输出英文推理散文（"impossible to only output JSON array…"），`extractJson` 的 4 级兜底全失败 → 回退到 `heuristicPlan` 的通用模板。**警告有打出来，但 warn 不等于有用** | 拆成**两次调用，一次只要求一件事**：第 1 步只要 JSON 数组（字段少、无嵌套、无 diff）→ 解析几乎必成功；第 2 步单独要 unified diff（纯文本，零转义）。prompt 极简化并要求 `description` 点名真实文件路径；patch 失败只影响自动修复，不影响方案本身；新增 7 个测试 |
 | **E14**【P1（口径）】 | **`maxTokensPerRequestObserved` 与配置上限不是同一个口径 → 数字看着"超限"其实不是** | run10：`单次最多 9766 tokens` vs 配置上限 8000，看着像护栏失效 | `max_tokens` 参数限制的是**输出** token，而统计记的是 `usage.totalTokens`（输入+输出）。两个口径被塞进同名字段并列对比 | 拆成 `maxCompletionTokensObserved`（输出，与配置上限同口径）和 `maxTotalTokensObserved`（总计，用于算预算上界）；控制台输出写明口径；宪法第 6 条同步；**新增守卫第 14 组**（宪法条款里的字段名 × `run.ts` 实际写出的字段）—— 改名从此不会漏掉规范同步 |
 
-#### 第二轮（真实 run 验收阶段）新发现的 10 个缺陷
+#### 第二轮（真实 run 验收阶段）新发现的 11 个缺陷
 
 > 第一轮 E4–E14 是"把方案跑起来"暴露的；第二轮 E15–E21 是**在真实项目上验证闭环**时暴露的。
 > 共同特征：**报告说的和实际做的不一致** —— 报告说能改码、实际没改；报告说 Tier 2、
@@ -476,6 +476,7 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 | **E22**【P1（可靠性）】 | **planner 的 JSON 输出撞上 `max_tokens` 被截断 → 方案退化成通用模板** | run15：`planner: 方案 JSON 解析失败`（`Unterminated string`），报告里第 2 条 bug 的推荐方案变成"快速修复（绕过/补丁）"——跟本项目毫无关系 | 模型的 `<think>` 推理块吃掉了输出预算（run14 用了 7921/8000，** chronically 贴着上限**），JSON 在中途被切断。5 级兜底全失败 → `heuristicPlan` 通用模板顶上。**模型本来已经写出了真实方案** | 新增 `salvageTruncatedJsonArray()`：截断时保住**已经写完的那几个对象**（找到最后一个完整闭合的顶层对象，砍掉残缺部分并闭合数组），作为第 6 级兜底；planner 不再因为"方案不足 3 个"就把真方案全扔掉换成模板，而是**保留真方案 + 用模板补足数量** |
 | **E23**【P1】 | **LLM 产的 diff 格式不精确 → 补丁被判"格式非法" → 产物落不了盘** | run15：`fix-post-list-call-site` 有 patch，但 `rejectedPatches` 写"patch 格式非法"。看原文发现两处问题：① `<think>` 推理块里先写了一遍示例 diff，残渣混在前面；② hunk 头声明 `@@ -9,7 +9,7 @@`，实际只给了 5 行 | `extractDiff` 从第一个 `---` 开始截（推理残渣里的示例 diff 被当成正文）；`validPatch` 是严格校验器，hunk 计数对不上就整份拒绝。**内容其实是对的，只是格式不准** | 新增 `packages/subagents/src/diff.ts` 的 `normalizePatch()`：按实际内容**重算每个 hunk 头的行数**（行号起点不动，git apply 本身允许偏移匹配）；`extractDiff` 先剥 `<think>` 残渣再截 diff。用 run15 的真实输出做回归样本 |
 | **E24**【P0（一个字符）】 | **patch 结尾少一个换行 → `git apply` 报 `corrupt patch` → Tier 1 自动修复整条路径失效** | run16：Tier 1 **已经触发**（补丁形状规则命中 `fix-posts-use-existing-posts-array`），但 `git apply --check 失败：error: corrupt patch at line 11`；line 11 正是 patch 的**最后一行** | LLM 输出的 diff 末尾没有换行。`git apply` 要求 patch 以换行结束，少一个换行就认为最后一行不完整。**这个错在静态校验里查不出来** —— `validPatch` 认为它是合法的，只有真跑 git 才暴露。一个换行字符，让"报告说能改码"和"实际没改"彻底分裂 | `normalizePatch()` 统一补结尾换行；`applyPatch()` 在调用 git 前再 `ensureTrailingNewline()` 兜底（防御：patch 可能来自 planner 之外的路径）；新增端到端用例（真实 git 仓库 + 缺换行的 patch → 真的被应用） |
+| **E25**【P0】 | **零上下文的 diff 被 git 默认拒绝 → LLM 的「最小补丁」永远应用不了** | 回测里录到的真实 patch 是 `@@ -12,1 +12,1 @@`（只有 -/+ 一行，没有任何上下文）；`git apply --check` 报 "patch does not apply" | LLM 改一行时经常只输出那一行。**git 默认不接受零上下文的 diff** —— 必须加 `--unidiff-zero`，但那样 git **不校验上下文**，行号一过期就改错地方，对"自动改用户代码"太危险 | 新增 `expandZeroContextHunks()`：读目标文件，把 hunk 前后的**真实内容**补成上下文行，让 git 自己去校验（内容对不上就拒绝，安全；行号过期也没关系，git 本就允许偏移匹配）。**不用 `--unidiff-zero`**。配套修掉两个细节：文件末尾换行 split 出的空串不是真实的一行（补上下文会多一行空白）；补完后必须补结尾换行 |
 
 
 ### 13.3 真实 run 的前后对比（同一项目 `examples/nextjs-blog`）
@@ -519,8 +520,59 @@ benchmark 案例需要**真实项目 + 人工确认根因**，这是唯一无法
    且**把自反案例（sentinel-self）与真实外部案例分开算** —— 混算会把数字抬高到没有参考价值
 3. ✅ 真实外部案例开始积累（见 §13.5）
 4. ⬜ **案例总数 30 / 外部 20** —— 需要你提供 20 个可测的真实项目
-5. ⬜ **"回测全部历史 case 确认未退化"** —— 现有 3 条是静态归档，**不可重放**；
-   真正的回测需要"项目快照 + 期望输出"的可重放 case。这是本方案留下的最大缺口。
+5. ✅ **"回测全部历史 case 确认未退化"** 的**机制**已建好（见 §13.6）：
+   可重放夹具 + 期望值 + 回测执行器 + 回归测试。
+   剩下的只是**把更多真实案例录成夹具**（每个案例录一次，约 4 次 LLM 调用）。
+
+### 13.6 可重放回测（批5 剩下的那块，已建好）
+
+**为什么必须有**：§7 要求「在 benchmark/ 重跑全部历史 case 确认未退化」，
+而 `benchmarks/cases/*.json` 是**静态记录**（跑一次就冻结）——
+改坏了代码它照样"通过"，证明不了任何东西。
+
+**怎么做的**：把真实 run 里**模型的回复录下来**，之后用录制的回复重跑整条决策链
+（analyst → critic → verifier → planner → enhancer → executor），再比对产出。
+
+**它守住的是什么**：**不是模型能力**（回复是录制的，模型没变），而是**决策层**——
+也就是最容易出现"报告说的和实际做的不一致"的地方：
+
+| 决策层环节 | 对应缺陷 | 回测怎么发现退化 |
+|---|---|---|
+| JSON 解析兜底（think 块剥离、截断抢救） | E5 / E22 | 根因状态从 confirmed 变成 (无) |
+| planner 两步协议 + diff 规范化 | E13 / E23 / E24 | 推荐方案没有 patch / patch 非法 |
+| 零上下文 hunk 补上下文 | E25 | 补丁在快照上应用失败 |
+| Tier 硬规则 | E18 / E20 / E21 | 硬规则 tier 与期望不符 |
+| 报告第 11 字段取硬规则 tier | E15 | 报告字段与 tierDecisions 不一致 |
+
+**新增的东西**：
+
+| 文件 | 作用 |
+|---|---|
+| `packages/cli/src/replay.ts` | 回测执行器：回放模式（用录制的回复）+ 录制模式（用真实 provider 并记录） |
+| `scripts/record-replay.mjs` | 录制夹具：从真实 run 产物 + 人工确认的案例生成 |
+| `scripts/replay-benchmarks.mjs` | 跑全部夹具，输出「未退化」报告，退出码 1 = 有退化 |
+| `packages/cli/test/benchmark-replay.test.ts` | **回测进 `npm test`**（8 个用例，含"没有夹具就是恒真判据"的反断言） |
+| `benchmarks/replay/2026-10-26-006-1.json` | 第 1 个夹具（录了 4 条真实回复，带项目快照） |
+
+**期望值从哪来（关键）**：**不是**从录制时的产出里抄的 —— 那样会永远"通过"（恒真判据）。
+它来自**人工确认的案例**：
+- `rootCauseStatus` ← 案例的 `sentinelJudgment`
+- 关键词 ← **人工写进案例的 `replayExpectation`**（根因必须点名文件与出错变量；方案标题必须点名被修的标识符）
+- `fixCount` ← 3（planner 的契约）
+- `hardTier` ← 案例的 `recommendedFix.tier`（归档时取自硬规则判定，不是 LLM 自报值）
+- `patchApplies` ← 该案例的推荐方案确实带合法 patch 并被应用过
+
+**反证实测**（逐个把决策层改坏，回测必须报错）：
+
+| 改坏什么 | 回测的反应 |
+|---|---|
+| `classifyTier` 恒返回 2 | `硬规则 tier：期望 1，实际 2` |
+| think 块剥离失效 | `根因状态：期望 confirmed，实际 (无)` |
+| `expandZeroContextHunks` 失效 | `补丁能否应用到快照：期望 true，实际 false` |
+
+**覆盖边界**：目前只有 **1 个夹具**（1 个真实外部项目的 1 条 bug）。
+夹具数量 = 已归档的**可重放**案例数，不是全部案例数；
+静态案例（`benchmarks/cases/`）目前 6 条，仍不可重放。
 
 ### 13.5 覆盖边界（不宣称完整）
 
@@ -532,5 +584,7 @@ reporters 与 knowledge 覆盖率 · 宪法 v1.2 · benchmark schema 校验与�
 
 **本轮未覆盖**：HTML reporter（v2）· `packages/sensors`（死包，未处理）·
 `adapters` 12 个零测试 · `cli`/`providers`/`subagents` 覆盖率门槛 ·
-真实项目上的**自动改码端到端验证**（批3）· benchmark 可重放回测 ·
-多 agent 并发 · 真实项目根因命中率（当前只有 1 个项目的 2 条样本）
+多 agent 并发 · 真实项目根因命中率（当前只有 1 个项目的 3 条样本）· 回测夹具只有 1 条
+
+**本轮已补上（原"未覆盖"里已完成的）**：真实项目上的**自动改码端到端验证**（批3，run17 实测）·
+benchmark **可重放回测机制**（§13.6，1 个夹具）

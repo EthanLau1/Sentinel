@@ -269,7 +269,122 @@ async function runCommand(
  * 在项目根目录执行 —— git 会把"子目录之外的路径"忽略掉，
  * 天然保证不会改到被测项目之外的文件。
  */
-async function applyPatch(projectRoot: string, patch: string, targets: string[]): Promise<ApplyResult> {
+/**
+ * 给「零上下文」的 hunk 补上真实上下文。
+ *
+ * 为什么必须做：LLM 改一行时经常只输出那一行（`@@ -12,1 +12,1 @@`），
+ * 而 **git 默认不接受零上下文的 diff**（报 "patch does not apply"）。
+ * 加 `--unidiff-zero` 确实能过，但那样 git **不校验上下文** ——
+ * 行号一过期就改错地方，对"自动改用户代码"来说太危险。
+ *
+ * 正确做法：读目标文件，把 hunk 前后的真实内容补成上下文行，
+ * 让 git 自己去校验 —— 内容对不上就拒绝（安全），对得上就应用（可用）。
+ * 补上下文之后行号过期也没关系，git 本来就允许偏移匹配。
+ */
+export async function expandZeroContextHunks(
+  projectRoot: string,
+  patch: string,
+  contextLines = 3,
+): Promise<string> {
+  // 结尾换行先去掉 —— 否则 split 出来的最后一个空串会被当成 hunk 内容
+  const lines = patch.replace(/\r\n/g, '\n').replace(/\n+$/, '').split('\n');
+  const out: string[] = [];
+  let i = 0;
+  let changed = false;
+
+  while (i < lines.length) {
+    const line = lines[i]!;
+
+    if (!line.startsWith('--- a/')) {
+      out.push(line);
+      i += 1;
+      continue;
+    }
+
+    const target = line.slice('--- a/'.length).trim();
+    out.push(line);
+    i += 1;
+    if (lines[i]?.startsWith('+++ ')) {
+      out.push(lines[i]!);
+      i += 1;
+    }
+
+    // 读目标文件（读不到就保持原样，交给 git 去报错）
+    let fileLines: string[] | undefined;
+    try {
+      const content = await readFile(join(projectRoot, target), 'utf8');
+      fileLines = content.split('\n');
+      // 文件末尾的换行会 split 出一个空串 —— 它不是真实的一行，剔掉
+      // （否则补出来的上下文会多一行空白，patch 直接失效）
+      if (fileLines.length > 0 && fileLines[fileLines.length - 1] === '') fileLines.pop();
+    } catch {
+      fileLines = undefined;
+    }
+
+    while (i < lines.length && lines[i]!.startsWith('@@')) {
+      const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(lines[i]!);
+      if (!header) {
+        out.push(lines[i]!);
+        i += 1;
+        continue;
+      }
+      const oldStart = Number(header[1]);
+      const newStart = Number(header[3]);
+      const oldCount = header[2] === undefined ? 1 : Number(header[2]);
+      const newCount = header[4] === undefined ? 1 : Number(header[4]);
+
+      // 收集 hunk 内容
+      const body: string[] = [];
+      let j = i + 1;
+      while (j < lines.length && !lines[j]!.startsWith('@@') && !lines[j]!.startsWith('--- ')) {
+        body.push(lines[j]!);
+        j += 1;
+      }
+
+      const hasContext = body.some((l) => l.startsWith(' '));
+      if (hasContext || !fileLines) {
+        out.push(lines[i]!, ...body);
+        i = j;
+        continue;
+      }
+
+      // 零上下文 → 补前后真实内容
+      const before: string[] = [];
+      const after: string[] = [];
+      for (let n = oldStart - 1; n >= 1 && before.length < contextLines; n -= 1) {
+        const c = fileLines[n - 1];
+        if (c === undefined) break;
+        before.unshift(c);
+      }
+      const oldEnd = oldStart + oldCount - 1;
+      for (let n = oldEnd + 1; n <= fileLines.length && after.length < contextLines; n += 1) {
+        const c = fileLines[n - 1];
+        if (c === undefined) break;
+        after.push(c);
+      }
+
+      const beforeCtx = before.map((c) => ` ${c}`);
+      const afterCtx = after.map((c) => ` ${c}`);
+      const newOldStart = oldStart - before.length;
+      const newNewStart = newStart - before.length;
+      const newOldCount = oldCount + before.length + after.length;
+      const newNewCount = newCount + before.length + after.length;
+
+      out.push(`@@ -${newOldStart},${newOldCount} +${newNewStart},${newNewCount} @@`);
+      out.push(...beforeCtx, ...body, ...afterCtx);
+      changed = true;
+      i = j;
+    }
+  }
+
+  return changed ? out.join('\n') + '\n' : patch;
+}
+
+/**
+ * 把 patch 应用到指定目录 —— 导出是为了让回测器走**同一条真实路径**
+ * （自己另写一份 git apply 调用 = 两份实现 = 回测测不到真实行为）。
+ */
+export async function applyPatch(projectRoot: string, patch: string, targets: string[]): Promise<ApplyResult> {
   const backup = new Map<string, string | null>();
   for (const t of targets) {
     try {
@@ -281,8 +396,10 @@ async function applyPatch(projectRoot: string, patch: string, targets: string[])
 
   // git apply 要求 patch 以换行结束，少一个换行就报 "corrupt patch at line N"
   const patchText = ensureTrailingNewline(patch);
+  // 零上下文的 hunk（LLM 改一行时常见）git 默认不认 → 先补上下文再交给 git 校验
+  const applicable = await expandZeroContextHunks(projectRoot, patchText);
 
-  const check = await runCommand(projectRoot, 'git', ['apply', '--check', '-p1', '-'], patchText);
+  const check = await runCommand(projectRoot, 'git', ['apply', '--check', '-p1', '-'], applicable);
   if (check.code !== 0) {
     return {
       applied: false,
@@ -292,7 +409,7 @@ async function applyPatch(projectRoot: string, patch: string, targets: string[])
     };
   }
 
-  const applied = await runCommand(projectRoot, 'git', ['apply', '-p1', '-'], patchText);
+  const applied = await runCommand(projectRoot, 'git', ['apply', '-p1', '-'], applicable);
   if (applied.code !== 0) {
     return {
       applied: false,

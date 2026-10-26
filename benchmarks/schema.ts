@@ -36,6 +36,19 @@ export interface BenchmarkCase {
   /** 修复后是否通过验证 */
   fixPassedVerification: boolean;
 
+  /**
+   * 回测期望（人工写）—— 可重放夹具的判据。
+   * 为什么要有它：期望值如果从"录制时的产出"里抄，就永远是"通过"（恒真判据）。
+   * 关键词由人工指定：根因必须点名文件与出错标识符，方案标题必须点名被修的标识符。
+   */
+  replayExpectation?: {
+    rootCauseContains: string[];
+    recommendedTitleContains: string[];
+    hardTier: number;
+    patchValid: boolean;
+    note?: string;
+  };
+
   notes?: string;
   createdAt: string;
   sentinelVersion: string;

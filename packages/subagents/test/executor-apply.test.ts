@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Kernel, Budget, type ProviderSet, type Subagent, type BugFinding, type FixOption } from '@sentinel/core';
-import { createExecutor } from '../src/executor.js';
+import { createExecutor, expandZeroContextHunks, validPatch } from '../src/executor.js';
 
 /**
  * L3 闭环的端到端验证（不依赖 LLM）：
@@ -228,6 +228,49 @@ describe('L3 闭环：应用 → 验证失败 → 回滚', () => {
 
     expect(applied).toHaveLength(1);
     expect(readFileSync(join(root, 'app', 'page.tsx'), 'utf8')).toContain('return <main>fixed</main>;');
+  });
+
+  it('E25：零上下文的 patch（LLM 改一行的常见形态）→ 补上下文后真的被应用', async () => {
+    const applied: unknown[] = [];
+    const capture: Subagent = {
+      name: 'capture',
+      register(ctx) {
+        ctx.bus.subscribe<{ files: string[] }>('patch.applied', (e) => { applied.push(e.payload); });
+      },
+    };
+    const option = {
+      id: 'fix_1', title: 'fix typo', description: 'fix the typo', effort: 'low', risk: 'low',
+      runtimeCost: 'none', regressionRisk: 'low', maintenanceCost: 'low',
+      stageFit: 'MVP', tier: 1, confidence: 0.9, score: 0.8, sources: [],
+      // 零上下文：只有 -/+ 一行，没有任何上下文行 —— git 默认不认这种 diff
+      patch: '--- a/app/page.tsx\n+++ b/app/page.tsx\n@@ -3,1 +3,1 @@\n-  return null;\n+  return <main>fixed</main>;\n',
+    } as FixOption;
+
+    const kernel = new Kernel({
+      providers: makeProviders(),
+      budget: new Budget({}),
+      subagents: [createExecutor({ projectRoot: root, autoApply: true }), capture],
+    });
+    await kernel.kick('fix.enhanced', { bug, options: [option] }, 'enhancer');
+
+    expect(applied).toHaveLength(1);
+    expect(readFileSync(join(root, 'app', 'page.tsx'), 'utf8')).toContain('return <main>fixed</main>;');
+  });
+
+  it('E25：零上下文补丁补上下文后仍是合法 diff（上下文取自真实文件）', async () => {
+    const zeroCtx = '--- a/app/page.tsx\n+++ b/app/page.tsx\n@@ -3,1 +3,1 @@\n-  return null;\n+  return <main>fixed</main>;\n';
+    const expanded = await expandZeroContextHunks(root, zeroCtx);
+    expect(expanded).toContain('@@ -1,4 +1,4 @@');
+    // 补出来的上下文必须来自真实文件，不能是编的
+    expect(expanded).toContain(' // 占位');
+    expect(expanded).toContain(' }');
+    expect(validPatch(expanded)).toBe(true);
+  });
+
+  it('E25：文件不存在时保持原样（不猜内容，交给 git 报错）', async () => {
+    const zeroCtx = '--- a/app/missing.ts\n+++ b/app/missing.ts\n@@ -3,1 +3,1 @@\n-a\n+b\n';
+    const expanded = await expandZeroContextHunks(root, zeroCtx);
+    expect(expanded).toBe(zeroCtx);
   });
 
   it('白名单外的文件被拒绝（不越界改）', async () => {

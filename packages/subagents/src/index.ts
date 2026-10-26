@@ -8,7 +8,7 @@ export { normalizePatch, ensureTrailingNewline, stripThinkResidue } from './diff
 export { createVerifier } from './verifier.js';
 export { createPlanner, splitPlannerOutput, extractDiff } from './planner.js';
 export { createEnhancer } from './enhancer.js';
-export { createExecutor } from './executor.js';
+export { createExecutor, classifyTier, validPatch, isRenameOnlyPatch, applyPatch, patchTargets } from './executor.js';
 
 export {
   DEFAULT_WEIGHTS,
