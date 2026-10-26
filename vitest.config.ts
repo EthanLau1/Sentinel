@@ -21,6 +21,20 @@ export default defineConfig({
           branches: 100,
           statements: 100,
         },
+        // 批2：报告层 —— 11 字段缺一不可，必须有断言守住
+        'packages/reporters/src/**/*.ts': {
+          lines: 70,
+          statements: 70,
+          functions: 70,
+          branches: 60,
+        },
+        // 批2：检索层 —— provider 契约测试（不发真网络请求）
+        'packages/providers/src/knowledge/**/*.ts': {
+          lines: 70,
+          statements: 70,
+          functions: 70,
+          branches: 70,
+        },
       },
     },
   },
