@@ -2,6 +2,19 @@
 
 最短路径让 Sentinel 跑起来。
 
+## 先搞清楚：跑一次会发生什么
+
+1. 把你的项目跑起来（在目标项目里自动起 dev server）
+2. 用真实浏览器把你的页面点一遍、把接口调一遍
+3. 把出错的现场（状态码、控制台输出、截图）存成**证据**
+4. 找根因 → 有个"反方"复核一遍 → 给出 3 个修法并排序
+5. 出一份报告，写在你项目自己的 `.sentinel/` 目录里
+
+全过程中它**不会**改你的代码，除非你加了 `--auto-fix`（只对 Tier 1 小改动生效，改完会重新验证，不行自动还原）。
+
+> 前提：要有一个 LLM API key（或者本机装 Ollama 走本地模型，免费）。
+> 没配 key 时 `--demo` 只是给你看报告长什么样，**不真的找 bug**。
+
 ---
 
 ## 30 秒体验（演示模式，无需配置 LLM）
@@ -76,10 +89,18 @@ bun packages/cli/src/index.ts doctor --project=/path/to/your-app
 
 **配置正确的环境**下期望输出 `All checks passed.`。如果 doctor 报 `N fail(s)`，通常是 LLM 连接失败、`llm.yml` 缺字段或 `playwright` 未安装，参考下方"常见问题"逐条排查。
 
-### Step 4: 启动目标项目
+### Step 4: 确认目标项目能跑起来
+
+Sentinel 会**自动启动**你的 dev server —— 它认 `package.json` 里的 `dev` / `start` / `serve` / `dev:start` / `start:dev` 脚本，
+并自动判断该用 bun、pnpm、yarn 还是 npm。**如果服务已经在跑，它直接复用，而且不会杀你自己的进程。**
+
+你只需要保证两件事：
+- 目标项目依赖已装好（有 `node_modules`）
+- `package.json` 里有上面那类脚本之一
+
+想自己先起也可以（这样 Sentinel 会直接复用它）：
 
 ```bash
-# ⚠️ 重要！必须先启动目标项目的 dev server
 cd /path/to/your-app
 npm run dev
 ```
@@ -109,10 +130,11 @@ bun packages/cli/src/index.ts ui
 ### "Total: 0 P0: 0 P1: 0" — 没找到 bug？
 
 原因：
-- 目标项目的 dev server **没有运行** → Runner 无法访问页面
-- 项目太简单/运行正常 → 确实没有 bug
+- **自动启动 dev server 失败**（项目没有 `dev`/`start`/`serve` 脚本，或依赖没装）→ 报错 `No reachable project dev server`
+- 项目太简单 / 运行正常 → 确实没有 bug
+- 流程没排出来 → 没东西可测（比如项目全是 Vue/Nuxt/Svelte/Vite 这类 adapter 覆盖不到的栈）
 
-解决：确保 `npm run dev` 在运行，然后重试。
+解决：先确认目标项目能自己跑起来（`npm run dev` 不报错），再重试。
 
 ### "browser MCP not registered"
 

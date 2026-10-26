@@ -2,14 +2,27 @@
 
 > 进项目先读这一份。所有文档都从这里跳转。
 
+## 先说清楚：这是什么（不用懂代码也能看）
+
+**Sentinel 是一个帮你给网站项目做自动体检的工具。**
+你把项目文件夹交给它，它自己把项目跑起来、用浏览器逐页点开、把接口逐个调一遍，
+然后写出一份报告：哪里坏了、为什么会坏、怎么修。
+
+它跟"把报错贴给 AI 问一句"的区别：它自己去复现并留下证据，
+结论要么有证据支撑，要么明说"证据不足"；还有个反方环节专门挑刺，防止它一本正经地胡说。
+
+- 只想知道这东西能干什么 → 读 [README.md](../README.md) 开头那一段就够了
+- 想用起来 → 读 [QUICK-START.md](../QUICK-START.md)
+- 想改代码 / 加功能 → 从下面的表往下看
+
 ---
 
 ## 🏛 宪法 + 架构（永久版本）
 
 | 文档 | 用途 | 改动需要 |
 |---|---|---|
-| [CONSTITUTION.md](./CONSTITUTION.md) | 宪法 v1.2 — 红线、机制、原则 | 升宪法版本号 |
-| [CONSTITUTION-CHANGES.md](./CONSTITUTION-CHANGES.md) | 宪法 v1.1 → v1.2 的逐条处置记录 | 升宪法版本号 |
+| [CONSTITUTION.md](./CONSTITUTION.md) | 宪法 v1.3 — 红线、机制、原则（开头有白话版） | 升宪法版本号 |
+| [CONSTITUTION-CHANGES.md](./CONSTITUTION-CHANGES.md) | 宪法 v1.1 → v1.3 的逐条处置记录 | 升宪法版本号 |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 架构 — 分层、事件流、5 类型 5 接口 | 同步升宪法 |
 | [ROADMAP.md](./ROADMAP.md) | 13 周路线 — 每周产出和指标 | PR 即可 |
 
@@ -19,7 +32,7 @@
 
 | 文档 | 用途 |
 |---|---|
-| [NEXT-STEPS.md](./NEXT-STEPS.md) | M0 第 1 周精确清单 — 每个文件每个测试 |
+| [NEXT-STEPS.md](./NEXT-STEPS.md) | M0 第 1 周精确清单 — **历史文档**，当前进度看下面那份补齐方案 |
 | [REMEDIATION-PLAN-v1.md](./REMEDIATION-PLAN-v1.md) | **补齐方案 v1** — 34 项缺漏的 4 个根因、6 个执行批次、每批可跑的验收判据 |
 | [EVENT-CATALOG.md](./EVENT-CATALOG.md) | 所有 Event 类型的固定枚举（防止乱发事件） |
 | [CONFIG-SPEC.md](./CONFIG-SPEC.md) | `.sentinel/*.yml` 配置文件规范 |
@@ -54,19 +67,21 @@
 ## 🚦 阅读顺序建议
 
 **第一次看的人**:
-1. [README.md](../README.md) — 5 分钟知道这是什么
-2. [CONSTITUTION.md](./CONSTITUTION.md) — 30 分钟知道边界在哪
+1. [README.md](../README.md) — 5 分钟知道这是什么（开头就是白话版）
+2. [QUICK-START.md](../QUICK-START.md) — 5 分钟跑起来看效果
+3. [CONSTITUTION.md](./CONSTITUTION.md) — 30 分钟知道边界在哪（第一小节是白话版，后面是正式条款）
 3. [ARCHITECTURE.md](./ARCHITECTURE.md) — 1 小时知道怎么搭
 
 **要写代码的人**:
 1. 上面 3 份
-2. [ROADMAP.md](./ROADMAP.md) — 知道现在该做哪一周
-3. [NEXT-STEPS.md](./NEXT-STEPS.md) — 知道下一行代码写哪里
-4. [EVENT-CATALOG.md](./EVENT-CATALOG.md) — 知道事件名怎么定
+2. [REMEDIATION-PLAN-v1.md](./REMEDIATION-PLAN-v1.md) — **当前实际进度与待办**（比 NEXT-STEPS 更靠前）
+3. [ROADMAP.md](./ROADMAP.md) — 知道整个项目处在哪一周
+4. [NEXT-STEPS.md](./NEXT-STEPS.md) — M0 第 1 周的历史清单（仅存档参考）
+5. [EVENT-CATALOG.md](./EVENT-CATALOG.md) — 知道事件名怎么定
 
 **要改宪法的人**:
 1. [CONSTITUTION.md](./CONSTITUTION.md) 末尾的"宪法升级流程"
-2. 升级版本号 (v1.2 → v2.0)
+2. 升级版本号 (v1.3 → v2.0)
 3. 在 [CONSTITUTION-CHANGES.md](./CONSTITUTION-CHANGES.md) 写明 why / what / impact
 4. 同步更新 ARCHITECTURE / ROADMAP
 5. 跑 `bun run lint:spec`（宪法里的机检条款由守卫守住）
@@ -76,7 +91,7 @@
 ## ⚙️ 状态
 
 ```
-✅ Constitution v1.2     已锁定（v1.1→v1.2 处置见 CONSTITUTION-CHANGES.md）
+✅ Constitution v1.3     已锁定（v1.1→v1.3 处置见 CONSTITUTION-CHANGES.md）
 ✅ Architecture          已设计
 ✅ 13-week Roadmap       已规划
 ✅ Event Catalog         已枚举
