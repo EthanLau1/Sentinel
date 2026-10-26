@@ -5,7 +5,10 @@
   "description": "Universal Debug Agent for modern web LLM apps",
   "license": "MIT",
   "type": "module",
-  "workspaces": ["packages/*", "sentinel-ui"],
+  "workspaces": [
+    "packages/*",
+    "sentinel-ui"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -19,6 +22,7 @@
     "test:e2e": "bun scripts/run-end-to-end.mjs",
     "lint:core": "node scripts/check-core-purity.mjs",
     "lint:lines": "node scripts/check-core-lines.mjs",
+    "lint:spec": "node scripts/check-spec-sync.mjs",
     "sentinel:run": "bun packages/cli/src/index.ts run",
     "sentinel:ui": "bun packages/cli/src/index.ts ui",
     "sentinel:init": "bun packages/cli/src/index.ts init"
