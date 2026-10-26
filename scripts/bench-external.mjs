@@ -348,7 +348,7 @@ function buildCase({ p, m, bug, feature, tier, tierReason, adopted, adoptedReaso
     fixPassedVerification: verified,
     replayExpectation: {
       rootCauseContains: m.expectRootCauseContains,
-      recommendedTitleContains: m.expectTitleContains || [],
+      recommendedMentions: m.expectTitleContains || [],
       hardTier: tier,
       patchValid: adopted,
       note: m.note,

@@ -1,0 +1,55 @@
+{
+  "caseId": "2026-10-26-ext-virtual-event-starter-kit-m2-api-stages-503-flow_api_api_10",
+  "kind": "contract",
+  "description": "virtual-event-starter-kit · m2-api-stages-503 —— pages/api/stages.ts 的成功分支把状态码写成了 503（原本是 res.status(200).jso…",
+  "input": {
+    "flowId": "flow_api_api_10",
+    "error": "访问 /api/stages 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "pages/api/stages.ts",
+        "snippet": "/**\n * Copyright 2020 Vercel Inc.\n *\n * Licensed under the Apache License, Version 2.0 (the \"License\");\n * you may not use this file except in compliance with the License.\n * You may obtain a copy of the License at\n *\n *      http://www.apache.org/licenses/LICENSE-2.0\n *\n * Unless required by applicable law or agreed to in writing, software\n * distributed under the License is distributed on an \"AS IS\" BASIS,\n * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n * See the License for the specific language governing permissions and\n * limitations under the License.\n */\n\nimport ms from 'ms';\nimport { NextApiRequest, NextApiResponse } from 'next';\nimport { getAllStages } from '@lib/cms-api';\n\n// Number of seconds to cache the API response for\nconst EXPIRES_SECONDS = 5;\n\nexport default async function getStages(_: NextApiRequest, res: NextApiResponse) {\n  try {\n    const allStages = await getAllStages();\n\n    // Set caching headers\n    const expires = new Date(Date.now() + ms(`${EXPIRES_SECONDS}s`));\n    res.setHeader('Expires', expires.toUTCString());\n    res.setHeader(\n      'Cache-Control',\n      `s-maxage=${EXPIRES_SECONDS}, immutable, must-revalidate, stale-while-revalidate`\n    );\n\n    return res.status(503).json(allStages);\n  } catch (e) {\n    // eslint-disable-next-line no-console\n    console.log(e);\n\n    return res.status(500).json({\n      error: {\n        code: 'server_error',\n        message: 'Internal server error'\n      }\n    });\n  }\n}\n",
+        "hash": "869d0910e02753e0",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3103/api/stages",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "9904e246ab47a22e",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile pages/api/stages.ts",
+        "hash": "b1aa1e0354352185",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"/api/stages 的部署运行时或前置网关不可用，在请求进入 pages/api/stages.ts 的业务逻辑前直接返回了 503。\",\"confidence\":0.3,\"reproSteps\":[\"访问 /api/stages\",\"观察 pages/api/stages.ts 引起的报错\"]}",
+    "{\"shouldReject\":true,\"verifiedRootCause\":false,\"supportingEvidence\":[],\"reason\":\"证据不足以定位到具体代码改动，保持 hypothesis\",\"adjustedConfidence\":0.3}"
+  ],
+  "snapshot": {
+    "files": {
+      "pages/api/stages.ts": "/**\n * Copyright 2020 Vercel Inc.\n *\n * Licensed under the Apache License, Version 2.0 (the \"License\");\n * you may not use this file except in compliance with the License.\n * You may obtain a copy of the License at\n *\n *      http://www.apache.org/licenses/LICENSE-2.0\n *\n * Unless required by applicable law or agreed to in writing, software\n * distributed under the License is distributed on an \"AS IS\" BASIS,\n * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n * See the License for the specific language governing permissions and\n * limitations under the License.\n */\n\nimport ms from 'ms';\nimport { NextApiRequest, NextApiResponse } from 'next';\nimport { getAllStages } from '@lib/cms-api';\n\n// Number of seconds to cache the API response for\nconst EXPIRES_SECONDS = 5;\n\nexport default async function getStages(_: NextApiRequest, res: NextApiResponse) {\n  try {\n    const allStages = await getAllStages();\n\n    // Set caching headers\n    const expires = new Date(Date.now() + ms(`${EXPIRES_SECONDS}s`));\n    res.setHeader('Expires', expires.toUTCString());\n    res.setHeader(\n      'Cache-Control',\n      `s-maxage=${EXPIRES_SECONDS}, immutable, must-revalidate, stale-while-revalidate`\n    );\n\n    return res.status(503).json(allStages);\n  } catch (e) {\n    // eslint-disable-next-line no-console\n    console.log(e);\n\n    return res.status(500).json({\n      error: {\n        code: 'server_error',\n        message: 'Internal server error'\n      }\n    });\n  }\n}\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "hypothesis",
+    "rootCauseContains": [
+      "503"
+    ],
+    "fixCount": 0
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：响应状态码被写死为 503",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

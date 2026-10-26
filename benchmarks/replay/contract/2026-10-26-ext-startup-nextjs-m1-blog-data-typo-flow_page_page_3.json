@@ -1,0 +1,63 @@
+{
+  "caseId": "2026-10-26-ext-startup-nextjs-m1-blog-data-typo-flow_page_page_3",
+  "kind": "contract",
+  "description": "startup-nextjs · m1-blog-data-typo —— src/app/blog/page.tsx 里遍历用的是 blogDatax，但该文件 import 的名字是 blog…",
+  "input": {
+    "flowId": "flow_page_page_3",
+    "error": "访问 /blog 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "src/app/blog/page.tsx",
+        "snippet": "import SingleBlog from \"@/components/Blog/SingleBlog\";\nimport blogData from \"@/components/Blog/blogData\";\nimport Breadcrumb from \"@/components/Common/Breadcrumb\";\n\nimport { Metadata } from \"next\";\n\nexport const metadata: Metadata = {\n  title: \"Blog Page | Free Next.js Template for Startup and SaaS\",\n  description: \"This is Blog Page for Startup Nextjs Template\",\n  // other metadata\n};\n\nconst Blog = () => {\n  return (\n    <>\n      <Breadcrumb\n        pageName=\"Blog Grid\"\n        description=\"Lorem ipsum dolor sit amet, consectetur adipiscing elit. In varius eros eget sapien consectetur ultrices. Ut quis dapibus libero.\"\n      />\n\n      <section className=\"pt-[120px] pb-[120px]\">\n        <div className=\"container\">\n          <div className=\"-mx-4 flex flex-wrap justify-center\">\n            {blogDatax.map((blog) => (\n              <div\n                key={blog.id}\n                className=\"w-full px-4 md:w-2/3 lg:w-1/2 xl:w-1/3\"\n              >\n                <SingleBlog blog={blog} />\n              </div>\n            ))}\n          </div>\n\n          <div className=\"-mx-4 flex flex-wrap\" data-wow-delay=\".15s\">\n            <div className=\"w-full px-4\">\n              <ul className=\"flex items-center justify-center pt-8\">\n                <li className=\"mx-1\">\n                  <a\n                    href=\"#0\"\n                    className=\"bg-body-color/15 text-body-color hover:bg-primary flex h-9 min-w-[36px] items-center justify-center rounded-md px-4 text-sm transition hover:text-white\"\n                  >\n                    Prev\n                  </a>\n                </li>\n                <li className=\"mx-1\">\n                  <a\n                    href=\"#0\"\n                    className=\"bg-body-color/15 text-body-color hover:bg-primary flex h-9 min-w-[36px] items-center justify-center rounded-md px-4 text-sm transition hover:text-white\"\n                  >\n                    1\n                  </a>\n                </li>\n                <li className=\"mx-1\">\n                  <a\n                    href=\"#0\"\n                    className=\"bg-body-color/15 text-body-color hover:bg-primary flex h-9 min-w-[36px] items-center justify-center rounded-md px-4 text-sm transition hover:text-white\"\n                  >\n                    2\n                  </a>\n                </li>\n                <li className=\"mx-1\">\n                  <a\n                    href=\"#0\"\n                    className=\"bg-body-color/15 text-body-color hover:bg-primary flex h-9 min-w-[36px] items-center justify-center rounded-md px-4 text-sm transition hover:text-white\"\n                  >\n                    3\n                  </a>\n                </li>\n                <li className=\"mx-1\">\n                  <span className=\"bg-body-color/15 text-body-color flex h-9 min-w-[36px] cursor-not-allowed items-center justify-center rounded-md px-4 text-sm\">\n                    ...\n                  </span>\n                </li>\n                <li className=\"mx-1\">\n                  <a\n                    href=\"#0\"\n                    className=\"bg-body-color/15 text-body-color hover:bg-primary flex h-9 min-w-[36px] items-center justify-center rounded-md px-4 text-sm transition hover:text-white\"\n                  >\n                    12\n                  </a>\n                </li>\n                <li className=\"mx-1\">\n                  <a\n                    href=\"#0\"\n                    className=\"bg-body-color/15 text-body-color hover:bg-primary flex h-9 min-w-[36px] items-center justify-center rounded-md px-4 text-sm transition hover:text-white\"\n                  >\n                    Next\n                  </a>\n                </li>\n              </ul>\n            </div>\n          </div>\n        </div>\n      </section>\n    </>\n  );\n};\n\nexport default Blog;\n",
+        "hash": "e5fe6265c5b903cc",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3102/blog",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "7d591ec8959d6196",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile src/app/blog/page.tsx",
+        "hash": "afcc93b7bd3b8831",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"src/app/blog/page.tsx 导入了 blogData，却在渲染时调用未定义的 blogDatax.map，触发服务端渲染异常并返回 HTTP 500。\",\"confidence\":0.95,\"reproSteps\":[\"访问 /blog\",\"观察 src/app/blog/page.tsx 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"e5fe6265c5b903cc\",\"7d591ec8959d6196\"],\"reason\":\"代码证据（src/app/blog/page.tsx）与运行时错误证据（/blog 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.95}",
+    "[{\"id\":\"2026-10-26-ext-startup-nextjs-m1-blog-data-typo-flow_page_page_3-fix\",\"title\":\"修正 /blog 页面中的 blogDatax 变量名\",\"description\":\"把 src/app/blog/page.tsx 里的「{blogDatax.map((blog) => (」改回「{blogData.map((blog) => (」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":1,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3102/blog\"},{\"id\":\"2026-10-26-ext-startup-nextjs-m1-blog-data-typo-flow_page_page_3-alt-1\",\"title\":\"备选方案 1：调整 src/app/blog/page.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-ext-startup-nextjs-m1-blog-data-typo-flow_page_page_3-alt-2\",\"title\":\"备选方案 2：调整 src/app/blog/page.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/src/app/blog/page.tsx b/src/app/blog/page.tsx\nindex b163a42..08475da 100644\n--- a/src/app/blog/page.tsx\n+++ b/src/app/blog/page.tsx\n@@ -21,7 +21,7 @@ const Blog = () => {\n       <section className=\"pt-[120px] pb-[120px]\">\n         <div className=\"container\">\n           <div className=\"-mx-4 flex flex-wrap justify-center\">\n-            {blogDatax.map((blog) => (\n+            {blogData.map((blog) => (\n               <div\n                 key={blog.id}\n                 className=\"w-full px-4 md:w-2/3 lg:w-1/2 xl:w-1/3\"\n"
+  ],
+  "snapshot": {
+    "files": {
+      "src/app/blog/page.tsx": "import SingleBlog from \"@/components/Blog/SingleBlog\";\nimport blogData from \"@/components/Blog/blogData\";\nimport Breadcrumb from \"@/components/Common/Breadcrumb\";\n\nimport { Metadata } from \"next\";\n\nexport const metadata: Metadata = {\n  title: \"Blog Page | Free Next.js Template for Startup and SaaS\",\n  description: \"This is Blog Page for Startup Nextjs Template\",\n  // other metadata\n};\n\nconst Blog = () => {\n  return (\n    <>\n      <Breadcrumb\n        pageName=\"Blog Grid\"\n        description=\"Lorem ipsum dolor sit amet, consectetur adipiscing elit. In varius eros eget sapien consectetur ultrices. Ut quis dapibus libero.\"\n      />\n\n      <section className=\"pt-[120px] pb-[120px]\">\n        <div className=\"container\">\n          <div className=\"-mx-4 flex flex-wrap justify-center\">\n            {blogDatax.map((blog) => (\n              <div\n                key={blog.id}\n                className=\"w-full px-4 md:w-2/3 lg:w-1/2 xl:w-1/3\"\n              >\n                <SingleBlog blog={blog} />\n              </div>\n            ))}\n          </div>\n\n          <div className=\"-mx-4 flex flex-wrap\" data-wow-delay=\".15s\">\n            <div className=\"w-full px-4\">\n              <ul className=\"flex items-center justify-center pt-8\">\n                <li className=\"mx-1\">\n                  <a\n                    href=\"#0\"\n                    className=\"bg-body-color/15 text-body-color hover:bg-primary flex h-9 min-w-[36px] items-center justify-center rounded-md px-4 text-sm transition hover:text-white\"\n                  >\n                    Prev\n                  </a>\n                </li>\n                <li className=\"mx-1\">\n                  <a\n                    href=\"#0\"\n                    className=\"bg-body-color/15 text-body-color hover:bg-primary flex h-9 min-w-[36px] items-center justify-center rounded-md px-4 text-sm transition hover:text-white\"\n                  >\n                    1\n                  </a>\n                </li>\n                <li className=\"mx-1\">\n                  <a\n                    href=\"#0\"\n                    className=\"bg-body-color/15 text-body-color hover:bg-primary flex h-9 min-w-[36px] items-center justify-center rounded-md px-4 text-sm transition hover:text-white\"\n                  >\n                    2\n                  </a>\n                </li>\n                <li className=\"mx-1\">\n                  <a\n                    href=\"#0\"\n                    className=\"bg-body-color/15 text-body-color hover:bg-primary flex h-9 min-w-[36px] items-center justify-center rounded-md px-4 text-sm transition hover:text-white\"\n                  >\n                    3\n                  </a>\n                </li>\n                <li className=\"mx-1\">\n                  <span className=\"bg-body-color/15 text-body-color flex h-9 min-w-[36px] cursor-not-allowed items-center justify-center rounded-md px-4 text-sm\">\n                    ...\n                  </span>\n                </li>\n                <li className=\"mx-1\">\n                  <a\n                    href=\"#0\"\n                    className=\"bg-body-color/15 text-body-color hover:bg-primary flex h-9 min-w-[36px] items-center justify-center rounded-md px-4 text-sm transition hover:text-white\"\n                  >\n                    12\n                  </a>\n                </li>\n                <li className=\"mx-1\">\n                  <a\n                    href=\"#0\"\n                    className=\"bg-body-color/15 text-body-color hover:bg-primary flex h-9 min-w-[36px] items-center justify-center rounded-md px-4 text-sm transition hover:text-white\"\n                  >\n                    Next\n                  </a>\n                </li>\n              </ul>\n            </div>\n          </div>\n        </div>\n      </section>\n    </>\n  );\n};\n\nexport default Blog;\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "blogData"
+    ],
+    "fixCount": 3,
+    "recommendedMentions": [
+      "blogData"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：变量名拼写错误 → ReferenceError",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

@@ -33,7 +33,7 @@
     "rootCauseContains": [
       "imageX"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "Footer"
     ],
     "hardTier": 1,

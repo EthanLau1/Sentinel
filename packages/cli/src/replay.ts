@@ -67,7 +67,12 @@ export interface ReplayExpected {
   rootCauseStatus: string;
   rootCauseContains?: string[];
   fixCount: number;
-  recommendedTitleContains?: string;
+  /**
+   * 推荐方案里必须点名的关键词（人工真值：被改坏的文件/标识符）。
+   * 查的是**标题 + 说明**：planner 的契约是"方案必须点名具体文件与改什么"，
+   * 只查标题会把"说明里点名了文件"的正常方案误判成退化。
+   */
+  recommendedMentions?: string[];
   /** 硬规则判出的 tier（executor.tier_decided） */
   hardTier?: number;
   /** 推荐方案的 patch 是否是合法 unified diff */
@@ -81,6 +86,7 @@ export interface ReplayActual {
   rootCause: string;
   fixCount: number;
   recommendedTitle: string;
+  recommendedDescription: string;
   hardTier: number | null;
   patchValid: boolean | null;
   /** 补丁能不能真的应用到快照上（null = 没快照，没验） */
@@ -218,11 +224,15 @@ export async function replayFixture(
   };
 
   let bug: BugFinding | undefined;
+  // hypothesis 案例：critic 拒了 → 链路停在 planner 之前，根本不会有 fix.enhanced。
+  // 只盯 fix.enhanced 会让这类案例的实际产出恒为"(无)"，判据形同虚设。
+  let draft: BugFinding | undefined;
   const tierByFix = new Map<string, number>();
   const captureSub: Subagent = {
     name: 'capture',
     register(ctx) {
       ctx.bus.subscribe<{ bug: BugFinding }>('fix.enhanced', (e) => { bug = e.payload.bug; });
+      ctx.bus.subscribe<BugFinding>('bug.draft', (e) => { draft = e.payload; });
       ctx.bus.subscribe<{ fixId: string; tier: number }>('executor.tier_decided', (e) => {
         tierByFix.set(e.payload.fixId, e.payload.tier);
       });
@@ -255,7 +265,9 @@ export async function replayFixture(
   await kernel.stop();
   if (!error && providerErrors.length > 0) error = providerErrors[0];
 
-  const recommended = bug?.fixOptions?.find((o) => o.id === bug?.recommendedFixId) ?? bug?.fixOptions?.[0];
+  // 没有 fix.enhanced 时退回 bug.draft —— hypothesis 案例的产出就在这里
+  const finalBug = bug ?? draft;
+  const recommended = finalBug?.fixOptions?.find((o) => o.id === finalBug?.recommendedFixId) ?? finalBug?.fixOptions?.[0];
 
   // 补丁能不能真应用（有快照 + 有 patch 才验）
   let patchApplies: boolean | null = null;
@@ -264,10 +276,11 @@ export async function replayFixture(
   }
 
   const actual: ReplayActual = {
-    rootCauseStatus: bug?.rootCauseStatus ?? '(无)',
-    rootCause: bug?.rootCause ?? '',
-    fixCount: bug?.fixOptions?.length ?? 0,
+    rootCauseStatus: finalBug?.rootCauseStatus ?? '(无)',
+    rootCause: finalBug?.rootCause ?? '',
+    fixCount: finalBug?.fixOptions?.length ?? 0,
     recommendedTitle: recommended?.title ?? '',
+    recommendedDescription: recommended?.description ?? '',
     hardTier: recommended ? tierByFix.get(recommended.id) ?? null : null,
     patchValid: recommended?.patch !== undefined ? validPatch(recommended.patch) : null,
     patchApplies,
@@ -286,18 +299,25 @@ export function compareReplay(actual: ReplayActual, expected: ReplayExpected): s
   if (actual.rootCauseStatus !== expected.rootCauseStatus) {
     out.push(`根因状态：期望 ${expected.rootCauseStatus}，实际 ${actual.rootCauseStatus}`);
   }
-  for (const kw of expected.rootCauseContains ?? []) {
-    if (!actual.rootCause.includes(kw)) out.push(`根因文本不含「${kw}」：${actual.rootCause}`);
+  // 关键词是**同一组真值标识符的不同写法** → 命中任意一个即算命中，
+  // 与归档时的命中判定（bench-external.mjs 用 .some()）同一口径。
+  // 用 every() 会让「模型换了个说法」的正常案例永远判成退化。
+  const rootCauseKws = expected.rootCauseContains ?? [];
+  if (rootCauseKws.length > 0 && !rootCauseKws.some((kw) => actual.rootCause.includes(kw))) {
+    out.push(`根因文本不含任何一个真值关键词 ${JSON.stringify(rootCauseKws)}：${actual.rootCause}`);
   }
   if (actual.fixCount !== expected.fixCount) {
     out.push(`方案数：期望 ${expected.fixCount}，实际 ${actual.fixCount}`);
   }
-  if (expected.recommendedTitleContains !== undefined) {
+  if (expected.recommendedMentions !== undefined) {
     // 数组要逐项检查 —— 直接 String.includes(array) 会被拼成 "a,b" 一次匹配，永远不命中
-    for (const kw of expected.recommendedTitleContains) {
-      if (!actual.recommendedTitle.includes(kw)) {
-        out.push(`推荐方案标题不含「${kw}」：${actual.recommendedTitle}`);
-      }
+    // 查标题 + 说明：planner 的契约是"方案必须点名具体文件与改什么"
+    const mentioned = `${actual.recommendedTitle}\n${actual.recommendedDescription}`;
+    if (!expected.recommendedMentions.some((kw) => mentioned.includes(kw))) {
+      out.push(
+        `推荐方案（标题+说明）不含任何一个真值关键词 ${JSON.stringify(expected.recommendedMentions)}：` +
+        `${actual.recommendedTitle} / ${actual.recommendedDescription}`,
+      );
     }
   }
   if (expected.hardTier !== undefined && actual.hardTier !== expected.hardTier) {

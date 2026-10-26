@@ -1,0 +1,59 @@
+{
+  "caseId": "2026-10-26-004-2",
+  "kind": "contract",
+  "description": "nextjs-blog · example-placeholder-null —— app/page.tsx 的占位组件直接 return null，根路由 / 渲染出空 body，Playwright …",
+  "input": {
+    "flowId": "flow_page_page_2",
+    "error": "访问 / 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "app/page.tsx",
+        "snippet": "// 占位\nexport default function Page() {\n  return null;\n}\n",
+        "hash": "d8a0f805759093dc",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3000/",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "8063dc7f0372a0d7",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile app/page.tsx",
+        "hash": "1fd2b2f0bb54eb50",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"根路由“/”映射到仅返回 null 的 app/page.tsx，导致页面 body 始终没有可见内容，浏览器等待 body 可见时在 5 秒后超时。\",\"confidence\":0.89,\"reproSteps\":[\"访问 /\",\"观察 app/page.tsx 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"d8a0f805759093dc\",\"8063dc7f0372a0d7\"],\"reason\":\"代码证据（app/page.tsx）与运行时错误证据（/ 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.89}",
+    "[{\"id\":\"2026-10-26-004-2-fix\",\"title\":\"TODO-人工确认推荐方案\",\"description\":\"把 app/page.tsx 里的「return ( <main> <h1>Home</h1> </main> );」改回「return null;」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":2,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/\"},{\"id\":\"2026-10-26-004-2-alt-1\",\"title\":\"备选方案 1：调整 app/page.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-004-2-alt-2\",\"title\":\"备选方案 2：调整 app/page.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/app/page.tsx b/app/page.tsx\nindex 3c25f99..b2ba165 100644\n--- a/app/page.tsx\n+++ b/app/page.tsx\n@@ -1,4 +1,8 @@\n // 占位\n export default function Page() {\n-  return null;\n+  return (\n+    <main>\n+      <h1>Home</h1>\n+    </main>\n+  );\n }\n"
+  ],
+  "snapshot": {
+    "files": {
+      "app/page.tsx": "// 占位\nexport default function Page() {\n  return null;\n}\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "app/page.tsx"
+    ],
+    "fixCount": 3,
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

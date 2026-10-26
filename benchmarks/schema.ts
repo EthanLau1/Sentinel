@@ -42,8 +42,11 @@ export interface BenchmarkCase {
    * 关键词由人工指定：根因必须点名文件与出错标识符，方案标题必须点名被修的标识符。
    */
   replayExpectation?: {
+    /** 根因文本里必须命中的真值标识符（任一命中即可，与归档时的命中判定同口径） */
     rootCauseContains: string[];
-    recommendedTitleContains: string[];
+    /** 推荐方案（标题 + 说明）里必须点名的真值标识符（任一命中即可） */
+    recommendedMentions: string[];
+    /** 硬规则判出的 tier（归档时从 run-status.tierDecisions 取，查不到时为 3 的兜底值 —— 不可当真） */
     hardTier: number;
     patchValid: boolean;
     note?: string;

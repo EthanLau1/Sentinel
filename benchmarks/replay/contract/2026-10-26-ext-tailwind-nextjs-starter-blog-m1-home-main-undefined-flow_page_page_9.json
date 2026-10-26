@@ -1,0 +1,63 @@
+{
+  "caseId": "2026-10-26-ext-tailwind-nextjs-starter-blog-m1-home-main-undefined-flow_page_page_9",
+  "kind": "contract",
+  "description": "tailwind-nextjs-starter-blog · m1-home-main-undefined —— app/page.tsx 里 JSX 写的是 <MainX>，但顶部 import 的是 Main（./Main）→ 组…",
+  "input": {
+    "flowId": "flow_page_page_9",
+    "error": "访问 / 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "app/page.tsx",
+        "snippet": "import { sortPosts, allCoreContent } from 'pliny/utils/contentlayer'\nimport { allBlogs } from 'contentlayer/generated'\nimport Main from './Main'\n\nexport default async function Page() {\n  const sortedPosts = sortPosts(allBlogs)\n  const posts = allCoreContent(sortedPosts)\n  return <MainX posts={posts} />\n}\n",
+        "hash": "55778f29e3b072ef",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3104/",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "8063dc7f0372a0d7",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile app/page.tsx",
+        "hash": "77052ea1512e7271",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"app/page.tsx 的服务端渲染引用了未定义的 `MainX`（文件中实际导入的是 `Main`），触发服务端编译/渲染异常并使 `/` 返回 HTTP 500。\",\"confidence\":0.95,\"reproSteps\":[\"访问 /\",\"观察 app/page.tsx 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"55778f29e3b072ef\",\"8063dc7f0372a0d7\"],\"reason\":\"代码证据（app/page.tsx）与运行时错误证据（/ 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.95}",
+    "[{\"id\":\"2026-10-26-ext-tailwind-nextjs-starter-blog-m1-home-main-undefined-flow_page_page_9-fix\",\"title\":\"在 app/page.tsx 中将未定义的 MainX 改为已导入的 Main（拼写类改动）\",\"description\":\"把 app/page.tsx 里的「return <MainX posts={posts} />」改回「return <Main posts={posts} />」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":1,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3104/\"},{\"id\":\"2026-10-26-ext-tailwind-nextjs-starter-blog-m1-home-main-undefined-flow_page_page_9-alt-1\",\"title\":\"备选方案 1：调整 app/page.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-ext-tailwind-nextjs-starter-blog-m1-home-main-undefined-flow_page_page_9-alt-2\",\"title\":\"备选方案 2：调整 app/page.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/app/page.tsx b/app/page.tsx\nindex 28a2f32..1498297 100644\n--- a/app/page.tsx\n+++ b/app/page.tsx\n@@ -5,5 +5,5 @@ import Main from './Main'\n export default async function Page() {\n   const sortedPosts = sortPosts(allBlogs)\n   const posts = allCoreContent(sortedPosts)\n-  return <MainX posts={posts} />\n+  return <Main posts={posts} />\n }\n"
+  ],
+  "snapshot": {
+    "files": {
+      "app/page.tsx": "import { sortPosts, allCoreContent } from 'pliny/utils/contentlayer'\nimport { allBlogs } from 'contentlayer/generated'\nimport Main from './Main'\n\nexport default async function Page() {\n  const sortedPosts = sortPosts(allBlogs)\n  const posts = allCoreContent(sortedPosts)\n  return <MainX posts={posts} />\n}\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "Main"
+    ],
+    "fixCount": 3,
+    "recommendedMentions": [
+      "Main"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：组件名拼写错误 → undefined 元素类型",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

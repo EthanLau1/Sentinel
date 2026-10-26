@@ -33,7 +33,7 @@
     "rootCauseContains": [
       "FooterX"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "layout"
     ],
     "hardTier": 1,

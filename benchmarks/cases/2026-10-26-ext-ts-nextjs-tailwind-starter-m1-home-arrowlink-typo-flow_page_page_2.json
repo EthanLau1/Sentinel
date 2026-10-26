@@ -33,7 +33,7 @@
     "rootCauseContains": [
       "ArrowLink"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "ArrowLink"
     ],
     "hardTier": 1,

@@ -1,0 +1,64 @@
+{
+  "caseId": "2026-10-26-ext-ts-nextjs-tailwind-starter-m7-utils-tailwind-merge-import-typo-flow_page_page_0",
+  "kind": "contract",
+  "description": "ts-nextjs-tailwind-starter · m7-utils-tailwind-merge-import-typo —— src/lib/utils.ts 里 tailwind-merge 的 import 路径写成 'tailwind-me…",
+  "input": {
+    "flowId": "flow_page_page_0",
+    "error": "访问 / 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "src/lib/utils.ts",
+        "snippet": "import clsx, { ClassValue } from 'clsx';\nimport { twMerge } from 'tailwind-mergeX';\n\n/** Merge classes with tailwind-merge with clsx full feature */\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n",
+        "hash": "b804ef1f101228aa",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3101/",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "8063dc7f0372a0d7",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile src/lib/utils.ts",
+        "hash": "26ee481a93febe50",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"应用编译时无法解析 `tailwind-mergeX`：`src/lib/utils.ts` 第 2 行导入了该模块，且 `/components` 的导入链经 `TextButton.tsx` 触发此错误，最终导致路由返回 HTTP 500。\",\"confidence\":0.98,\"reproSteps\":[\"访问 /\",\"观察 src/lib/utils.ts 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"b804ef1f101228aa\",\"8063dc7f0372a0d7\"],\"reason\":\"代码证据（src/lib/utils.ts）与运行时错误证据（/ 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.98}",
+    "[{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m7-utils-tailwind-merge-import-typo-flow_page_page_0-fix\",\"title\":\"修正 src/lib/utils.ts 中的 tailwind-merge 包名\",\"description\":\"把 src/lib/utils.ts 里的「import { twMerge } from 'tailwind-mergeX';」改回「import { twMerge } from 'tailwind-merge';」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":1,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3101/\"},{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m7-utils-tailwind-merge-import-typo-flow_page_page_0-alt-1\",\"title\":\"备选方案 1：调整 src/lib/utils.ts 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m7-utils-tailwind-merge-import-typo-flow_page_page_0-alt-2\",\"title\":\"备选方案 2：调整 src/lib/utils.ts 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/src/lib/utils.ts b/src/lib/utils.ts\nindex 38d6459..97ccfe9 100644\n--- a/src/lib/utils.ts\n+++ b/src/lib/utils.ts\n@@ -1,5 +1,5 @@\n import clsx, { ClassValue } from 'clsx';\n-import { twMerge } from 'tailwind-mergeX';\n+import { twMerge } from 'tailwind-merge';\n \n /** Merge classes with tailwind-merge with clsx full feature */\n export function cn(...inputs: ClassValue[]) {\n"
+  ],
+  "snapshot": {
+    "files": {
+      "src/lib/utils.ts": "import clsx, { ClassValue } from 'clsx';\nimport { twMerge } from 'tailwind-mergeX';\n\n/** Merge classes with tailwind-merge with clsx full feature */\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "tailwind-mergeX",
+      "tailwind-merge"
+    ],
+    "fixCount": 3,
+    "recommendedMentions": [
+      "utils"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：底层工具库的依赖 import 写错 → 多页同时 500",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

@@ -34,7 +34,7 @@
       "tailwind-mergeX",
       "tailwind-merge"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "utils"
     ],
     "hardTier": 1,

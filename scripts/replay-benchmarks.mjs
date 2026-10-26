@@ -19,6 +19,7 @@ import { replayFixture } from '../packages/cli/src/replay.ts';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const replayDir = join(repo, 'benchmarks', 'replay');
+const contractDir = join(replayDir, 'contract');
 
 if (!existsSync(replayDir)) {
   console.log('⏸ 还没有可重放夹具（benchmarks/replay/ 不存在）');
@@ -26,10 +27,18 @@ if (!existsSync(replayDir)) {
   process.exit(2);
 }
 
-const files = readdirSync(replayDir).filter((f) => f.endsWith('.json')).sort();
-if (files.length === 0) {
+// 两类夹具，分开统计（它们守的不是同一件事）：
+//   - 录制夹具（benchmarks/replay/*.json）：模型回复是**真录的** → 守"模型输出形态"这条路
+//   - 契约夹具（benchmarks/replay/contract/*.json）：模型回复按人工真值构造 → 守"决策层"这条路
+const recorded = readdirSync(replayDir).filter((f) => f.endsWith('.json')).sort();
+const contract = existsSync(contractDir)
+  ? readdirSync(contractDir).filter((f) => f.endsWith('.json')).sort()
+  : [];
+
+if (recorded.length === 0 && contract.length === 0) {
   console.log('⏸ 还没有可重放夹具（benchmarks/replay/ 是空的）');
   console.log('   录制：bun scripts/record-replay.mjs --case=<案例 id> --run=<run 产物目录>');
+  console.log('   契约：bun scripts/build-contract-fixtures.mjs');
   process.exit(2);
 }
 
@@ -37,20 +46,28 @@ console.log('Sentinel benchmark 回测（可重放夹具）');
 console.log('');
 
 let failed = 0;
-for (const f of files) {
-  const fixture = JSON.parse(readFileSync(join(replayDir, f), 'utf8'));
-  const result = await replayFixture(fixture);
-  if (result.passed) {
-    console.log(`  ✓ ${fixture.caseId}  根因 ${result.actual.rootCauseStatus} · ${result.actual.fixCount} 个方案 · 硬规则 tier ${result.actual.hardTier}`);
-  } else {
-    failed += 1;
-    console.log(`  ✗ ${fixture.caseId}  退化：`);
-    for (const m of result.mismatches) console.log(`      - ${m}`);
+const runGroup = async (label, files, dir) => {
+  if (files.length === 0) return;
+  console.log(`【${label}】${files.length} 个`);
+  for (const f of files) {
+    const fixture = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+    const result = await replayFixture(fixture);
+    if (result.passed) {
+      console.log(`  ✓ ${fixture.caseId}  根因 ${result.actual.rootCauseStatus} · ${result.actual.fixCount} 个方案 · 硬规则 tier ${result.actual.hardTier}`);
+    } else {
+      failed += 1;
+      console.log(`  ✗ ${fixture.caseId}  退化：`);
+      for (const m of result.mismatches) console.log(`      - ${m}`);
+    }
   }
-}
+  console.log('');
+};
 
-console.log('');
-console.log(`  夹具 ${files.length} 个，通过 ${files.length - failed} 个，退化 ${failed} 个`);
+await runGroup('录制夹具（真录的模型回复）', recorded, replayDir);
+await runGroup('契约夹具（人工真值构造的回复）', contract, contractDir);
+
+const total = recorded.length + contract.length;
+console.log(`  夹具 ${total} 个，通过 ${total - failed} 个，退化 ${failed} 个`);
 if (failed > 0) {
   console.log('');
   console.log('  ❌ 有夹具退化 —— 说明本次改动改变了决策层的产出，需要人工判断是不是预期改动。');

@@ -1,0 +1,64 @@
+{
+  "caseId": "2026-10-26-ext-ts-nextjs-tailwind-starter-m5-layout-style-import-typo-flow_page_page_0",
+  "kind": "contract",
+  "description": "ts-nextjs-tailwind-starter · m5-layout-style-import-typo —— src/app/layout.tsx 引入的样式模块路径写成 '@/styles/color.css'，而实际文件是 s…",
+  "input": {
+    "flowId": "flow_page_page_0",
+    "error": "访问 / 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "src/app/layout.tsx",
+        "snippet": "import { Metadata } from 'next';\nimport * as React from 'react';\n\nimport '@/styles/globals.css';\n// !STARTERCONF This is for demo purposes, remove @/styles/colors.css import immediately\nimport '@/styles/color.css';\n\nimport { siteConfig } from '@/constant/config';\n\n// !STARTERCONF Change these default meta\n// !STARTERCONF Look at @/constant/config to change them\nexport const metadata: Metadata = {\n  metadataBase: new URL(siteConfig.url),\n  title: {\n    default: siteConfig.title,\n    template: `%s | ${siteConfig.title}`,\n  },\n  description: siteConfig.description,\n  robots: { index: true, follow: true },\n  // !STARTERCONF this is the default favicon, you can generate your own from https://realfavicongenerator.net/\n  // ! copy to /favicon folder\n  icons: {\n    icon: '/favicon/favicon.ico',\n    shortcut: '/favicon/favicon-16x16.png',\n    apple: '/favicon/apple-touch-icon.png',\n  },\n  manifest: `/favicon/site.webmanifest`,\n  openGraph: {\n    url: siteConfig.url,\n    title: siteConfig.title,\n    description: siteConfig.description,\n    siteName: siteConfig.title,\n    images: [`${siteConfig.url}/images/og.jpg`],\n    type: 'website',\n    locale: 'en_US',\n  },\n  twitter: {\n    card: 'summary_large_image',\n    title: siteConfig.title,\n    description: siteConfig.description,\n    images: [`${siteConfig.url}/images/og.jpg`],\n    // creator: '@th_clarence',\n  },\n  // authors: [\n  //   {\n  //     name: 'Theodorus Clarence',\n  //     url: 'https://theodorusclarence.com',\n  //   },\n  // ],\n};\n\nexport default function RootLayout({\n  children,\n}: {\n  children: React.ReactNode;\n}) {\n  return (\n    <html>\n      <body>{children}</body>\n    </html>\n  );\n}\n",
+        "hash": "d97d7509ff4329fe",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3101/",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "8063dc7f0372a0d7",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile src/app/layout.tsx",
+        "hash": "4fdb912446715044",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"src/app/layout.tsx 第 6 行导入了无法解析的 '@/styles/color.css'，触发 Next.js Module not found 构建错误，导致 /components 返回 HTTP 500。\",\"confidence\":0.98,\"reproSteps\":[\"访问 /\",\"观察 src/app/layout.tsx 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"d97d7509ff4329fe\",\"8063dc7f0372a0d7\"],\"reason\":\"代码证据（src/app/layout.tsx）与运行时错误证据（/ 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.98}",
+    "[{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m5-layout-style-import-typo-flow_page_page_0-fix\",\"title\":\"删除 src/app/layout.tsx 中失效的 color.css 导入（注释类改动）\",\"description\":\"把 src/app/layout.tsx 里的「import '@/styles/color.css';」改回「import '@/styles/colors.css';」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":1,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3101/\"},{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m5-layout-style-import-typo-flow_page_page_0-alt-1\",\"title\":\"备选方案 1：调整 src/app/layout.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m5-layout-style-import-typo-flow_page_page_0-alt-2\",\"title\":\"备选方案 2：调整 src/app/layout.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/src/app/layout.tsx b/src/app/layout.tsx\nindex 95db6a8..f1184cf 100644\n--- a/src/app/layout.tsx\n+++ b/src/app/layout.tsx\n@@ -3,7 +3,7 @@ import * as React from 'react';\n \n import '@/styles/globals.css';\n // !STARTERCONF This is for demo purposes, remove @/styles/colors.css import immediately\n-import '@/styles/color.css';\n+import '@/styles/colors.css';\n \n import { siteConfig } from '@/constant/config';\n \n"
+  ],
+  "snapshot": {
+    "files": {
+      "src/app/layout.tsx": "import { Metadata } from 'next';\nimport * as React from 'react';\n\nimport '@/styles/globals.css';\n// !STARTERCONF This is for demo purposes, remove @/styles/colors.css import immediately\nimport '@/styles/color.css';\n\nimport { siteConfig } from '@/constant/config';\n\n// !STARTERCONF Change these default meta\n// !STARTERCONF Look at @/constant/config to change them\nexport const metadata: Metadata = {\n  metadataBase: new URL(siteConfig.url),\n  title: {\n    default: siteConfig.title,\n    template: `%s | ${siteConfig.title}`,\n  },\n  description: siteConfig.description,\n  robots: { index: true, follow: true },\n  // !STARTERCONF this is the default favicon, you can generate your own from https://realfavicongenerator.net/\n  // ! copy to /favicon folder\n  icons: {\n    icon: '/favicon/favicon.ico',\n    shortcut: '/favicon/favicon-16x16.png',\n    apple: '/favicon/apple-touch-icon.png',\n  },\n  manifest: `/favicon/site.webmanifest`,\n  openGraph: {\n    url: siteConfig.url,\n    title: siteConfig.title,\n    description: siteConfig.description,\n    siteName: siteConfig.title,\n    images: [`${siteConfig.url}/images/og.jpg`],\n    type: 'website',\n    locale: 'en_US',\n  },\n  twitter: {\n    card: 'summary_large_image',\n    title: siteConfig.title,\n    description: siteConfig.description,\n    images: [`${siteConfig.url}/images/og.jpg`],\n    // creator: '@th_clarence',\n  },\n  // authors: [\n  //   {\n  //     name: 'Theodorus Clarence',\n  //     url: 'https://theodorusclarence.com',\n  //   },\n  // ],\n};\n\nexport default function RootLayout({\n  children,\n}: {\n  children: React.ReactNode;\n}) {\n  return (\n    <html>\n      <body>{children}</body>\n    </html>\n  );\n}\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "color.css",
+      "colors.css"
+    ],
+    "fixCount": 3,
+    "recommendedMentions": [
+      "layout"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：根布局的样式 import 路径拼写错误 → 全站 500（一个缺陷影响多条路由 → 归档多条案例）",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

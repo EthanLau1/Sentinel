@@ -33,7 +33,7 @@
     "rootCauseContains": [
       "TicketImage"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "TicketImage"
     ],
     "hardTier": 1,

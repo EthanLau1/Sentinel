@@ -1,0 +1,64 @@
+{
+  "caseId": "2026-10-26-ext-tailwind-nextjs-starter-blog-m2-about-slug-typo-flow_page_page_1",
+  "kind": "contract",
+  "description": "tailwind-nextjs-starter-blog · m2-about-slug-typo —— app/about/page.tsx 找作者时把 slug 写成了 'defualt'（正确是 'default'），a…",
+  "input": {
+    "flowId": "flow_page_page_1",
+    "error": "访问 /about 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "app/about/page.tsx",
+        "snippet": "import { Authors, allAuthors } from 'contentlayer/generated'\nimport { MDXLayoutRenderer } from 'pliny/mdx-components'\nimport AuthorLayout from '@/layouts/AuthorLayout'\nimport { coreContent } from 'pliny/utils/contentlayer'\nimport { genPageMetadata } from 'app/seo'\n\nexport const metadata = genPageMetadata({ title: 'About' })\n\nexport default function Page() {\n  const author = allAuthors.find((p) => p.slug === 'defualt') as Authors\n  const mainContent = coreContent(author)\n\n  return (\n    <>\n      <AuthorLayout content={mainContent}>\n        <MDXLayoutRenderer code={author.body.code} />\n      </AuthorLayout>\n    </>\n  )\n}\n",
+        "hash": "cbedf08435f9dde9",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3104/about",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "19a524b805d5b025",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile app/about/page.tsx",
+        "hash": "655fafcde3f0376a",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"app/about/page.tsx 使用了拼写错误的作者 slug “defualt”，allAuthors.find 返回 undefined，随后将 undefined 传给 coreContent，导致服务端渲染抛出异常并返回 HTTP 500。\",\"confidence\":0.92,\"reproSteps\":[\"访问 /about\",\"观察 app/about/page.tsx 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"cbedf08435f9dde9\",\"19a524b805d5b025\"],\"reason\":\"代码证据（app/about/page.tsx）与运行时错误证据（/about 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.92}",
+    "[{\"id\":\"2026-10-26-ext-tailwind-nextjs-starter-blog-m2-about-slug-typo-flow_page_page_1-fix\",\"title\":\"修正 About 页面中的默认作者 slug 拼写\",\"description\":\"把 app/about/page.tsx 里的「const author = allAuthors.find((p) => p.slug === 'defualt') as Authors」改回「const author = allAuthors.find((p) => p.slug === 'default') as Authors」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":1,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3104/about\"},{\"id\":\"2026-10-26-ext-tailwind-nextjs-starter-blog-m2-about-slug-typo-flow_page_page_1-alt-1\",\"title\":\"备选方案 1：调整 app/about/page.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-ext-tailwind-nextjs-starter-blog-m2-about-slug-typo-flow_page_page_1-alt-2\",\"title\":\"备选方案 2：调整 app/about/page.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/app/about/page.tsx b/app/about/page.tsx\nindex d22f73e..63aa32d 100644\n--- a/app/about/page.tsx\n+++ b/app/about/page.tsx\n@@ -7,7 +7,7 @@ import { genPageMetadata } from 'app/seo'\n export const metadata = genPageMetadata({ title: 'About' })\n \n export default function Page() {\n-  const author = allAuthors.find((p) => p.slug === 'defualt') as Authors\n+  const author = allAuthors.find((p) => p.slug === 'default') as Authors\n   const mainContent = coreContent(author)\n \n   return (\n"
+  ],
+  "snapshot": {
+    "files": {
+      "app/about/page.tsx": "import { Authors, allAuthors } from 'contentlayer/generated'\nimport { MDXLayoutRenderer } from 'pliny/mdx-components'\nimport AuthorLayout from '@/layouts/AuthorLayout'\nimport { coreContent } from 'pliny/utils/contentlayer'\nimport { genPageMetadata } from 'app/seo'\n\nexport const metadata = genPageMetadata({ title: 'About' })\n\nexport default function Page() {\n  const author = allAuthors.find((p) => p.slug === 'defualt') as Authors\n  const mainContent = coreContent(author)\n\n  return (\n    <>\n      <AuthorLayout content={mainContent}>\n        <MDXLayoutRenderer code={author.body.code} />\n      </AuthorLayout>\n    </>\n  )\n}\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "defualt",
+      "slug"
+    ],
+    "fixCount": 3,
+    "recommendedMentions": [
+      "about"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：字符串字面量拼写错误 → 查不到记录 → undefined 解引用",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

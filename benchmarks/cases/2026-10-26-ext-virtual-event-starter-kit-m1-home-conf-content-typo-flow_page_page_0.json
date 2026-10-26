@@ -33,7 +33,7 @@
     "rootCauseContains": [
       "ConfContent"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "ConfContent"
     ],
     "hardTier": 1,

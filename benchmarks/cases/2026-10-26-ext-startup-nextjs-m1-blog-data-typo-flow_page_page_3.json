@@ -33,7 +33,7 @@
     "rootCauseContains": [
       "blogData"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "blogData"
     ],
     "hardTier": 1,

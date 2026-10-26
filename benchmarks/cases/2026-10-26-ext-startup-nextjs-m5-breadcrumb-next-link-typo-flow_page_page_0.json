@@ -33,7 +33,7 @@
     "rootCauseContains": [
       "linkX"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "Breadcrumb"
     ],
     "hardTier": 1,

@@ -1,0 +1,56 @@
+{
+  "caseId": "2026-10-26-ext-virtual-event-starter-kit-m4-app-global-style-import-typo-flow_page_page_0",
+  "kind": "contract",
+  "description": "virtual-event-starter-kit · m4-app-global-style-import-typo —— pages/_app.tsx 引入的全局样式模块路径写成 '@styles/global2.css'，而实际文件是 st…",
+  "input": {
+    "flowId": "flow_page_page_0",
+    "error": "访问 / 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "pages/_app.tsx",
+        "snippet": "/**\n * Copyright 2020 Vercel Inc.\n *\n * Licensed under the Apache License, Version 2.0 (the \"License\");\n * you may not use this file except in compliance with the License.\n * You may obtain a copy of the License at\n *\n *      http://www.apache.org/licenses/LICENSE-2.0\n *\n * Unless required by applicable law or agreed to in writing, software\n * distributed under the License is distributed on an \"AS IS\" BASIS,\n * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n * See the License for the specific language governing permissions and\n * limitations under the License.\n */\n\nimport { SSRProvider, OverlayProvider } from 'react-aria';\nimport '@styles/global2.css';\nimport '@styles/nprogress.css';\nimport '@styles/chrome-bug.css';\nimport type { AppProps } from 'next/app';\nimport NProgress from '@components/nprogress';\nimport ResizeHandler from '@components/resize-handler';\nimport { useEffect } from 'react';\nimport { HMSRoomProvider } from '@100mslive/react-sdk';\n\nexport default function App({ Component, pageProps }: AppProps) {\n  useEffect(() => {\n    document.body.classList?.remove('loading');\n  }, []);\n  return (\n    <SSRProvider>\n      <OverlayProvider>\n        <HMSRoomProvider>\n          <Component {...pageProps} />\n          <ResizeHandler />\n          <NProgress />\n        </HMSRoomProvider>\n      </OverlayProvider>\n    </SSRProvider>\n  );\n}\n",
+        "hash": "db51f69229eb0e32",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3103/",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "8063dc7f0372a0d7",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile pages/_app.tsx",
+        "hash": "24f6fb619a699519",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"pages/_app.tsx 第 18 行引入的 '@styles/global2.css' 无法被模块解析器解析，导致 Next.js 编译失败并使根路径返回 HTTP 500。\",\"confidence\":0.99,\"reproSteps\":[\"访问 /\",\"观察 pages/_app.tsx 引起的报错\"]}",
+    "{\"shouldReject\":true,\"verifiedRootCause\":false,\"supportingEvidence\":[],\"reason\":\"证据不足以定位到具体代码改动，保持 hypothesis\",\"adjustedConfidence\":0.3}"
+  ],
+  "snapshot": {
+    "files": {
+      "pages/_app.tsx": "/**\n * Copyright 2020 Vercel Inc.\n *\n * Licensed under the Apache License, Version 2.0 (the \"License\");\n * you may not use this file except in compliance with the License.\n * You may obtain a copy of the License at\n *\n *      http://www.apache.org/licenses/LICENSE-2.0\n *\n * Unless required by applicable law or agreed to in writing, software\n * distributed under the License is distributed on an \"AS IS\" BASIS,\n * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n * See the License for the specific language governing permissions and\n * limitations under the License.\n */\n\nimport { SSRProvider, OverlayProvider } from 'react-aria';\nimport '@styles/global2.css';\nimport '@styles/nprogress.css';\nimport '@styles/chrome-bug.css';\nimport type { AppProps } from 'next/app';\nimport NProgress from '@components/nprogress';\nimport ResizeHandler from '@components/resize-handler';\nimport { useEffect } from 'react';\nimport { HMSRoomProvider } from '@100mslive/react-sdk';\n\nexport default function App({ Component, pageProps }: AppProps) {\n  useEffect(() => {\n    document.body.classList?.remove('loading');\n  }, []);\n  return (\n    <SSRProvider>\n      <OverlayProvider>\n        <HMSRoomProvider>\n          <Component {...pageProps} />\n          <ResizeHandler />\n          <NProgress />\n        </HMSRoomProvider>\n      </OverlayProvider>\n    </SSRProvider>\n  );\n}\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "hypothesis",
+    "rootCauseContains": [
+      "global2.css",
+      "global.css"
+    ],
+    "fixCount": 0
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：Pages Router 应用入口的全局样式 import 路径错误 → 全站 500",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

@@ -1,0 +1,64 @@
+{
+  "caseId": "2026-10-26-ext-ts-nextjs-tailwind-starter-m8-underline-link-unstyled-import-typo-flow_page_page_2",
+  "kind": "contract",
+  "description": "ts-nextjs-tailwind-starter · m8-underline-link-unstyled-import-typo —— src/components/links/UnderlineLink.tsx 里 UnstyledLink 的 impo…",
+  "input": {
+    "flowId": "flow_page_page_2",
+    "error": "访问 / 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "src/components/links/UnderlineLink.tsx",
+        "snippet": "import * as React from 'react';\n\nimport { cn } from '@/lib/utils';\n\nimport UnstyledLink, {\n  UnstyledLinkProps,\n} from '@/components/links/UnstyledLinkX';\n\nconst UnderlineLink = React.forwardRef<HTMLAnchorElement, UnstyledLinkProps>(\n  ({ children, className, ...rest }, ref) => {\n    return (\n      <UnstyledLink\n        ref={ref}\n        {...rest}\n        className={cn(\n          'animated-underline custom-link inline-flex items-center font-medium',\n          'focus-visible:ring-primary-500 focus:outline-hidden focus-visible:rounded-sm focus-visible:ring-3 focus-visible:ring-offset-2',\n          'border-dark border-b border-dotted hover:border-black/0',\n          className\n        )}\n      >\n        {children}\n      </UnstyledLink>\n    );\n  }\n);\n\nexport default UnderlineLink;\n",
+        "hash": "2372d5f136cd947a",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3101/",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "8063dc7f0372a0d7",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile src/components/links/UnderlineLink.tsx",
+        "hash": "c3169a45b58eddbe",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"src/components/links/UnderlineLink.tsx 第 5 行错误导入了无法解析的模块 '@/components/links/UnstyledLinkX'，导致 Next.js 编译构建失败并使根页面返回 HTTP 500。\",\"confidence\":0.99,\"reproSteps\":[\"访问 /\",\"观察 src/components/links/UnderlineLink.tsx 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"2372d5f136cd947a\",\"8063dc7f0372a0d7\"],\"reason\":\"代码证据（src/components/links/UnderlineLink.tsx）与运行时错误证据（/ 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.99}",
+    "[{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m8-underline-link-unstyled-import-typo-flow_page_page_2-fix\",\"title\":\"修正 UnderlineLink.tsx 中 UnstyledLinkX 的错误模块路径\",\"description\":\"把 src/components/links/UnderlineLink.tsx 里的「import UnstyledLink, { UnstyledLinkProps, } from '@/components/links/UnstyledLinkX';」改回「import UnstyledLink, { UnstyledLinkProps, } from '@/components/links/UnstyledLink';」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":1,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3101/\"},{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m8-underline-link-unstyled-import-typo-flow_page_page_2-alt-1\",\"title\":\"备选方案 1：调整 src/components/links/UnderlineLink.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m8-underline-link-unstyled-import-typo-flow_page_page_2-alt-2\",\"title\":\"备选方案 2：调整 src/components/links/UnderlineLink.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/src/components/links/UnderlineLink.tsx b/src/components/links/UnderlineLink.tsx\nindex c76f7b6..2b03d0f 100644\n--- a/src/components/links/UnderlineLink.tsx\n+++ b/src/components/links/UnderlineLink.tsx\n@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';\n \n import UnstyledLink, {\n   UnstyledLinkProps,\n-} from '@/components/links/UnstyledLinkX';\n+} from '@/components/links/UnstyledLink';\n \n const UnderlineLink = React.forwardRef<HTMLAnchorElement, UnstyledLinkProps>(\n   ({ children, className, ...rest }, ref) => {\n"
+  ],
+  "snapshot": {
+    "files": {
+      "src/components/links/UnderlineLink.tsx": "import * as React from 'react';\n\nimport { cn } from '@/lib/utils';\n\nimport UnstyledLink, {\n  UnstyledLinkProps,\n} from '@/components/links/UnstyledLinkX';\n\nconst UnderlineLink = React.forwardRef<HTMLAnchorElement, UnstyledLinkProps>(\n  ({ children, className, ...rest }, ref) => {\n    return (\n      <UnstyledLink\n        ref={ref}\n        {...rest}\n        className={cn(\n          'animated-underline custom-link inline-flex items-center font-medium',\n          'focus-visible:ring-primary-500 focus:outline-hidden focus-visible:rounded-sm focus-visible:ring-3 focus-visible:ring-offset-2',\n          'border-dark border-b border-dotted hover:border-black/0',\n          className\n        )}\n      >\n        {children}\n      </UnstyledLink>\n    );\n  }\n);\n\nexport default UnderlineLink;\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "UnstyledLinkX",
+      "UnstyledLink"
+    ],
+    "fixCount": 3,
+    "recommendedMentions": [
+      "UnderlineLink"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：链接组件链上的 import 路径写错 → 多页 500",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

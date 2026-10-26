@@ -1,0 +1,62 @@
+{
+  "caseId": "2026-10-26-ext-ts-nextjs-tailwind-starter-m6-arrowlink-fallback-typo-flow_page_page_0",
+  "kind": "contract",
+  "description": "ts-nextjs-tailwind-starter · m6-arrowlink-fallback-typo —— src/components/links/ArrowLink.tsx 里 fallback 组件写成 Underline…",
+  "input": {
+    "flowId": "flow_page_page_0",
+    "error": "访问 / 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "src/components/links/ArrowLink.tsx",
+        "snippet": "import * as React from 'react';\n\nimport { cn } from '@/lib/utils';\n\nimport UnderlineLink from '@/components/links/UnderlineLink';\nimport { UnstyledLinkProps } from '@/components/links/UnstyledLink';\n\ntype ArrowLinkProps<C extends React.ElementType> = {\n  as?: C;\n  direction?: 'left' | 'right';\n} & UnstyledLinkProps &\n  React.ComponentProps<C>;\n\nexport default function ArrowLink<C extends React.ElementType>({\n  children,\n  className,\n  direction = 'right',\n  as,\n  ...rest\n}: ArrowLinkProps<C>) {\n  const Component = as || UnderlineLinks;\n\n  return (\n    <Component\n      {...rest}\n      className={cn(\n        'group gap-[0.25em]',\n        direction === 'left' && 'flex-row-reverse',\n        className\n      )}\n    >\n      <span>{children}</span>\n      <svg\n        viewBox='0 0 16 16'\n        height='1em'\n        width='1em'\n        fill='none'\n        xmlns='http://www.w3.org/2000/svg'\n        className={cn(\n          'relative',\n          'transition-transform duration-200',\n          direction === 'right' ? 'motion-safe:-translate-x-1' : 'rotate-180',\n          'group-hover:translate-x-0'\n        )}\n      >\n        <path\n          fill='currentColor'\n          d='M7.28033 3.21967C6.98744 2.92678 6.51256 2.92678 6.21967 3.21967C5.92678 3.51256 5.92678 3.98744 6.21967 4.28033L7.28033 3.21967ZM11 8L11.5303 8.53033C11.8232 8.23744 11.8232 7.76256 11.5303 7.46967L11 8ZM6.21967 11.7197C5.92678 12.0126 5.92678 12.4874 6.21967 12.7803C6.51256 13.0732 6.98744 13.0732 7.28033 12.7803L6.21967 11.7197ZM6.21967 4.28033L10.4697 8.53033L11.5303 7.46967L7.28033 3.21967L6.21967 4.28033ZM10.4697 7.46967L6.21967 11.7197L7.28033 12.7803L11.5303 8.53033L10.4697 7.46967Z'\n        />\n        <path\n          stroke='currentColor'\n          d='M1.75 8H11'\n          strokeWidth='1.5'\n          strokeLinecap='round'\n          className={cn(\n            'origin-left transition-all duration-200',\n            'opacity-0 motion-safe:-translate-x-1',\n            'group-hover:translate-x-0 group-hover:opacity-100'\n          )}\n        />\n      </svg>\n    </Component>\n  );\n}\n",
+        "hash": "e0528d644601a13e",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3101/",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "8063dc7f0372a0d7",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile src/components/links/ArrowLink.tsx",
+        "hash": "fedf839eb13f47bb",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"src/components/links/ArrowLink.tsx 第 14 行引用了未定义或未导入的标识符 UnderlineLinks，导致 ArrowLink 渲染时抛出 ReferenceError，并被错误边界捕获，最终使 /components 返回 HTTP 500。\",\"confidence\":0.96,\"reproSteps\":[\"访问 /\",\"观察 src/components/links/ArrowLink.tsx 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"e0528d644601a13e\",\"8063dc7f0372a0d7\"],\"reason\":\"代码证据（src/components/links/ArrowLink.tsx）与运行时错误证据（/ 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.96}",
+    "[{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m6-arrowlink-fallback-typo-flow_page_page_0-fix\",\"title\":\"快速修复（绕过/补丁）\",\"description\":\"把 src/components/links/ArrowLink.tsx 里的「const Component = as || UnderlineLinks;」改回「const Component = as || UnderlineLink;」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":1,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3101/\"},{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m6-arrowlink-fallback-typo-flow_page_page_0-alt-1\",\"title\":\"备选方案 1：调整 src/components/links/ArrowLink.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m6-arrowlink-fallback-typo-flow_page_page_0-alt-2\",\"title\":\"备选方案 2：调整 src/components/links/ArrowLink.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/src/components/links/ArrowLink.tsx b/src/components/links/ArrowLink.tsx\nindex e964a8e..60d70b1 100644\n--- a/src/components/links/ArrowLink.tsx\n+++ b/src/components/links/ArrowLink.tsx\n@@ -18,7 +18,7 @@ export default function ArrowLink<C extends React.ElementType>({\n   as,\n   ...rest\n }: ArrowLinkProps<C>) {\n-  const Component = as || UnderlineLinks;\n+  const Component = as || UnderlineLink;\n \n   return (\n     <Component\n"
+  ],
+  "snapshot": {
+    "files": {
+      "src/components/links/ArrowLink.tsx": "import * as React from 'react';\n\nimport { cn } from '@/lib/utils';\n\nimport UnderlineLink from '@/components/links/UnderlineLink';\nimport { UnstyledLinkProps } from '@/components/links/UnstyledLink';\n\ntype ArrowLinkProps<C extends React.ElementType> = {\n  as?: C;\n  direction?: 'left' | 'right';\n} & UnstyledLinkProps &\n  React.ComponentProps<C>;\n\nexport default function ArrowLink<C extends React.ElementType>({\n  children,\n  className,\n  direction = 'right',\n  as,\n  ...rest\n}: ArrowLinkProps<C>) {\n  const Component = as || UnderlineLinks;\n\n  return (\n    <Component\n      {...rest}\n      className={cn(\n        'group gap-[0.25em]',\n        direction === 'left' && 'flex-row-reverse',\n        className\n      )}\n    >\n      <span>{children}</span>\n      <svg\n        viewBox='0 0 16 16'\n        height='1em'\n        width='1em'\n        fill='none'\n        xmlns='http://www.w3.org/2000/svg'\n        className={cn(\n          'relative',\n          'transition-transform duration-200',\n          direction === 'right' ? 'motion-safe:-translate-x-1' : 'rotate-180',\n          'group-hover:translate-x-0'\n        )}\n      >\n        <path\n          fill='currentColor'\n          d='M7.28033 3.21967C6.98744 2.92678 6.51256 2.92678 6.21967 3.21967C5.92678 3.51256 5.92678 3.98744 6.21967 4.28033L7.28033 3.21967ZM11 8L11.5303 8.53033C11.8232 8.23744 11.8232 7.76256 11.5303 7.46967L11 8ZM6.21967 11.7197C5.92678 12.0126 5.92678 12.4874 6.21967 12.7803C6.51256 13.0732 6.98744 13.0732 7.28033 12.7803L6.21967 11.7197ZM6.21967 4.28033L10.4697 8.53033L11.5303 7.46967L7.28033 3.21967L6.21967 4.28033ZM10.4697 7.46967L6.21967 11.7197L7.28033 12.7803L11.5303 8.53033L10.4697 7.46967Z'\n        />\n        <path\n          stroke='currentColor'\n          d='M1.75 8H11'\n          strokeWidth='1.5'\n          strokeLinecap='round'\n          className={cn(\n            'origin-left transition-all duration-200',\n            'opacity-0 motion-safe:-translate-x-1',\n            'group-hover:translate-x-0 group-hover:opacity-100'\n          )}\n        />\n      </svg>\n    </Component>\n  );\n}\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "UnderlineLink"
+    ],
+    "fixCount": 3,
+    "recommendedMentions": [
+      "ArrowLink"
+    ],
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：共享组件里的 fallback 组件名拼错 → 多页同时 500",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

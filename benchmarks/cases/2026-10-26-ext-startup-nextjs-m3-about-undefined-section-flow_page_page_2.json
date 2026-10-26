@@ -33,7 +33,7 @@
     "rootCauseContains": [
       "AboutSectionOne"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "AboutSectionOne"
     ],
     "hardTier": 1,

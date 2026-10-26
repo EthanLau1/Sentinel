@@ -1,0 +1,63 @@
+{
+  "caseId": "2026-10-26-ext-virtual-event-starter-kit-m1-home-conf-content-typo-flow_page_page_0",
+  "kind": "contract",
+  "description": "virtual-event-starter-kit · m1-home-conf-content-typo —— pages/index.tsx 里 JSX 写的是 <ConfContentX>，但顶部 import 的是 ConfC…",
+  "input": {
+    "flowId": "flow_page_page_0",
+    "error": "访问 / 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "pages/index.tsx",
+        "snippet": "/**\n * Copyright 2020 Vercel Inc.\n *\n * Licensed under the Apache License, Version 2.0 (the \"License\");\n * you may not use this file except in compliance with the License.\n * You may obtain a copy of the License at\n *\n *      http://www.apache.org/licenses/LICENSE-2.0\n *\n * Unless required by applicable law or agreed to in writing, software\n * distributed under the License is distributed on an \"AS IS\" BASIS,\n * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n * See the License for the specific language governing permissions and\n * limitations under the License.\n */\n\nimport { useRouter } from 'next/router';\nimport { SkipNavContent } from '@reach/skip-nav';\n\nimport Page from '@components/page';\nimport ConfContent from '@components/index';\nimport { META_DESCRIPTION } from '@lib/constants';\n\nexport default function Conf() {\n  const { query } = useRouter();\n  const meta = {\n    title: 'Demo - Virtual Event Starter Kit',\n    description: META_DESCRIPTION\n  };\n  const ticketNumber = query.ticketNumber?.toString();\n  const defaultUserData = {\n    id: query.id?.toString(),\n    ticketNumber: ticketNumber ? parseInt(ticketNumber, 10) : undefined,\n    name: query.name?.toString(),\n    username: query.username?.toString()\n  };\n\n  return (\n    <Page meta={meta} fullViewport>\n      <SkipNavContent />\n      <ConfContentX\n        defaultUserData={defaultUserData}\n        defaultPageState={query.ticketNumber ? 'ticket' : 'registration'}\n      />\n    </Page>\n  );\n}\n",
+        "hash": "5998ab49e416ea1a",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3103/",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "8063dc7f0372a0d7",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile pages/index.tsx",
+        "hash": "190c44ffae1511c5",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"pages/index.tsx 导入了 ConfContent，却在第 41 行渲染了未定义的 ConfContentX，导致服务端渲染抛出 ReferenceError 并返回 HTTP 500。\",\"confidence\":0.99,\"reproSteps\":[\"访问 /\",\"观察 pages/index.tsx 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"5998ab49e416ea1a\",\"8063dc7f0372a0d7\"],\"reason\":\"代码证据（pages/index.tsx）与运行时错误证据（/ 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.99}",
+    "[{\"id\":\"2026-10-26-ext-virtual-event-starter-kit-m1-home-conf-content-typo-flow_page_page_0-fix\",\"title\":\"将 pages/index.tsx 中的 JSX 标识符改为已导入的 ConfContent\",\"description\":\"把 pages/index.tsx 里的「<ConfContentX」改回「<ConfContent」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":1,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3103/\"},{\"id\":\"2026-10-26-ext-virtual-event-starter-kit-m1-home-conf-content-typo-flow_page_page_0-alt-1\",\"title\":\"备选方案 1：调整 pages/index.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-ext-virtual-event-starter-kit-m1-home-conf-content-typo-flow_page_page_0-alt-2\",\"title\":\"备选方案 2：调整 pages/index.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/pages/index.tsx b/pages/index.tsx\nindex 16dcfd2..9e5525d 100644\n--- a/pages/index.tsx\n+++ b/pages/index.tsx\n@@ -38,7 +38,7 @@ export default function Conf() {\n   return (\n     <Page meta={meta} fullViewport>\n       <SkipNavContent />\n-      <ConfContentX\n+      <ConfContent\n         defaultUserData={defaultUserData}\n         defaultPageState={query.ticketNumber ? 'ticket' : 'registration'}\n       />\n"
+  ],
+  "snapshot": {
+    "files": {
+      "pages/index.tsx": "/**\n * Copyright 2020 Vercel Inc.\n *\n * Licensed under the Apache License, Version 2.0 (the \"License\");\n * you may not use this file except in compliance with the License.\n * You may obtain a copy of the License at\n *\n *      http://www.apache.org/licenses/LICENSE-2.0\n *\n * Unless required by applicable law or agreed to in writing, software\n * distributed under the License is distributed on an \"AS IS\" BASIS,\n * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n * See the License for the specific language governing permissions and\n * limitations under the License.\n */\n\nimport { useRouter } from 'next/router';\nimport { SkipNavContent } from '@reach/skip-nav';\n\nimport Page from '@components/page';\nimport ConfContent from '@components/index';\nimport { META_DESCRIPTION } from '@lib/constants';\n\nexport default function Conf() {\n  const { query } = useRouter();\n  const meta = {\n    title: 'Demo - Virtual Event Starter Kit',\n    description: META_DESCRIPTION\n  };\n  const ticketNumber = query.ticketNumber?.toString();\n  const defaultUserData = {\n    id: query.id?.toString(),\n    ticketNumber: ticketNumber ? parseInt(ticketNumber, 10) : undefined,\n    name: query.name?.toString(),\n    username: query.username?.toString()\n  };\n\n  return (\n    <Page meta={meta} fullViewport>\n      <SkipNavContent />\n      <ConfContentX\n        defaultUserData={defaultUserData}\n        defaultPageState={query.ticketNumber ? 'ticket' : 'registration'}\n      />\n    </Page>\n  );\n}\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "ConfContent"
+    ],
+    "fixCount": 3,
+    "recommendedMentions": [
+      "ConfContent"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：组件名拼写错误 → undefined 元素类型",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

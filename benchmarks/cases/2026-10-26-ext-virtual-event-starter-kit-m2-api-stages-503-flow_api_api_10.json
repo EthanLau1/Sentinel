@@ -32,7 +32,7 @@
     "rootCauseContains": [
       "503"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "503"
     ],
     "hardTier": 3,

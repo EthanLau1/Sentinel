@@ -1,0 +1,63 @@
+{
+  "caseId": "2026-10-26-ext-ts-nextjs-tailwind-starter-m2-api-hello-500-flow_api_api_1",
+  "kind": "contract",
+  "description": "ts-nextjs-tailwind-starter · m2-api-hello-500 —— src/app/api/hello/route.ts 的 GET 处理器调用 NextResponse.json 时显式…",
+  "input": {
+    "flowId": "flow_api_api_1",
+    "error": "访问 /api/hello 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "src/app/api/hello/route.ts",
+        "snippet": "import { NextResponse } from 'next/server';\n\nexport async function GET() {\n  return NextResponse.json({ hello: 'Next.js' }, { status: 500 });\n}\n",
+        "hash": "37802362a9d0cb13",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3101/api/hello",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "b90350eeffad34c9",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile src/app/api/hello/route.ts",
+        "hash": "f788035a7f74ea43",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"/api/hello 的 GET 路由在 NextResponse.json 中显式设置了 status: 500，导致接口返回 500 而非测试期望的 2xx。\",\"confidence\":0.99,\"reproSteps\":[\"访问 /api/hello\",\"观察 src/app/api/hello/route.ts 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"37802362a9d0cb13\",\"b90350eeffad34c9\"],\"reason\":\"代码证据（src/app/api/hello/route.ts）与运行时错误证据（/api/hello 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.99}",
+    "[{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m2-api-hello-500-flow_api_api_1-fix\",\"title\":\"将 /api/hello 的显式状态码改为 200\",\"description\":\"把 src/app/api/hello/route.ts 里的「return NextResponse.json({ hello: 'Next.js' }, { status: 500 });」改回「return NextResponse.json({ hello: 'Next.js' });」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":1,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3101/api/hello\"},{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m2-api-hello-500-flow_api_api_1-alt-1\",\"title\":\"备选方案 1：调整 src/app/api/hello/route.ts 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m2-api-hello-500-flow_api_api_1-alt-2\",\"title\":\"备选方案 2：调整 src/app/api/hello/route.ts 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/src/app/api/hello/route.ts b/src/app/api/hello/route.ts\nindex 6a772c0..95ab332 100644\n--- a/src/app/api/hello/route.ts\n+++ b/src/app/api/hello/route.ts\n@@ -1,5 +1,5 @@\n import { NextResponse } from 'next/server';\n \n export async function GET() {\n-  return NextResponse.json({ hello: 'Next.js' }, { status: 500 });\n+  return NextResponse.json({ hello: 'Next.js' });\n }\n"
+  ],
+  "snapshot": {
+    "files": {
+      "src/app/api/hello/route.ts": "import { NextResponse } from 'next/server';\n\nexport async function GET() {\n  return NextResponse.json({ hello: 'Next.js' }, { status: 500 });\n}\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "status"
+    ],
+    "fixCount": 3,
+    "recommendedMentions": [
+      "status"
+    ],
+    "hardTier": 2,
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：响应状态码被写死为 500",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

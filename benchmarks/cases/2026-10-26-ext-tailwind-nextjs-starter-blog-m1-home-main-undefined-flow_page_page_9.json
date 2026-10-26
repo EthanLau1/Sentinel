@@ -33,7 +33,7 @@
     "rootCauseContains": [
       "Main"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "Main"
     ],
     "hardTier": 1,

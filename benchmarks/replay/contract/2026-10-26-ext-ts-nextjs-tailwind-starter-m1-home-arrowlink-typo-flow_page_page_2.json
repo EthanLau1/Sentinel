@@ -1,0 +1,63 @@
+{
+  "caseId": "2026-10-26-ext-ts-nextjs-tailwind-starter-m1-home-arrowlink-typo-flow_page_page_2",
+  "kind": "contract",
+  "description": "ts-nextjs-tailwind-starter · m1-home-arrowlink-typo —— src/app/page.tsx 第 36 行的开标签被写成 <ArrowLinks>，而第 38 行的闭标签仍是 </…",
+  "input": {
+    "flowId": "flow_page_page_2",
+    "error": "访问 / 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "src/app/page.tsx",
+        "snippet": "'use client';\n\nimport * as React from 'react';\nimport '@/lib/env';\n\nimport ArrowLink from '@/components/links/ArrowLink';\nimport ButtonLink from '@/components/links/ButtonLink';\nimport UnderlineLink from '@/components/links/UnderlineLink';\nimport UnstyledLink from '@/components/links/UnstyledLink';\n\n/**\n * SVGR Support\n * Caveat: No React Props Type.\n *\n * You can override the next-env if the type is important to you\n * @see https://stackoverflow.com/questions/68103844/how-to-override-next-js-svg-module-declaration\n */\nimport Logo from '~/svg/Logo.svg';\n\n// !STARTERCONF -> Select !STARTERCONF and CMD + SHIFT + F\n// Before you begin editing, follow all comments with `STARTERCONF`,\n// to customize the default configuration.\n\nexport default function HomePage() {\n  return (\n    <main>\n      <section className='bg-white'>\n        <div className='layout relative flex min-h-screen flex-col items-center justify-center py-12 text-center'>\n          <Logo className='w-16' />\n          <h1 className='mt-4'>Next.js + Tailwind CSS + TypeScript Starter</h1>\n          <p className='mt-2 text-sm text-gray-800'>\n            A starter for Next.js, Tailwind CSS, and TypeScript with Absolute\n            Import, Seo, Link component, pre-configured with Husky{' '}\n          </p>\n          <p className='mt-2 text-sm text-gray-700'>\n            <ArrowLinks href='https://github.com/theodorusclarence/ts-nextjs-tailwind-starter'>\n              See the repository\n            </ArrowLink>\n          </p>\n\n          <ButtonLink className='mt-6' href='/components' variant='light'>\n            See all components\n          </ButtonLink>\n\n          <UnstyledLink\n            href='https://vercel.com/new/git/external?repository-url=https%3A%2F%2Fgithub.com%2Ftheodorusclarence%2Fts-nextjs-tailwind-starter'\n            className='mt-4'\n          >\n            {/* eslint-disable-next-line @next/next/no-img-element */}\n            <img\n              width='92'\n              height='32'\n              src='https://vercel.com/button'\n              alt='Deploy with Vercel'\n            />\n          </UnstyledLink>\n\n          <footer className='absolute bottom-2 text-gray-700'>\n            © {new Date().getFullYear()} By{' '}\n            <UnderlineLink href='https://theodorusclarence.com?ref=tsnextstarter'>\n              Theodorus Clarence\n            </UnderlineLink>\n          </footer>\n        </div>\n      </section>\n    </main>\n  );\n}\n",
+        "hash": "d22c21e862c5fed6",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3101/",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "8063dc7f0372a0d7",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile src/app/page.tsx",
+        "hash": "205f8f34b7e74c2d",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"src/app/page.tsx 第 36 行使用了 <ArrowLinks>，但第 38 行以 </ArrowLink> 闭合，JSX 标签不匹配导致编译失败并使根路由返回 HTTP 500。\",\"confidence\":0.99,\"reproSteps\":[\"访问 /\",\"观察 src/app/page.tsx 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"d22c21e862c5fed6\",\"8063dc7f0372a0d7\"],\"reason\":\"代码证据（src/app/page.tsx）与运行时错误证据（/ 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.99}",
+    "[{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m1-home-arrowlink-typo-flow_page_page_2-fix\",\"title\":\"在 src/app/page.tsx 将 ArrowLinks 开标签修正为 ArrowLink\",\"description\":\"把 src/app/page.tsx 里的「<ArrowLinks href='https://github.com/theodorusclarence/ts-nextjs-tailwind-starter'>」改回「<ArrowLink href='https://github.com/theodorusclarence/ts-nextjs-tailwind-starter'>」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":1,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3101/\"},{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m1-home-arrowlink-typo-flow_page_page_2-alt-1\",\"title\":\"备选方案 1：调整 src/app/page.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-ext-ts-nextjs-tailwind-starter-m1-home-arrowlink-typo-flow_page_page_2-alt-2\",\"title\":\"备选方案 2：调整 src/app/page.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/src/app/page.tsx b/src/app/page.tsx\nindex 0d609de..99aab31 100644\n--- a/src/app/page.tsx\n+++ b/src/app/page.tsx\n@@ -33,7 +33,7 @@ export default function HomePage() {\n             Import, Seo, Link component, pre-configured with Husky{' '}\n           </p>\n           <p className='mt-2 text-sm text-gray-700'>\n-            <ArrowLinks href='https://github.com/theodorusclarence/ts-nextjs-tailwind-starter'>\n+            <ArrowLink href='https://github.com/theodorusclarence/ts-nextjs-tailwind-starter'>\n               See the repository\n             </ArrowLink>\n           </p>\n"
+  ],
+  "snapshot": {
+    "files": {
+      "src/app/page.tsx": "'use client';\n\nimport * as React from 'react';\nimport '@/lib/env';\n\nimport ArrowLink from '@/components/links/ArrowLink';\nimport ButtonLink from '@/components/links/ButtonLink';\nimport UnderlineLink from '@/components/links/UnderlineLink';\nimport UnstyledLink from '@/components/links/UnstyledLink';\n\n/**\n * SVGR Support\n * Caveat: No React Props Type.\n *\n * You can override the next-env if the type is important to you\n * @see https://stackoverflow.com/questions/68103844/how-to-override-next-js-svg-module-declaration\n */\nimport Logo from '~/svg/Logo.svg';\n\n// !STARTERCONF -> Select !STARTERCONF and CMD + SHIFT + F\n// Before you begin editing, follow all comments with `STARTERCONF`,\n// to customize the default configuration.\n\nexport default function HomePage() {\n  return (\n    <main>\n      <section className='bg-white'>\n        <div className='layout relative flex min-h-screen flex-col items-center justify-center py-12 text-center'>\n          <Logo className='w-16' />\n          <h1 className='mt-4'>Next.js + Tailwind CSS + TypeScript Starter</h1>\n          <p className='mt-2 text-sm text-gray-800'>\n            A starter for Next.js, Tailwind CSS, and TypeScript with Absolute\n            Import, Seo, Link component, pre-configured with Husky{' '}\n          </p>\n          <p className='mt-2 text-sm text-gray-700'>\n            <ArrowLinks href='https://github.com/theodorusclarence/ts-nextjs-tailwind-starter'>\n              See the repository\n            </ArrowLink>\n          </p>\n\n          <ButtonLink className='mt-6' href='/components' variant='light'>\n            See all components\n          </ButtonLink>\n\n          <UnstyledLink\n            href='https://vercel.com/new/git/external?repository-url=https%3A%2F%2Fgithub.com%2Ftheodorusclarence%2Fts-nextjs-tailwind-starter'\n            className='mt-4'\n          >\n            {/* eslint-disable-next-line @next/next/no-img-element */}\n            <img\n              width='92'\n              height='32'\n              src='https://vercel.com/button'\n              alt='Deploy with Vercel'\n            />\n          </UnstyledLink>\n\n          <footer className='absolute bottom-2 text-gray-700'>\n            © {new Date().getFullYear()} By{' '}\n            <UnderlineLink href='https://theodorusclarence.com?ref=tsnextstarter'>\n              Theodorus Clarence\n            </UnderlineLink>\n          </footer>\n        </div>\n      </section>\n    </main>\n  );\n}\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "ArrowLink"
+    ],
+    "fixCount": 3,
+    "recommendedMentions": [
+      "ArrowLink"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：JSX 开标签拼写错误导致标签不匹配 → 语法错误 → 整站编译失败。（初版真值写成『组件未导入』，读源码后作废：闭标签仍是 ArrowLink，真因是标签不匹配）",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

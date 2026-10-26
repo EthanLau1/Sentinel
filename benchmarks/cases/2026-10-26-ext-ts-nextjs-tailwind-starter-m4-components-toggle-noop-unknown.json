@@ -27,7 +27,7 @@
     "rootCauseContains": [
       "toggleMode"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "toggleMode"
     ],
     "hardTier": 3,

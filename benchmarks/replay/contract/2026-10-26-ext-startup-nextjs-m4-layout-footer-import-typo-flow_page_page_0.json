@@ -1,0 +1,63 @@
+{
+  "caseId": "2026-10-26-ext-startup-nextjs-m4-layout-footer-import-typo-flow_page_page_0",
+  "kind": "contract",
+  "description": "startup-nextjs · m4-layout-footer-import-typo —— src/app/layout.tsx 里 import 的 Footer 组件路径写成 '@/components/Fo…",
+  "input": {
+    "flowId": "flow_page_page_0",
+    "error": "访问 / 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "src/app/layout.tsx",
+        "snippet": "\"use client\";\n\nimport Footer from \"@/components/FooterX\";\nimport Header from \"@/components/Header\";\nimport ScrollToTop from \"@/components/ScrollToTop\";\nimport { Inter } from \"next/font/google\";\nimport \"../styles/index.css\";\n\nconst inter = Inter({ subsets: [\"latin\"] });\n\nexport default function RootLayout({\n  children,\n}: {\n  children: React.ReactNode;\n}) {\n  return (\n    <html suppressHydrationWarning lang=\"en\">\n      {/*\n        <head /> will contain the components returned by the nearest parent\n        head.js. Find out more at https://beta.nextjs.org/docs/api-reference/file-conventions/head\n      */}\n      <head />\n\n      <body className={`bg-[#FCFCFC] dark:bg-black ${inter.className}`}>\n        <Providers>\n          <div className=\"isolate\">\n            <Header />\n            {children}\n            <Footer />\n          </div>\n          <ScrollToTop />\n        </Providers>\n      </body>\n    </html>\n  );\n}\n\nimport { Providers } from \"./providers\";\n\n",
+        "hash": "36e0194a8801af3e",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3102/",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "8063dc7f0372a0d7",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile src/app/layout.tsx",
+        "hash": "d138d7318b5bff45",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"src/app/layout.tsx 第 3 行引用了无法解析的 `@/components/FooterX`，该缺失模块触发 Next.js 构建错误，导致 `/contact` 请求返回 HTTP 500。\",\"confidence\":0.98,\"reproSteps\":[\"访问 /\",\"观察 src/app/layout.tsx 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"36e0194a8801af3e\",\"8063dc7f0372a0d7\"],\"reason\":\"代码证据（src/app/layout.tsx）与运行时错误证据（/ 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.98}",
+    "[{\"id\":\"2026-10-26-ext-startup-nextjs-m4-layout-footer-import-typo-flow_page_page_0-fix\",\"title\":\"修正根布局中的 Footer 导入路径\",\"description\":\"把 src/app/layout.tsx 里的「import Footer from \\\"@/components/FooterX\\\";」改回「import Footer from \\\"@/components/Footer\\\";」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":1,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3102/\"},{\"id\":\"2026-10-26-ext-startup-nextjs-m4-layout-footer-import-typo-flow_page_page_0-alt-1\",\"title\":\"备选方案 1：调整 src/app/layout.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-ext-startup-nextjs-m4-layout-footer-import-typo-flow_page_page_0-alt-2\",\"title\":\"备选方案 2：调整 src/app/layout.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/src/app/layout.tsx b/src/app/layout.tsx\nindex c049ae7..23a9c13 100644\n--- a/src/app/layout.tsx\n+++ b/src/app/layout.tsx\n@@ -1,6 +1,6 @@\n \"use client\";\n \n-import Footer from \"@/components/FooterX\";\n+import Footer from \"@/components/Footer\";\n import Header from \"@/components/Header\";\n import ScrollToTop from \"@/components/ScrollToTop\";\n import { Inter } from \"next/font/google\";\n"
+  ],
+  "snapshot": {
+    "files": {
+      "src/app/layout.tsx": "\"use client\";\n\nimport Footer from \"@/components/FooterX\";\nimport Header from \"@/components/Header\";\nimport ScrollToTop from \"@/components/ScrollToTop\";\nimport { Inter } from \"next/font/google\";\nimport \"../styles/index.css\";\n\nconst inter = Inter({ subsets: [\"latin\"] });\n\nexport default function RootLayout({\n  children,\n}: {\n  children: React.ReactNode;\n}) {\n  return (\n    <html suppressHydrationWarning lang=\"en\">\n      {/*\n        <head /> will contain the components returned by the nearest parent\n        head.js. Find out more at https://beta.nextjs.org/docs/api-reference/file-conventions/head\n      */}\n      <head />\n\n      <body className={`bg-[#FCFCFC] dark:bg-black ${inter.className}`}>\n        <Providers>\n          <div className=\"isolate\">\n            <Header />\n            {children}\n            <Footer />\n          </div>\n          <ScrollToTop />\n        </Providers>\n      </body>\n    </html>\n  );\n}\n\nimport { Providers } from \"./providers\";\n\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "FooterX"
+    ],
+    "fixCount": 3,
+    "recommendedMentions": [
+      "layout"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：根布局的组件 import 路径多写一个字母 → 全站 500（9 条路由 → 最多 9 条案例）",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

@@ -1,0 +1,63 @@
+{
+  "caseId": "2026-10-26-ext-startup-nextjs-m2-contact-undefined-component-flow_page_page_0",
+  "kind": "contract",
+  "description": "startup-nextjs · m2-contact-undefined-component —— src/app/contact/page.tsx 的 JSX 写了 <ContactForm />，但文件顶部 impo…",
+  "input": {
+    "flowId": "flow_page_page_0",
+    "error": "访问 /contact 时返回 HTTP 500",
+    "evidence": [
+      {
+        "kind": "file",
+        "source": "fs",
+        "path": "src/app/contact/page.tsx",
+        "snippet": "import Breadcrumb from \"@/components/Common/Breadcrumb\";\nimport Contact from \"@/components/Contact\";\n\nimport { Metadata } from \"next\";\n\nexport const metadata: Metadata = {\n  title: \"Contact Page | Free Next.js Template for Startup and SaaS\",\n  description: \"This is Contact Page for Startup Nextjs Template\",\n  // other metadata\n};\n\nconst ContactPage = () => {\n  return (\n    <>\n      <Breadcrumb\n        pageName=\"Contact Page\"\n        description=\"Lorem ipsum dolor sit amet, consectetur adipiscing elit. In varius eros eget sapien consectetur ultrices. Ut quis dapibus libero.\"\n      />\n\n      <ContactForm />\n    </>\n  );\n};\n\nexport default ContactPage;\n",
+        "hash": "255d51fc017f4b67",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "http",
+        "source": "api",
+        "url": "http://127.0.0.1:3102/contact",
+        "method": "GET",
+        "status": 500,
+        "bodySummary": "Internal Server Error",
+        "hash": "4760d403ea5929ac",
+        "timestamp": 1793000000000
+      },
+      {
+        "kind": "console",
+        "source": "browser",
+        "level": "error",
+        "message": "Failed to compile src/app/contact/page.tsx",
+        "hash": "622f97521bdb0d22",
+        "timestamp": 1793000000000
+      }
+    ]
+  },
+  "llmResponses": [
+    "{\"rootCause\":\"src/app/contact/page.tsx 渲染了模块作用域中未导入、未定义的 ContactForm 组件，导致服务端渲染抛出异常并使 /contact 返回 HTTP 500。\",\"confidence\":0.94,\"reproSteps\":[\"访问 /contact\",\"观察 src/app/contact/page.tsx 引起的报错\"]}",
+    "{\"shouldReject\":false,\"verifiedRootCause\":true,\"supportingEvidence\":[\"255d51fc017f4b67\",\"4760d403ea5929ac\"],\"reason\":\"代码证据（src/app/contact/page.tsx）与运行时错误证据（/contact 返回 500）同时定位到同一处改动\",\"adjustedConfidence\":0.94}",
+    "[{\"id\":\"2026-10-26-ext-startup-nextjs-m2-contact-undefined-component-flow_page_page_0-fix\",\"title\":\"将页面中的 ContactForm 替换为已导入的 Contact\",\"description\":\"把 src/app/contact/page.tsx 里的「<ContactForm />」改回「<Contact />」\",\"effort\":\"low\",\"risk\":\"low\",\"runtimeCost\":\"none\",\"regressionRisk\":\"low\",\"maintenanceCost\":\"low\",\"stageFit\":\"MVP\",\"tier\":1,\"confidence\":0.9,\"whyRecommended\":\"直接修掉被注入的缺陷，改动最小且可回滚\",\"verificationCommand\":\"curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3102/contact\"},{\"id\":\"2026-10-26-ext-startup-nextjs-m2-contact-undefined-component-flow_page_page_0-alt-1\",\"title\":\"备选方案 1：调整 src/app/contact/page.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 1）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"},{\"id\":\"2026-10-26-ext-startup-nextjs-m2-contact-undefined-component-flow_page_page_0-alt-2\",\"title\":\"备选方案 2：调整 src/app/contact/page.tsx 的实现方式\",\"description\":\"换一种写法实现同样的目标（备选路径 2）\",\"effort\":\"high\",\"risk\":\"medium\",\"runtimeCost\":\"none\",\"regressionRisk\":\"medium\",\"maintenanceCost\":\"medium\",\"stageFit\":\"Launch\",\"tier\":3,\"confidence\":0.5,\"whyRecommended\":\"备选路径，评估成本更高\",\"verificationCommand\":\"npm test\"}]",
+    "diff --git a/src/app/contact/page.tsx b/src/app/contact/page.tsx\nindex 9e91a95..9df15c1 100644\n--- a/src/app/contact/page.tsx\n+++ b/src/app/contact/page.tsx\n@@ -17,7 +17,7 @@ const ContactPage = () => {\n         description=\"Lorem ipsum dolor sit amet, consectetur adipiscing elit. In varius eros eget sapien consectetur ultrices. Ut quis dapibus libero.\"\n       />\n \n-      <ContactForm />\n+      <Contact />\n     </>\n   );\n };\n"
+  ],
+  "snapshot": {
+    "files": {
+      "src/app/contact/page.tsx": "import Breadcrumb from \"@/components/Common/Breadcrumb\";\nimport Contact from \"@/components/Contact\";\n\nimport { Metadata } from \"next\";\n\nexport const metadata: Metadata = {\n  title: \"Contact Page | Free Next.js Template for Startup and SaaS\",\n  description: \"This is Contact Page for Startup Nextjs Template\",\n  // other metadata\n};\n\nconst ContactPage = () => {\n  return (\n    <>\n      <Breadcrumb\n        pageName=\"Contact Page\"\n        description=\"Lorem ipsum dolor sit amet, consectetur adipiscing elit. In varius eros eget sapien consectetur ultrices. Ut quis dapibus libero.\"\n      />\n\n      <ContactForm />\n    </>\n  );\n};\n\nexport default ContactPage;\n"
+    }
+  },
+  "expected": {
+    "rootCauseStatus": "confirmed",
+    "rootCauseContains": [
+      "Contact"
+    ],
+    "fixCount": 3,
+    "recommendedMentions": [
+      "Contact"
+    ],
+    "hardTier": 1,
+    "patchValid": true,
+    "patchApplies": true
+  },
+  "note": "契约夹具：模型回复按人工真值构造（不是录制产出），输入是被改坏的真实文件 + 真实路由的 500；期望值来自 cases/*.json 的人工字段与归档时记录的硬规则 tier。 案例备注：组件名写错（未导入）→ undefined 元素类型",
+  "recordedAt": "2026-10-26T07:33:20.000Z"
+}

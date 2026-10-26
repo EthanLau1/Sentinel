@@ -34,7 +34,7 @@
       "global2.css",
       "global.css"
     ],
-    "recommendedTitleContains": [
+    "recommendedMentions": [
       "_app"
     ],
     "hardTier": 3,

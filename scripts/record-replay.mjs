@@ -134,7 +134,7 @@ const fixture = {
     rootCauseStatus: benchCase.sentinelJudgment.rootCauseStatus,
     rootCauseContains: humanExpectation?.rootCauseContains ?? keywords,
     fixCount: 3,
-    recommendedTitleContains: humanExpectation?.recommendedTitleContains ?? keywords,
+    recommendedMentions: humanExpectation?.recommendedMentions ?? keywords,
     hardTier: humanExpectation?.hardTier ?? benchCase.recommendedFix?.tier,
     patchValid: humanExpectation?.patchValid ?? true,
     ...(snapshot ? { patchApplies: true } : {}),
@@ -158,7 +158,7 @@ writeFileSync(outFile, JSON.stringify(fixture, null, 2) + '\n', 'utf8');
 console.log(`✓ 已写入夹具：${outFile}`);
 console.log(`   录到 ${recorder.responses.length} 条模型回复，实际用掉 ${result.actual.llmCallsUsed} 次`);
 console.log(`   期望关键词（根因）：${fixture.expected.rootCauseContains.join(' / ')}`);
-console.log(`   期望关键词（方案）：${fixture.expected.recommendedTitleContains.join(' / ')}`);
+console.log(`   期望关键词（方案）：${fixture.expected.recommendedMentions.join(' / ')}`);
 console.log(`   期望来源：${humanExpectation ? '案例里人工写的 replayExpectation' : '自动推导（建议人工确认后写进案例）'}`);
 console.log(`   硬规则 tier 期望 ${fixture.expected.hardTier}，实际 ${result.actual.hardTier}`);
 console.log(`   patch 合法：实际 ${result.actual.patchValid}`);
