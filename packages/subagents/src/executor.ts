@@ -565,6 +565,12 @@ export function createExecutor(config: ExecutorConfig = {}): Subagent {
               ctx, opt, event.payload.bug.affectedFeature, event.traceId,
               projectRoot, autoApply, appliedBackups,
             );
+          } else if (tier === 1) {
+            // Tier 1 但没有 patch → **必须说出来**（E32）。
+            // 原来这里四个分支全不命中 → 静默跳过：报告第 11 字段写着
+            // "Tier 1 — 自动修"，磁盘上既没有补丁也没改过代码，
+            // 而 run-status 里 rejectedPatches 也是空的 —— 查不到任何原因。
+            await rejectFix(ctx, opt, event.traceId, 'Tier 1 方案没有可用 patch（LLM 未产出或格式非法）→ 未落盘、未修改代码');
           } else if (tier === 2 && opt.patch) {
             await writePatchFile(ctx, opt, event.traceId);
             // 只给推荐方案建 PR —— 一个 bug 对应一个 PR，否则会一次推多个 PR

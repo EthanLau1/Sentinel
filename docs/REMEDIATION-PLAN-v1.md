@@ -444,7 +444,9 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 | **4** | L5 宪法 v1.2 | ✅ 完成 | `docs/CONSTITUTION.md` 升 v1.2 + `docs/CONSTITUTION-CHANGES.md`（8 条处置逐条写明） |
 | **5** | benchmark 回测 + 真实案例 | ✅ 达成（§13.8–13.11） | **案例 39 条（真实外部 36 条）**，判据 ≥30 / 外部 ≥20 已达标 —— 样本不是等来的，是「克隆 4 个公开真实仓库 + 注入 21 处人工写定真值的缺陷」做出来的；`validateCase` 已进 `npm test`；统计/报告脚本可跑（命中率、采纳率、验证通过率都是实测数字）；**可重放回测已覆盖 35/39 个案例**（`bun run test:replay` → 夹具 36 个通过、退化 0：35 个**契约夹具** + 1 个**录制夹具**；未覆盖的 4 条与原因见 §13.12） |
 
-### 13.2 执行中新发现的 11 个缺陷（不在原 34 项里）
+### 13.2 执行中新发现的缺陷（E4–E32，共 29 条；不在原 34 项里）
+
+> E4–E28 在下表；E29–E31 记在 §13.10–§13.11；**E32 是这一轮做真实 run 验证时新挖出来的**（见末行）。
 
 | # | 缺陷 | 症状 | 根因 | 处置 |
 |---|---|---|---|---|
@@ -482,6 +484,7 @@ bun packages/cli/src/index.ts run --project=<真实项目>
 | **E26**【P1】 | **项目理解失败 → 用户只看到 "bus handler errors"，没有真实原因** | mapper 的 `project.scanned` handler 没有 try/catch：内部抛错会冒到总线，CLI 只能打印 `bus handler errors for project.scanned`；`map.failed` 事件在目录里声明着，**代码里从未发布** | 异常直接冒泡，没有被转成事件 | mapper 整个 handler 包 try/catch → 失败转成 `map.failed`（带真实原因）；CLI 订阅后写进 `run-status.json` 的 `mapFailures`，并明确告诉用户"没有 FeatureMap 就无法生成流程，报告会是空的，这不是项目没问题" |
 | **E27**【P1】 | **M6 知识检索是纯黑盒：搜没搜、搜到几条、是不是缓存，全查不到；单个来源失败被静默吞** | 检索失败时报告里看不出任何区别 —— "检索到 0 条"会被误读成"网上没这回事" | `searchAll` 里 `catch {}` 把单源失败吞掉；`knowledge.requested` / `knowledge.received` / `knowledge.cached` 三个事件在目录里声明着，**从未发布** | 三个事件全部接上（请求 / 收到 / 命中缓存），CLI 订阅后写进 `run-status.json`；单源失败不再静默 —— 至少打出一条明确的 warning 列出哪个源、什么原因 |
 | **E28**【P1】 | **adapter 失败被静默忽略 → mapper 报"成功"，但识别结果不完整** | 某个 adapter 的 `routes()` 抛错 → 页面/接口列表是空的 → 一个流程都生成不出来 → 报告是空的，用户不知道为什么 | `aggregateProfile/Routes/Data/Risks` 的 `catch {}` 全部写「忽略」；`detect` 也一样 | 各聚合函数收集错误 → 落成 `coverage_adapter_failed_*` 风险项（沿用现有 `coverage_*` 命名，`run-status.json` 的 `coverageRisks` 与报告里都能看到）。**"没发现任何问题"必须能被区分于"没识别出来"** |
+| **E32**【P1】 | **Tier 1 判定了却没有 patch → 静默跳过：报告写「Tier 1 — 自动修」，磁盘上什么都没发生** | 2026-10-26 真实 run（blog 项目 + 注入 m2 缺陷）：`tierDecisions` 里两份方案被判 Tier 1（`命中低风险规则「拼写」`），但 `appliedPatches=[]`、`generatedPatches=[]`、**`rejectedPatches=[]`** —— 既没改代码，也没落补丁，连一句「为什么没产物」都查不到；报告第 11 字段却写着「Tier 1 — 自动修」 | `executor.ts` 的分支是 `tier===1 && opt.patch` / `tier===2 && opt.patch` / `tier===2` / `tier===3` —— **`tier===1` 且没有 patch 时四个分支全不命中**，直接掉出去。E17 那一轮补了 Tier 2 的兜底，漏了 Tier 1 | 补 `tier===1 && !opt.patch` 分支 → 发 `patch.rejected`（`Tier 1 方案没有可用 patch → 未落盘、未修改代码`）；补单测（`packages/subagents/test/executor-products.test.ts`）。**判据**：任何「判定了档位」的方案，要么产出产物，要么说清楚为什么没有 |
 
 
 ### 13.3 真实 run 的前后对比（同一项目 `examples/nextjs-blog`）

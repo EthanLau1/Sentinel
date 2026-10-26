@@ -162,6 +162,17 @@ describe('E17 — 过程信息必须有出口', () => {
     expect(rejected).toHaveLength(1);
     expect(rejected[0]!.reason).toContain('格式非法');
   });
+
+  it('E32：Tier 1 判定了却没 patch → 必须说出来，不能静默跳过', async () => {
+    // 真实事故（2026-10-26 真实 run）：两份方案被硬规则判为 Tier 1
+    // （"命中低风险规则「拼写」"），但模型没产出 patch →
+    // 旧实现四个分支全不命中 → 静默跳过：报告第 11 字段写着"Tier 1 — 自动修"，
+    // 磁盘上既没有补丁也没改过代码，run-status 的 rejectedPatches 也是空的。
+    const { generated, rejected } = await run([opt({ tier: 1, title: '修正 defualt 的拼写', patch: undefined })]);
+    expect(generated).toHaveLength(0);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]!.reason).toContain('没有可用 patch');
+  });
 });
 
 describe('Tier 判定与产物的一致性', () => {
