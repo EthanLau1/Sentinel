@@ -54,7 +54,10 @@ function classifyLlmError(message: string): string {
 }
 
 /** 配置类检查 —— 快，不启动浏览器。`sentinel run` 用它做前置门禁。 */
-export async function collectConfigChecks(root: string): Promise<Check[]> {
+export async function collectConfigChecks(
+  root: string,
+  options?: { skipLlmProbe?: boolean },
+): Promise<Check[]> {
   const checks: Check[] = [];
 
   // 1. .sentinel/ 目录
@@ -75,14 +78,20 @@ export async function collectConfigChecks(root: string): Promise<Check[]> {
     checks.push({
       name: 'llm.yml',
       status: 'fail',
-      message: 'not found',
-      suggestion: 'run: sentinel init',
+      message: 'not found — 将以离线模式运行（只做确定性检测，不做根因分析）',
+      suggestion: '想要 AI 根因分析就配置 LLM：sentinel ui',
+      // 不阻塞：没有 LLM 也能跑 ——
+      // 巡检器（inspector）用确定性规则照样能测出页面报错、资源 404、接口 5xx 等问题。
+      // 以前这里是 blocking，等于"没有模型 = 连启动都不行"，与"离线也能检测"的目标直接冲突。
+      blocking: false,
     });
   } else if (!llmCfg.providers || !llmCfg.providers[llmCfg.default]) {
     checks.push({
       name: 'llm.yml',
       status: 'fail',
-      message: `default provider "${llmCfg.default}" not configured`,
+      message: `default provider "${llmCfg.default}" not configured — 将以离线模式运行（只做确定性检测）`,
+      suggestion: '编辑 .sentinel/llm.yml 里的 default 与 providers',
+      blocking: false,
     });
   } else {
     const p = llmCfg.providers[llmCfg.default]!;
@@ -108,8 +117,11 @@ export async function collectConfigChecks(root: string): Promise<Check[]> {
       checks.push({
         name: 'llm.yml',
         status: 'fail',
-        message: problems.join('; '),
+        message: `${problems.join('; ')} — 将以离线模式运行（只做确定性检测）`,
         ...(suggestion ? { suggestion } : {}),
+        // LLM 配置坏了也不阻塞：巡检器不依赖模型，照样能测出确定性问题。
+        // 阻塞的话等于"key 写错 = 整个工具不能用"，与"离线也能检测"的目标冲突。
+        blocking: false,
       });
     } else {
       checks.push({ name: 'llm.yml', status: 'ok', message: `provider=${p.type}, model=${p.model}` });
@@ -131,7 +143,15 @@ export async function collectConfigChecks(root: string): Promise<Check[]> {
   }
 
   // 4. LLM 实际调用
-  if (llmCfg && llmCfg.providers[llmCfg.default]) {
+  //    离线模式（--offline / 没配 LLM）下**必须跳过**：探测本身就是一次外网请求，
+  //    "没有网络也能用"的前提是这条路径一个包都不发。
+  if (options?.skipLlmProbe) {
+    checks.push({
+      name: 'LLM API',
+      status: 'ok',
+      message: 'skipped（离线模式：不发起任何模型请求）',
+    });
+  } else if (llmCfg && llmCfg.providers[llmCfg.default]) {
     const p = llmCfg.providers[llmCfg.default]!;
     try {
       const provider =

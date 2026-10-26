@@ -53,9 +53,10 @@ Read the Chinese if you prefer; if you need the English wording, it is always ha
 | 11 | [自动修复的 4 个 Tier](#11-自动修复的-4-个-tier--the-four-auto-fix-tiers) | The Four Auto-Fix Tiers |
 | 12 | [报告的 11 个字段](#12-报告的-11-个字段--the-11-report-fields) | The 11 Report Fields |
 | 13 | [当前状态（诚实版）](#13-当前状态诚实版--current-status-honest-version) | Current Status (Honest Version) |
-| 14 | [常见报错](#14-常见报错--common-errors) | Common Errors |
-| 15 | [开发者](#15-开发者--for-developers) | For Developers |
-| 16 | [Requirements / License](#16-requirements--license) | Requirements / License |
+| 14 | [离线模式（没有 LLM、没有网络也能用）](#14-离线模式没有-llm没有网络也能用--offline-mode) | Offline Mode |
+| 15 | [常见报错](#15-常见报错--common-errors) | Common Errors |
+| 16 | [开发者](#16-开发者--for-developers) | For Developers |
+| 17 | [Requirements / License](#17-requirements--license) | Requirements / License |
 
 ---
 
@@ -100,6 +101,7 @@ The biggest difference from your usual "paste the error into an AI and ask" work
 | 小改动自动改，改完不行会自己还原 / Apply small fixes automatically, reverting if the re-check fails | 大改动只给建议，绝不自己动你的代码 / Touch large changes — it only suggests, it never edits them |
 | 告诉你哪些地方根本没测到 / Tell you which parts were never exercised | 不替你决定产品该做什么 / Decide what your product should do |
 | 每个结论都附带能核对的证据 / Attach checkable evidence to every conclusion | 证据不够时宁可说"不知道"，也不编一个根因 / Rather say "I don't know" than invent a root cause |
+| **没有 LLM、没有网络也能测出确定性问题**（见第 14 节）/ **Detect deterministic problems with no LLM and no network** (section 14) | 离线模式下没有 AI 根因分析 / In offline mode there is no AI root-cause analysis |
 
 **术语对照表 / Glossary**（第一次看只需要这一张 / this is the only table you need to read first）
 
@@ -334,6 +336,7 @@ cat /path/to/your-app/reports/sentinel-latest.md
 | `--demo` | 无 key 的演示流程，输出硬编码示例报告 / Keyless demo flow that prints hardcoded sample reports |
 | `--detailed` | 把敏感证据（cookie / storage 等）也写进报告 / Include sensitive evidence (cookies, storage, …) in the report |
 | `--no-enhance` | 跳过外部知识检索（跳过不影响出报告）/ Skip external knowledge search (reporting still works) |
+| `--offline` | 强制离线：不调用 LLM、不联网（没配 LLM 时也会自动进入）/ Force offline: no LLM calls, no external network (auto-enabled when no LLM is configured) |
 | `--tier <0\|1\|2\|3>` | 最高处理到哪一档（默认 3）/ Highest tier to process (default 3) |
 | `--auto-fix` | 允许 Tier 1 真正修改你的源代码（**默认关**）/ Allow Tier 1 to actually modify your source code (**off by default**) |
 | `--create-pr` | 为 Tier 2 修复建分支、提交、推送并开 PR（需要 `gh` CLI，**默认关**）/ Branch, commit, push, and open a PR for Tier 2 fixes (requires the `gh` CLI, **off by default**) |
@@ -472,6 +475,8 @@ like "not needed".
 - 自检门禁：配置坏了直接拒绝启动；外部服务不通则降级但不阻塞
   Self-check gate: a broken configuration blocks the run outright; an unreachable external
   service degrades instead of blocking.
+- **离线模式**：没有 LLM、没有网络也能检测（见第 14 节）
+  **Offline mode**: detects problems with no LLM and no network at all (see section 14).
 
 **还没有 / 只是占位 / Not there yet**
 
@@ -484,10 +489,116 @@ like "not needed".
 - 知识增强每次 run 最多触发 30% 的流程（避免噪音淹没权威来源）
   Knowledge enhancement fires on at most 30% of flows per run, so noise does not drown out
   authoritative sources.
+- **离线模式没有 AI 根因分析** —— 只有确定性规则判定，报告里会写明
+  **Offline mode has no AI root-cause analysis** — only deterministic rules apply, and the
+  report says so explicitly.
 
 ---
 
-## 14. 常见报错 / Common Errors
+## 14. 离线模式（没有 LLM、没有网络也能用）/ Offline Mode (No LLM, No Network)
+
+**中文**
+
+**没有模型、没有外网，也能测出项目的问题。**
+
+这是 Sentinel 的目标之一：巡检（inspection）是**确定性规则**，不依赖任何模型。
+以前只检查"页面访问有没有失败"，所以"页面返回 200 但页面里在报错"这一整类问题**一条都测不出来** ——
+而那恰恰是最常见的一类。
+
+**怎么进入离线模式 / How offline mode is entered**
+
+| 方式 / Way | 条件 / Condition |
+|---|---|
+| 显式 / Explicit | `sentinel run --offline`（忽略 llm.yml） |
+| 自动 / Automatic | 没有配置任何 LLM（项目级与全局都没有） |
+| 自动 / Automatic | LLM 探测失败（探不通 / key 失效 / 断网）→ **整轮**转离线 |
+
+> 探测失败要**整轮**转离线：子代理的 LLM 超时是 180s，让 4 个子代理各降级一次 = 白等十几分钟。
+> 一次探测（10s 超时）判死活，然后全轮走离线路径。
+
+**离线模式下会做什么 / What still happens offline**
+
+- ✅ 扫出你的页面和接口、起你的 dev server、用真浏览器逐页访问
+- ✅ 巡检每一页的现场，按规则判定问题
+- ✅ 出报告（11 个字段齐全），修复方案用通用模板给出
+- ❌ 不调用任何模型（没有 AI 根因分析）
+- ❌ 不做任何外部检索（`--no-enhance` 自动开启）
+- ❌ **一次外网请求都不发**
+
+**巡检规则（10 条）/ The ten inspection rules**
+
+| 规则 / Rule | 判定 / Detects | 级别 / Severity |
+|---|---|---|
+| `uncaught-exception` | 页面抛出未捕获异常（JS 崩了） | P1 |
+| `console-error` | 控制台输出 error | P1 |
+| `server-error` | 子资源 / 接口返回 5xx | P1 |
+| `request-failed` | 请求连接失败（拒绝 / 超时） | P1 |
+| `blank-page` | 页面有响应但什么都没渲染出来（白屏） | P1 |
+| `client-error` | 子资源 / 接口返回 4xx（如图片 404） | P2 |
+| `mixed-content` | https 页面里加载 http 资源 | P2 |
+| `slow-response` | 响应超过 3000ms | P3 |
+| `missing-lang` / `missing-viewport` / `missing-title` | 基础可访问性与 SEO 缺失 | P3 |
+
+前 7 条是**运行时事实**（有现场证据，报告里标 confirmed）；后 3 类是**质量观察**（只作假设）。
+
+**English**
+
+**No model, no internet — and it still finds your project's problems.**
+
+This is one of Sentinel's goals: inspection is **deterministic rules**, not model output.
+The old pipeline only looked at "did the page load", so everything of the form *"the page returned
+200 but the page itself is broken"* went **completely undetected** — and that is the most common
+class of bug there is.
+
+**How offline mode is entered**
+
+| Way | Condition |
+|---|---|
+| Explicit | `sentinel run --offline` (ignores llm.yml) |
+| Automatic | No LLM configured anywhere (project-level or global) |
+| Automatic | The LLM probe fails (unreachable / bad key / no network) → **the whole run** goes offline |
+
+> A failed probe must switch the **whole run** offline: the agent LLM timeout is 180s, so letting
+> four agents each degrade on their own means waiting many minutes for nothing. One probe (10s
+> timeout) decides, and then the entire run takes the offline path.
+
+**What still happens offline**
+
+- ✅ Scans your pages and endpoints, starts your dev server, visits every page in a real browser
+- ✅ Inspects each page and judges it against the rules
+- ✅ Produces a report with all eleven fields; fix options use generic templates
+- ❌ No model is called (no AI root-cause analysis)
+- ❌ No external lookups (`--no-enhance` is implied)
+- ❌ **Not a single outbound request**
+
+**The ten inspection rules**
+
+| Rule | Detects | Severity |
+|---|---|---|
+| `uncaught-exception` | An uncaught exception (JS crashed) | P1 |
+| `console-error` | A console error | P1 |
+| `server-error` | A sub-resource or endpoint returning 5xx | P1 |
+| `request-failed` | A request that failed to connect (refused / timeout) | P1 |
+| `blank-page` | The page responds but renders nothing | P1 |
+| `client-error` | A sub-resource or endpoint returning 4xx (e.g. a missing image) | P2 |
+| `mixed-content` | An http resource loaded by an https page | P2 |
+| `slow-response` | A response slower than 3000ms | P3 |
+| `missing-lang` / `missing-viewport` / `missing-title` | Missing basic accessibility and SEO | P3 |
+
+The first seven are **runtime facts** (they carry scene evidence and are marked confirmed in the
+report); the last three are **quality observations** (reported as hypotheses).
+
+**怎么确认这次跑的是离线 / How to confirm a run was offline**
+
+```bash
+# 报告和状态文件里都会写明
+grep 运行模式 reports/sentinel-latest.md
+grep llmMode reports/sentinel-run-status.json
+```
+
+---
+
+## 15. 常见报错 / Common Errors
 
 **`No reachable project dev server`**
 目标项目没有可识别的 `dev`/`start`/`serve` 脚本，或者依赖没装。装好依赖、加个 `dev` 脚本即可。
@@ -534,7 +645,7 @@ not block — the analysis degrades to heuristics and the output says so.
 
 ---
 
-## 15. 开发者 / For Developers
+## 16. 开发者 / For Developers
 
 ### 项目结构 / Project structure
 
@@ -576,7 +687,7 @@ bun run test:replay   # 用录制的真实案例回放，验证没有退化 / re
 
 ---
 
-## 16. Requirements / License
+## 17. Requirements / License
 
 **中文**
 

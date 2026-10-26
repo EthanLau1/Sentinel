@@ -26,11 +26,13 @@ import {
   createFsMCPServer,
   createGithubKnowledge,
   createStackOverflowKnowledge,
+  createOfflineLLMProvider,
 } from '@sentinel/providers';
 import {
   createMapper,
   createSensor,
   createRunner,
+  createInspector,
   createAnalyst,
   createCritic,
   createVerifier,
@@ -69,6 +71,8 @@ export interface RunOptions {
   autoFix?: boolean;
   /** 允许为 Tier 2 方案生成 PR（默认关闭） */
   createPr?: boolean;
+  /** 强制离线：不调用 LLM、不联网（没有 LLM 配置时也会自动进入） */
+  offline?: boolean;
 }
 
 function parseRunOptions(): RunOptions {
@@ -85,6 +89,7 @@ function parseRunOptions(): RunOptions {
     // 这两个开关会改动被测项目 / 产生外部可见动作，必须显式开启
     autoFix: has('--auto-fix'),
     createPr: has('--create-pr'),
+    offline: has('--offline'),
   };
   const tier = get('--tier');
   if (tier !== undefined) {
@@ -125,17 +130,17 @@ export async function runRun(): Promise<number> {
 
   // 2. 加载配置
   const llmCfg = await loadLlmConfig(root);
-  if (!llmCfg) {
-    console.error(color.red('✗ .sentinel/llm.yml not found after init. Please configure LLM provider.'));
-    console.error(color.dim('  Open Sentinel WebUI to configure: sentinel ui'));
-    return 1;
-  }
+  // 离线模式：没有 LLM（或显式 --offline）时自动进入。
+  // 这是 Sentinel 的目标之一：没有本地模型、没有网络，也能测出 web 项目的确定性错误。
+  let offline = opts.offline === true || !llmCfg;
+  let llmMode: 'llm' | 'offline' = offline ? 'offline' : 'llm';
   const budgetCfg = await loadBudgetConfig(root);
   const stage = budgetCfg.stage;
   const weights = budgetCfg.weights ?? PRESETS[stage.toLowerCase() as keyof typeof PRESETS] ?? DEFAULT_WEIGHTS;
 
   // 2.5 前置门禁（宪法：配置本身坏了 → run 拒绝启动；LLM 不可达不阻塞，可降级）
-  const configChecks = await collectConfigChecks(root);
+  //     离线模式下跳过 LLM 探测 —— 探测本身就是外网请求。
+  const configChecks = await collectConfigChecks(root, { skipLlmProbe: offline });
   const configFails = configChecks.filter((c) => c.status === 'fail' && c.blocking !== false);
   if (configFails.length > 0) {
     console.error(color.red('✗ Pre-flight checks failed — run refused to start:'));
@@ -153,6 +158,28 @@ export async function runRun(): Promise<number> {
     console.log(color.dim('   该项不阻塞运行，诊断将降级为启发式。'));
   }
 
+  // 2.6 LLM 探不通 → 整轮转离线。
+  // 为什么不在每个子代理里各降级一次：子代理的 LLM 超时是 180s，
+  // 四个子代理各等一次 = 一轮 run 白等十几分钟，还每次都失败。
+  // 一次探测（10s 超时）判死活，然后整轮走离线路径 —— 一次等待，全轮可用。
+  if (!offline) {
+    const llmProbe = configChecks.find((c) => c.name === 'LLM API');
+    if (llmProbe?.status === 'fail') {
+      offline = true;
+      llmMode = 'offline';
+      console.log(color.yellow('⚡ LLM 不可达 → 本次自动转为离线模式（不调用模型、不联网）'));
+    }
+  }
+
+  if (offline) {
+    console.log(color.yellow('⚡ 离线模式：不调用 LLM、不联网'));
+    console.log(color.dim('   仍会做巡检（控制台报错 / 失败请求 / 5xx / 白屏 / 基础可访问性），但不做 AI 根因分析。'));
+    if (opts.offline === true && llmCfg) {
+      console.log(color.dim('   （--offline 显式开启：已忽略 .sentinel/llm.yml）'));
+    }
+    console.log('');
+  }
+
   // 3. 自动启动 dev server（如果需要）
   let devServer: DevServerHandle | null = null;
   devServer = await startDevServer(root);
@@ -168,10 +195,11 @@ export async function runRun(): Promise<number> {
   //   maxTotalTokens      —— 输入+输出，对应预算消耗（budget.consume 用的是 totalTokens）
   // 之前只记 totalTokens 却和 max_tokens 配置放在一起比，数字看着"超限"其实是口径混用。
   const llmStats = { requests: 0, maxCompletionTokens: 0, maxTotalTokens: 0 };
-  const llm = withRequestCounter(
-    buildLlm(llmCfg, budgetCfg.limits.maxTokensPerRequest),
-    llmStats,
-  );
+  // 离线模式用"一定会失败的桩" —— 任何试图调用模型的地方立刻拿到明确错误，
+  // 而不是各处写 if (!llm) 判断、漏一处就静默降级。
+  const llm = offline
+    ? createOfflineLLMProvider()
+    : withRequestCounter(buildLlm(llmCfg!, budgetCfg.limits.maxTokensPerRequest), llmStats);
   const memory = createNoneMemory();
   const skills = createMarkdownSkills({ root: join(root, '.sentinel/skills') });
   const mcp = createMCPRegistry();
@@ -207,9 +235,11 @@ export async function runRun(): Promise<number> {
   const knowledge = [createGithubKnowledge({}), createStackOverflowKnowledge()];
 
   // 未配置模型价格时仍限制 tokens 与时长，不把未知 API 费用当作 $0。
-  const activeProvider = llmCfg.providers[llmCfg.default];
-  const costKnown = activeProvider?.type === 'ollama-native' || Boolean(activeProvider?.pricing);
-  if (!costKnown) {
+  const activeProvider = offline ? undefined : llmCfg!.providers[llmCfg!.default];
+  const costKnown = offline
+    ? false
+    : activeProvider?.type === 'ollama-native' || Boolean(activeProvider?.pricing);
+  if (!offline && !costKnown) {
     console.log(color.yellow('API price unknown: USD budget cannot be enforced; token limit remains active.'));
     console.log(color.dim('   → 在 .sentinel/llm.yml 的 provider 下加 pricing（USD / 每百万 token）即可启用美元上限'));
   }
@@ -405,12 +435,20 @@ export async function runRun(): Promise<number> {
     createMapper(),
     createSensor({ detailed: opts.detailed === true }),
     createRunner(),
+    // 巡检器：确定性规则，不依赖 LLM —— 有没有模型都会跑
+    createInspector(),
     createAnalyst(),
-    createCritic(),
     createVerifier(),
     createPlanner({ stage, weights, requireVerified: true }),
   ];
-  subagents.push(createEnhancer({ skipSearch: opts.noEnhance === true }));
+  // critic 是"LLM 反向验证"环节：没有模型时它做不了这件事，
+  // 硬跑只会把每条发现都拒掉（理由：critic verification unavailable），制造噪音。
+  // 所以离线模式不注册它 —— 未确认的发现仍然以 draft 形式出现在报告里。
+  if (!offline) {
+    subagents.push(createCritic());
+  }
+  // 离线模式必须彻底关掉外部知识检索 —— 目标就是"没有网络也能用"
+  subagents.push(createEnhancer({ skipSearch: opts.noEnhance === true || offline }));
   subagents.push(
     createExecutor({
       // 默认 3 = 宪法定义的 Tier 1/2/3 各自产出对应产物；
@@ -475,7 +513,7 @@ export async function runRun(): Promise<number> {
     console.log(printBug(b));
   }
 
-  await writeReports(root, reportedBugs, opts.reportFormat ?? 'both', statusEvents.tierDecisions);
+  await writeReports(root, reportedBugs, opts.reportFormat ?? 'both', statusEvents.tierDecisions, llmMode);
 
   // 8. 总结
   const usage = budget.snapshot();
@@ -483,12 +521,14 @@ export async function runRun(): Promise<number> {
   console.log(color.dim(`flows: ${passedFlows} passed / ${failedFlows} failed / ${Math.max(0, plannedFlows - passedFlows - failedFlows)} not run${rerunPassedFlows + rerunFailedFlows > 0 ? `（修复后重跑：${rerunPassedFlows} passed / ${rerunFailedFlows} failed，不计入上面的口径）` : ''}; tokens: ${usage.tokens}  cost: ${costKnown ? `$${usage.usd.toFixed(4)}` : 'unknown'}  duration: ${dur}ms`));
   console.log(
     color.dim(
-      `llm: ${llmStats.requests} 次请求` +
-        ` / 单次输出最多 ${llmStats.maxCompletionTokens} tokens` +
-        `（配置上限 ${budgetCfg.limits.maxTokensPerRequest ?? '未设'}）` +
-        ` / 单次总计最多 ${llmStats.maxTotalTokens} tokens` +
-        `  → 预算 token 上界 ${llmStats.requests * llmStats.maxTotalTokens}` +
-        `  预算模式 ${costKnown ? 'usd+token' : 'token-only'}`,
+      offline
+        ? `llm: 离线模式（未调用 LLM、未联网）· 巡检结论为确定性规则判定`
+        : `llm: ${llmStats.requests} 次请求` +
+            ` / 单次输出最多 ${llmStats.maxCompletionTokens} tokens` +
+            `（配置上限 ${budgetCfg.limits.maxTokensPerRequest ?? '未设'}）` +
+            ` / 单次总计最多 ${llmStats.maxTotalTokens} tokens` +
+            `  → 预算 token 上界 ${llmStats.requests * llmStats.maxTotalTokens}` +
+            `  预算模式 ${costKnown ? 'usd+token' : 'token-only'}`,
     ),
   );
   const uncovered = [...failedFlowIds].filter((id) => !collector.coveredFlows.has(id));
@@ -525,6 +565,8 @@ export async function runRun(): Promise<number> {
   const incomplete = failed || unresolvedFailures > 0 || plannedFlows === 0 || notRunFlows > 0;
   await writeFile(join(root, 'reports', 'sentinel-run-status.json'), JSON.stringify({
     status: incomplete ? 'incomplete' : 'complete',
+    // 本次运行模式：offline = 没调用 LLM、没联网（结论只来自确定性规则）
+    llmMode,
     plannedFlows, passedFlows, failedFlows,
     // 修复后重跑单独计数：口径写清楚，避免与首轮 p/f 相加后看不出真实情况
     rerunPassedFlows, rerunFailedFlows,
@@ -623,15 +665,20 @@ async function writeReports(
   bugs: BugFinding[],
   format: 'markdown' | 'json' | 'both',
   tierDecisions: TierDecisionRecord[] = [],
+  llmMode: 'llm' | 'offline' = 'llm',
 ): Promise<void> {
   const dir = join(root, 'reports');
   if (!existsSync(dir)) await mkdir(dir, { recursive: true });
   if (format === 'markdown' || format === 'both') {
-    const md = reportToMarkdown(bugs, { project: root.split('/').pop() ?? 'project' }, { tierDecisions });
+    const md = reportToMarkdown(
+      bugs,
+      { project: root.split('/').pop() ?? 'project', llmMode },
+      { tierDecisions },
+    );
     await writeFile(join(dir, 'sentinel-latest.md'), md, 'utf8');
   }
   if (format === 'json' || format === 'both') {
-    const json = reportToJson(bugs, { project: root.split('/').pop() ?? 'project' });
+    const json = reportToJson(bugs, { project: root.split('/').pop() ?? 'project', llmMode });
     await writeFile(join(dir, 'sentinel-latest.json'), JSON.stringify(json, null, 2), 'utf8');
   }
 }

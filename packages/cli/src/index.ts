@@ -31,6 +31,8 @@ Options for 'run':
   --detailed                  Include sensitive Evidence (cookie/storage)
   --demo                      Run a no-key demo with sample bugs/fixes
   --no-enhance                Skip M6 knowledge enhancement
+  --offline                   Force offline: no LLM calls, no external network.
+                             (Auto-enabled when no LLM provider is configured)
   --tier <0|1|2|3>            Highest tier to process (default 3: Tier1 auto-fix /
                              Tier2 patch file / Tier3 suggestion). Modifying source
                              still requires --auto-fix.

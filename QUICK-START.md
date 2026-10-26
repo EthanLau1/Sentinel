@@ -17,6 +17,23 @@
 
 ---
 
+## 没有 LLM、没有网络也能测（离线模式）
+
+```bash
+bun packages/cli/src/index.ts run --project=/path/to/your-app --offline
+```
+
+**离线模式下它照样能测出确定性的错误**：页面抛未捕获异常、控制台报错、
+图片 404、接口 5xx、白屏、慢响应、缺 lang/viewport/标题 —— 全部用**规则**判定，不调用任何模型。
+
+- 没配任何 LLM 时**自动进入**离线模式；LLM 探不通（断网 / key 失效）也会自动转离线
+- 离线模式**一次外网请求都不发**，不做 AI 根因分析
+- 报告里会写明"运行模式：离线"，`reports/sentinel-run-status.json` 里写 `llmMode: "offline"`
+
+规则清单见 [README.md](./README.md) 第 14 节。
+
+---
+
 ## 30 秒体验（演示模式，无需配置 LLM）
 
 ```bash
@@ -25,7 +42,7 @@ bun install
 bun packages/cli/src/index.ts run --demo
 ```
 
-**注意：Demo 输出的是 3 个硬编码的示例报告**（非真实检测），用于预览 output 格式。真正的 bug 检测需要配置 LLM。
+**注意：Demo 输出的是 3 个硬编码的示例报告**（非真实检测），用于预览 output 格式。真正的 bug 检测需要配置 LLM —— 或者用上面的离线模式（规则检测，不需要 LLM）。
 
 ---
 

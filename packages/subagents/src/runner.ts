@@ -98,7 +98,7 @@ async function runFlow(
 
   try {
     for (const step of flow.steps) {
-      await executeStep(ctx, step);
+      await executeStep(ctx, step, flow.id, traceId);
     }
     await ctx.bus.publish({
       type: 'flow.passed',
@@ -132,12 +132,15 @@ async function runFlow(
   }
 }
 
-async function executeStep(ctx: KernelContext, step: FlowStep): Promise<void> {
+async function executeStep(ctx: KernelContext, step: FlowStep, flowId: string, traceId: string): Promise<void> {
   switch (step.action) {
     case 'visit': {
       const browser = ctx.providers.mcp.get('browser');
       if (!browser) throw new Error('browser MCP not registered');
       await browser.call('visit', { url: step.url });
+      // 被动巡检：访问成功不代表页面没毛病 ——
+      // "返回 200 但控制台在报错 / 资源 404 / 白屏"是旧链路完全测不到的一类错。
+      await publishInspection(ctx, browser, flowId, step.url, traceId);
       return;
     }
     case 'fill': {
@@ -188,6 +191,34 @@ async function executeStep(ctx: KernelContext, step: FlowStep): Promise<void> {
       }
       throw new Error(`Unsupported assertion kind: ${step.kind}`);
     }
+  }
+}
+
+/**
+ * 被动巡检：把"这次访问的现场"交给 inspector。
+ *
+ * 为什么巡检失败不能算 flow 失败：巡检是**额外**的检查手段，
+ * 它坏了（比如页面刚被关掉）不代表被测项目有问题 ——
+ * 让它拖垮整个 flow，等于用一个辅助功能制造假失败。
+ */
+async function publishInspection(
+  ctx: KernelContext,
+  browser: { call(name: string, args: Record<string, unknown>): Promise<unknown> },
+  flowId: string,
+  url: string,
+  traceId: string,
+): Promise<void> {
+  try {
+    const snapshot = await browser.call('inspect', {});
+    if (!snapshot || typeof snapshot !== 'object') return;
+    await ctx.bus.publish({
+      type: 'page.visited',
+      payload: { flowId, url, snapshot },
+      source: 'runner',
+      traceId,
+    });
+  } catch (err) {
+    console.warn(`[sentinel] runner: 巡检 ${url} 失败（不影响 flow 结果）：${(err as Error).message}`);
   }
 }
 

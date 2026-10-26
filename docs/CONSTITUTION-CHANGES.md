@@ -2,6 +2,82 @@
 
 > 按版本从新到旧排列。
 
+## v1.3 → v1.4（2026-10-26）
+
+### why
+
+项目的第二个目标：**让 Sentinel 在"没有本地 LLM、没有网络"的情况下也能检测出 web 项目的错误。**
+
+v1.3 状态下这个目标**做不到**，卡在三处（全部有源码证据）：
+
+| # | 阻碍 | 位置 | 后果 |
+|---|---|---|---|
+| 1 | 没配 `llm.yml` → `run` 直接 `return 1` | `packages/cli/src/run.ts` | 没有模型 = 连启动都不行 |
+| 2 | `llm.yml` 缺失被 doctor 判成 blocking | `packages/cli/src/doctor.ts` | 同上，且无法绕过 |
+| 3 | 检测只看"访问有没有失败" | `packages/subagents/src/runner.ts` + `browser.ts` | **页面返回 200 但内部在报错（JS 崩溃 / 资源 404 / 接口 5xx / 白屏）一条都测不出来** |
+
+第 3 条是最要命的：它不是"少测了一类"，而是**最常见的一类错误完全测不到**。
+
+### what
+
+| # | 条款 | v1.3 | v1.4 |
+|---|---|---|---|
+| 1 | 红线 | 6 条 | **7 条**：新增「没有 LLM、没有网络也必须能检测；确定性检测能力不得依赖模型可用性」 |
+| 2 | 新增章节 | — | **「离线模式（无 LLM、无网络也能检测）」**：触发方式、允许/禁止、结论口径、巡检规则表 |
+| 3 | Self-Check 门禁 | 失败分两类 | 失败分**三类**：LLM 不可用（缺配置/配置非法/探不通）→ 不阻塞，整轮转离线 |
+| 4 | Evidence 诚实性规则 | 7 条 | **9 条**：新增「结论来源必须可区分（`origin` = rule / llm）」与「巡检规则的确定性事实可标 confirmed，但必须带现场证据」 |
+| 5 | 事件目录 | 24 个 | **25 个**：新增 `page.visited`（runner → inspector） |
+| 6 | 核心类型 | — | `BugFinding` 新增可选字段 `origin?: 'rule' \| 'llm'`；`EventType` 新增 `page.visited` |
+
+代码侧实现（本次同步落地）：
+
+- **巡检器**（`packages/subagents/src/inspector.ts`，新）：10 条确定性规则，
+  覆盖未捕获异常 / 控制台 error / 5xx / 4xx / 连接失败 / 空白页 / 慢响应 / 缺 lang / 缺 viewport / 缺标题 / 混合内容。
+- **browser MCP 新增 `inspect` 工具**（`packages/providers/src/mcp/built-in/browser.ts`）：
+  轻量页面快照（不含截图/DOM/a11y），并补上以前根本没采的 **`pageerror`（未捕获异常）**。
+- **runner**：每次 `visit` 成功后发 `page.visited`，让巡检器看这次访问的现场。
+- **离线模式**（`packages/cli/src/run.ts`）：`--offline` 开关 + 自动降级
+  （无 LLM 配置 → 离线；LLM 探测失败 → **整轮**转离线，避免 4 个子代理各等 180s 超时）。
+- **离线 LLM 桩**（`packages/providers/src/llm/offline.ts`）：调用即抛错，
+  不返回任何内容 —— 杜绝"静默假装成功"。
+- **verifier**：确定性规则判定（`origin='rule'`）不再强制要求代码片段 ——
+  否则"白屏""混合内容"这类真故障会被误杀；模型推断仍必须同时给出代码证据与运行时证据。
+- **报告与状态**：报告写明 `运行模式：离线`，第 6 字段标注「确定性规则判定」；
+  `run-status.json` 写 `llmMode`。
+
+### impact
+
+| 影响面 | 变化 |
+|---|---|
+| 代码 | 新增 3 个文件（inspector / offline LLM 桩 / 巡检单测），改 8 个文件 |
+| 规范条款 | 红线 6 → 7；Evidence 规则 7 → 9；事件 24 → 25；新增"离线模式"章节 |
+| 守卫 | `lint:spec` 仍通过（新增事件已登记）；建议后续加守卫：离线模式不得发起外网请求 |
+| 未退化验证 | 真实 run 验证（见下） |
+
+**真实 run 验证（2026-10-26，注入缺陷项目）**
+
+在 Next.js 示例项目的副本里注入 5 处已知缺陷，用 `sandbox-exec` 断网跑：
+
+| 注入的缺陷 | 是否测出 | 报告里的形态 |
+|---|---|---|
+| D1 首页控制台 error | ✅ | P1 页面 / 控制台报错（confirmed，1 条 console 证据） |
+| D2 图片 404 | ✅ | P2 请求 /definitely-missing-image.png 返回 404（confirmed，network 证据） |
+| D3 客户端未捕获异常 | ✅ | P1 页面 /posts 抛出未捕获异常（confirmed，console 证据） |
+| D4 `<html>` 缺 lang | ✅ | P3 缺少 lang 属性（hypothesis，2 条合并） |
+| D5 接口 500 | ✅ | P1 API GET /api/posts returned 500（hypothesis，analyst 路径） |
+
+断网沙箱（`deny network-outbound`）下：LLM 探测失败 → 自动转离线 →
+`llmRequests: 0`、`knowledgeRequests: 0`、5 条发现全部产出。
+
+**过程中发现并修掉的两个真问题**（都是"报告说能做、实际没做"的形态）：
+
+1. **巡检时机太早** —— `networkidle` 在图片请求发出前就满足，404 漏报。
+   改成 `load` → `networkidle` → 400ms 静默，三步都要。
+2. **工作区包解析到 `dist/`** —— 改完 `browser.ts` 没重新构建就实跑，
+   跑的是旧代码。**以后改完 provider 层的代码必须 `bun run typecheck` 再实跑。**
+
+---
+
 ## v1.2 → v1.3（2026-10-26）
 
 ### why

@@ -17,7 +17,7 @@
 
 ---
 
-## 完整事件列表（24 个）
+## 完整事件列表（25 个）
 
 ### 项目理解阶段（M3）
 
@@ -43,13 +43,14 @@
 | `flow.started` | runner | (内部) | `{ flowId: string }` |
 | `flow.passed` | runner | (内部) | `{ flowId: string, duration_ms: number }` |
 | `flow.failed` | runner | analyst / sensor | `{ flowId: string, evidence: Evidence[] }` |
+| `page.visited` | runner | inspector | `{ flowId: string, url: string, snapshot: InspectionSnapshot }`（访问成功后立即巡检：控制台报错 / 未捕获异常 / 失败请求 / 空白页 / 元信息） |
 
 ### 诊断阶段（M4）
 
 | 事件 | 发起者 | 订阅者 | payload |
 |---|---|---|---|
-| `bug.draft` | analyst | critic | `BugFinding` (rootCauseStatus='hypothesis') |
-| `bug.confirmed` | critic | planner | `BugFinding` (rootCauseStatus='confirmed') |
+| `bug.draft` | analyst / inspector | critic | `BugFinding` (rootCauseStatus='hypothesis') |
+| `bug.confirmed` | critic / inspector | planner | `BugFinding` (rootCauseStatus='confirmed') |
 | `bug.rejected` | critic | analyst | `{ bugId: string, reason: string }` |
 | `bug.insufficient_evidence` | analyst / critic | sensor | `{ bugId: string, needs: EvidenceKind[] }` |
 
@@ -110,6 +111,6 @@
 
 ## 总数控制
 
-v1.1 锁定 24 个事件。
+v1.1 锁定 24 个事件；v1.4 新增 `page.visited`（巡检）→ 25 个。
 新增需要充分理由（事件膨胀 = 设计失败）。
 v2 之前不超过 30 个。

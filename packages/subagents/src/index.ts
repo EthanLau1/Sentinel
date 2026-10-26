@@ -1,6 +1,7 @@
 export { createMapper } from './mapper.js';
 export { createSensor } from './sensor.js';
 export { createRunner } from './runner.js';
+export { createInspector, evaluateInspection, type InspectionSnapshot, type RuleViolation } from './inspector.js';
 export { createAnalyst } from './analyst.js';
 export { createCritic } from './critic.js';
 export { extractJson, salvageTruncatedJsonArray } from './json.js';

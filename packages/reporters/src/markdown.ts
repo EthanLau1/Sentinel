@@ -52,7 +52,9 @@ export function bugToMarkdown(bug: BugFinding, opts: MarkdownOptions = {}): stri
 
   // 6. 根因判断
   const status = bug.rootCauseStatus === 'confirmed' ? '✓ confirmed' : '⚠ hypothesis';
-  lines.push(`**6. 根因判断** (${status}, conf=${bug.confidence.toFixed(2)}):`);
+  // 结论来源必须标出来：规则判定（确定性事实）和模型推断（假设）不是一回事
+  const originTag = bug.origin === 'rule' ? '，确定性规则判定' : '';
+  lines.push(`**6. 根因判断** (${status}${originTag}, conf=${bug.confidence.toFixed(2)}):`);
   lines.push(`   ${bug.rootCause?.trim() ? bug.rootCause : '证据不足，未能定位根因（hypothesis）'}`);
 
   // 7. 推荐方案 —— 宪法要求 11 字段缺一不行，没有方案时也要出现
@@ -104,7 +106,7 @@ export function bugToMarkdown(bug: BugFinding, opts: MarkdownOptions = {}): stri
 
 export function reportToMarkdown(
   bugs: BugFinding[],
-  meta: { generatedAt?: number; project?: string } = {},
+  meta: { generatedAt?: number; project?: string; llmMode?: 'llm' | 'offline' } = {},
   opts: MarkdownOptions = {},
 ): string {
   const lines: string[] = [];
@@ -113,6 +115,10 @@ export function reportToMarkdown(
   if (meta.project) lines.push(`**项目**: ${meta.project}`);
   lines.push(`**生成时间**: ${new Date(meta.generatedAt ?? Date.now()).toISOString()}`);
   lines.push(`**Bug 总数**: ${bugs.length}`);
+  // 运行模式必须写在报告里 —— 否则"没做根因分析"看起来像"没发现问题"
+  if (meta.llmMode === 'offline') {
+    lines.push('**运行模式**: 离线（未调用 LLM、未联网）—— 巡检结论为确定性规则判定；未做 AI 根因分析');
+  }
 
   const counts = bugs.reduce(
     (acc, b) => {

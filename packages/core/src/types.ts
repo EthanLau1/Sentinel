@@ -156,6 +156,11 @@ export interface BugFinding {
   verificationCommand?: string;
   fixOptions: FixOption[];
   recommendedFixId?: string;
+  /**
+   * 结论来源：'rule' = 确定性规则判定（巡检器），'llm' = 模型推断。
+   * 没写 = 旧数据，按 'llm' 处理。报告要靠它区分"已确认的确定性事实"和"模型推断"。
+   */
+  origin?: 'rule' | 'llm';
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -222,6 +227,7 @@ export type EventType =
   | 'flow.started'
   | 'flow.passed'
   | 'flow.failed'
+  | 'page.visited'
   // 诊断
   | 'bug.draft'
   | 'bug.confirmed'

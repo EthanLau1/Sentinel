@@ -21,8 +21,8 @@
 
 | 文档 | 用途 | 改动需要 |
 |---|---|---|
-| [CONSTITUTION.md](./CONSTITUTION.md) | 宪法 v1.3 — 红线、机制、原则（开头有白话版） | 升宪法版本号 |
-| [CONSTITUTION-CHANGES.md](./CONSTITUTION-CHANGES.md) | 宪法 v1.1 → v1.3 的逐条处置记录 | 升宪法版本号 |
+| [CONSTITUTION.md](./CONSTITUTION.md) | 宪法 v1.4 — 红线、机制、原则（开头有白话版） | 升宪法版本号 |
+| [CONSTITUTION-CHANGES.md](./CONSTITUTION-CHANGES.md) | 宪法 v1.1 → v1.4 的逐条处置记录 | 升宪法版本号 |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 架构 — 分层、事件流、5 类型 5 接口 | 同步升宪法 |
 | [ROADMAP.md](./ROADMAP.md) | 13 周路线 — 每周产出和指标 | PR 即可 |
 
@@ -81,7 +81,7 @@
 
 **要改宪法的人**:
 1. [CONSTITUTION.md](./CONSTITUTION.md) 末尾的"宪法升级流程"
-2. 升级版本号 (v1.3 → v2.0)
+2. 升级版本号 (v1.4 → v2.0)
 3. 在 [CONSTITUTION-CHANGES.md](./CONSTITUTION-CHANGES.md) 写明 why / what / impact
 4. 同步更新 ARCHITECTURE / ROADMAP
 5. 跑 `bun run lint:spec`（宪法里的机检条款由守卫守住）
@@ -91,7 +91,7 @@
 ## ⚙️ 状态
 
 ```
-✅ Constitution v1.3     已锁定（v1.1→v1.3 处置见 CONSTITUTION-CHANGES.md）
+✅ Constitution v1.4     已锁定（v1.1→v1.4 处置见 CONSTITUTION-CHANGES.md）
 ✅ Architecture          已设计
 ✅ 13-week Roadmap       已规划
 ✅ Event Catalog         已枚举

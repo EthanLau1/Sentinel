@@ -2,16 +2,31 @@ import { createHash } from 'node:crypto';
 import type { Evidence, FlowSpec, KernelContext } from '@sentinel/core';
 
 export async function collectSourceEvidence(ctx: KernelContext, flow: FlowSpec): Promise<Evidence | null> {
-  const fs = ctx.providers.mcp.get('fs');
-  if (!fs) return null;
   const visit = flow.steps.find((step) => step.action === 'visit');
   const api = flow.steps.find((step) => step.action === 'assert' && step.kind === 'api');
   const route = visit?.action === 'visit' ? visit.url : api?.action === 'assert' && api.kind === 'api' ? api.path : undefined;
-  if (!route?.startsWith('/')) return null;
+  if (!route) return null;
+  return collectSourceEvidenceForRoute(ctx, route, !visit && Boolean(api));
+}
+
+/**
+ * 按路由找源文件证据。
+ *
+ * 为什么要单独暴露一个"按路由"的版本：巡检器（inspector）拿到的是 URL，
+ * 没有 FlowSpec。映射规则必须只有一份 —— runner 和巡检器各写一套必然漂移，
+ * 然后出现"报告说定位到文件、实际是另一个文件"这种最难查的错。
+ */
+export async function collectSourceEvidenceForRoute(
+  ctx: KernelContext,
+  route: string,
+  isApi = false,
+): Promise<Evidence | null> {
+  const fs = ctx.providers.mcp.get('fs');
+  if (!fs) return null;
+  if (!route.startsWith('/')) return null;
   const path = route.split('?')[0] ?? '';
   if (!/^\/[\w\-/]*$/.test(path) || path.includes('..')) return null;
   const stem = path.slice(1).replace(/\/$/, '');
-  const isApi = !visit && Boolean(api);
   const bases = isApi
     ? ['app/' + stem + '/route', 'src/app/' + stem + '/route', 'pages/' + stem, 'src/pages/' + stem]
     : ['app/' + (stem ? stem + '/' : '') + 'page', 'src/app/' + (stem ? stem + '/' : '') + 'page',

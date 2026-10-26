@@ -1,6 +1,7 @@
 // LLM
 export { createOpenAICompatibleProvider } from './llm/openai-compatible.js';
 export { createOllamaNativeProvider } from './llm/ollama-native.js';
+export { createOfflineLLMProvider, OfflineLLMError } from './llm/offline.js';
 
 // Memory
 export { createNoneMemory } from './memory/none.js';

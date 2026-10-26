@@ -30,6 +30,32 @@ interface PageState {
   title: string;
   console: Array<{ level: string; message: string }>;
   network: Array<{ url: string; method: string; status: number; duration_ms: number; failed: boolean }>;
+  /**
+   * 未捕获异常（pageerror）—— 与 console.error 分开存。
+   * 为什么分开：console.error 是应用自己打的日志，未捕获异常是 JS 运行时崩了，
+   * 两者的严重级别和修法完全不同，混在一起会把真故障淹没在噪音里。
+   */
+  pageErrors: string[];
+}
+
+/**
+ * 巡检用的轻量页面快照 —— 不含截图 / DOM / a11y 树。
+ * 为什么要单独一个工具：snapshot() 会带 base64 截图和整页 DOM，
+ * 每个页面都调一次会让巡检成本翻好几倍；巡检只需要状态、报错和少量元信息。
+ */
+export interface BrowserInspection {
+  url: string;
+  title: string;
+  console: Array<{ level: string; message: string }>;
+  pageErrors: string[];
+  network: Array<{ url: string; method: string; status: number; duration_ms: number; failed: boolean }>;
+  meta: {
+    lang: string | null;
+    viewport: string | null;
+    hasTitle: boolean;
+    bodyTextLength: number;
+    bodyVisible: boolean;
+  };
 }
 
 interface BrowserResult {
@@ -81,7 +107,7 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
   let _playwright: typeof import('playwright') | null = null;
   let _browser: Browser | null = null;
   let _page: Page | null = null;
-  const state: PageState = { url: '', title: '', console: [], network: [] };
+  const state: PageState = { url: '', title: '', console: [], network: [], pageErrors: [] };
 
   async function ensureBrowser(): Promise<void> {
     if (_page) return;
@@ -105,6 +131,10 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
 
     _page.on('console', (msg: ConsoleMessage) => {
       state.console.push({ level: msg.type(), message: msg.text() });
+    });
+    // 未捕获异常：以前根本没采 —— 页面白屏/JS 崩了，报告里却什么证据都没有
+    _page.on('pageerror', (err: Error) => {
+      state.pageErrors.push(err.message);
     });
     _page.on('response', async (resp: Response) => {
       const req = resp.request();
@@ -167,6 +197,52 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
     return result;
   }
 
+  /**
+   * 轻量巡检快照 —— 只取判定"页面有没有毛病"需要的信息。
+   * 与 snapshot() 的区别：不带截图 / DOM / a11y 树，成本低一个数量级。
+   */
+  async function inspect(): Promise<BrowserInspection> {
+    if (!_page) throw new Error('Browser not started');
+    const page = _page;
+    // 等页面稳定再判定 —— 不等的话，SPA 还没渲染完就被量成"空白页"，
+    // 白屏规则会变成假阳性制造机。等待有上限，绝不卡住。
+    //
+    // 三步都要，缺一步就会漏报（2026-10-26 真实 run 实测）：
+    //   load        —— 等资源加载完，图片 404 在这一刻才暴露
+    //   networkidle —— 等请求收尾
+    //   短暂静默    —— 给迟到的客户端异常（useEffect 里 throw）留时间
+    await page.waitForLoadState('load', { timeout: 5000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(400).catch(() => {});
+    const meta = await page.evaluate(() => {
+      const html = document.documentElement;
+      const body = document.body;
+      const viewport = document.querySelector('meta[name="viewport"]');
+      let bodyVisible = false;
+      try {
+        bodyVisible = Boolean(body && body.getBoundingClientRect().height > 0);
+      } catch {
+        bodyVisible = false;
+      }
+      return {
+        lang: html?.getAttribute('lang') ?? null,
+        viewport: viewport?.getAttribute('content') ?? null,
+        hasTitle: Boolean(document.title && document.title.trim().length > 0),
+        bodyTextLength: (body?.innerText ?? '').trim().length,
+        bodyVisible,
+      };
+    });
+
+    return {
+      url: page.url(),
+      title: await page.title(),
+      console: [...state.console],
+      pageErrors: [...state.pageErrors],
+      network: [...state.network],
+      meta,
+    };
+  }
+
   async function close(): Promise<void> {
     if (_browser) {
       await _browser.close();
@@ -182,6 +258,7 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
       { name: 'click', description: 'Click element', inputSchema: { type: 'object', required: ['selector'], properties: { selector: { type: 'string' } } } },
       { name: 'fill', description: 'Fill input', inputSchema: { type: 'object', required: ['selector', 'value'], properties: { selector: { type: 'string' }, value: { type: 'string' } } } },
       { name: 'snapshot', description: 'Collect Evidence', inputSchema: { type: 'object', properties: { detailed: { type: 'boolean' } } } },
+      { name: 'inspect', description: 'Lightweight page inspection (console errors, failed requests, meta) without screenshot/DOM', inputSchema: { type: 'object', properties: {} } },
       { name: 'assert', description: 'Assert browser URL, text or visibility', inputSchema: { type: 'object', required: ['kind'], properties: { kind: { type: 'string' }, expected: { type: 'string' }, selector: { type: 'string' } } } },
       { name: 'close', description: 'Close browser', inputSchema: { type: 'object' } },
     ],
@@ -206,6 +283,7 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
             if (attempt > 0) await new Promise((r) => setTimeout(r, retryDelays[attempt - 1]!));
             state.console = [];
             state.network = [];
+            state.pageErrors = [];
             response = await page.goto(full, { waitUntil: 'domcontentloaded', timeout: 15000 });
             status = response ? response.status() : 0;
             if (status < 500) break;
@@ -223,6 +301,9 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
         }
         case 'snapshot': {
           return snapshot(Boolean(args['detailed'] ?? config.detailed));
+        }
+        case 'inspect': {
+          return inspect();
         }
         case 'assert': {
           const kind = args['kind'];

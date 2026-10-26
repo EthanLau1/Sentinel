@@ -331,6 +331,32 @@ Sentinel 判断 / 是否命中 / 推荐方案 / 是否被采纳
 
 ---
 
+## M10 — 离线可用（2026-10-26 起，宪法 v1.4）
+
+**目标**：没有本地 LLM、没有网络，也能检测出 web 项目的确定性错误。
+
+| 任务 | 状态 |
+|---|---|
+| 10.1 巡检器（inspector）：10 条确定性规则 | ✅ 已落地 |
+| 10.2 browser `inspect` 轻量快照 + `pageerror` 采集 | ✅ 已落地 |
+| 10.3 runner 挂载 `page.visited` | ✅ 已落地 |
+| 10.4 `--offline` 开关 + 自动降级（无配置 / 探测失败） | ✅ 已落地 |
+| 10.5 离线 LLM 桩（调用即抛错，不静默） | ✅ 已落地 |
+| 10.6 报告与 run-status 写明 `llmMode` | ✅ 已落地 |
+| 10.7 verifier 放行规则判定（`origin='rule'`） | ✅ 已落地 |
+| 10.8 断网守卫：离线模式不得发起外网请求 | ⬜ 待做（建议加进 `lint:spec` 或运行时断言） |
+| 10.9 离线模式进 `benchmarks/cases/` 永久留档 | ⬜ 待做 |
+
+**完成标准**:
+- 断网（`sandbox-exec` deny network-outbound）下 `sentinel run` 正常产出报告
+- `llmRequests = 0`、`knowledgeRequests = 0`
+- 注入缺陷项目（5 类确定性缺陷）全部被测出
+
+**已验证**（2026-10-26，Next.js 示例项目副本 + 5 处注入缺陷）：
+断网沙箱下 5/5 全部测出，`llmRequests: 0`、`knowledgeRequests: 0`、退出码 1（P1 存在）。
+
+---
+
 ## 关键节点的"可证伪"指标
 
 | 节点 | 指标 | 怎么测 |

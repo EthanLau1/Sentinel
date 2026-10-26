@@ -92,4 +92,31 @@ describe('verifier subagent', () => {
 
     expect(rejected).toBe(1);
   });
+
+  it('规则判定（origin=rule）不需要代码证据也能过闸门 —— 否则白屏这类真故障会被误杀', async () => {
+    let proposed = 0;
+    const capture: Subagent = {
+      name: 'capture',
+      register(ctx) {
+        ctx.bus.subscribe('fix.proposed', () => { proposed += 1; });
+      },
+    };
+    const kernel = new Kernel({
+      providers: fakeProviders(), budget: new Budget({}),
+      subagents: [createVerifier(), createPlanner({ requireVerified: true }), capture],
+    });
+
+    // 只有运行时证据（白屏：空 body），没有代码片段
+    const ruleBug: BugFinding = {
+      ...baseBug,
+      origin: 'rule',
+      rootCause: '页面返回正常但没有渲染出任何内容',
+      evidence: [{ kind: 'dom-snapshot', source: 'browser', timestamp: 1, hash: 'h3', html: '<body> empty' }],
+    };
+    await kernel.kick('bug.confirmed', ruleBug, 'inspector');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await kernel.stop();
+
+    expect(proposed).toBe(1);
+  });
 });
