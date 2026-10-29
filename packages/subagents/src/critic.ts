@@ -43,10 +43,20 @@ export function createCritic(config: CriticConfig = {}): Subagent {
       ctx.bus.subscribe<BugFinding>('bug.draft', async (event) => {
         const draft = event.payload;
 
+        // 确定性规则判定出来的观察项不进 critic ——
+        // 它们不是"根因假设"，是运行时事实（缺 viewport / 缺 lang / 白屏之类），
+        // 本来就不需要 LLM 反向验证。以前照送，于是每条都被拒：
+        // 既白花 token，又在 run-status 里堆一堆"未确认"噪音。
+        if (draft.origin === 'rule') return;
+
         if (draft.evidence.length === 0 || !draft.rootCause?.trim()) {
           await ctx.bus.publish({
             type: 'bug.rejected',
-            payload: { bugId: draft.id, reason: 'missing evidence or root-cause hypothesis' },
+            payload: {
+              bugId: draft.id,
+              reason: 'missing evidence or root-cause hypothesis',
+              kind: 'insufficient-evidence',
+            },
             source: 'critic',
             traceId: event.traceId,
           });
@@ -58,7 +68,13 @@ export function createCritic(config: CriticConfig = {}): Subagent {
         if (verdict.action === 'reject' || verdict.adjustedConfidence < minConfidence) {
           await ctx.bus.publish({
             type: 'bug.rejected',
-            payload: { bugId: draft.id, reason: verdict.reason },
+            payload: {
+              bugId: draft.id,
+              reason: verdict.reason,
+              // 「证据不足」和「critic 自己没跑起来」必须分开：
+              // 前者要把草稿从报告里剔除，后者必须保留（没人验过 ≠ 假设不成立）。
+              kind: verdict.kind,
+            },
             source: 'critic',
             traceId: event.traceId,
           });
@@ -88,6 +104,8 @@ interface CriticVerdict {
   reason: string;
   adjustedConfidence: number;
   counterEvidence: Evidence[];
+  /** 拒绝的性质：证据不足（要剔除草稿）还是 critic 自己没跑起来（必须保留草稿） */
+  kind: 'insufficient-evidence' | 'unavailable';
 }
 
 async function criticReview(ctx: KernelContext, draft: BugFinding): Promise<CriticVerdict> {
@@ -130,13 +148,17 @@ async function criticReview(ctx: KernelContext, draft: BugFinding): Promise<Crit
         : `${llm.reason || 'root cause remains a hypothesis; code and runtime evidence must both be cited'}（判定明细：${detail}）`,
       adjustedConfidence: Math.min(draft.confidence, llm.adjustedConfidence),
       counterEvidence: [],
+      kind: 'insufficient-evidence',
     };
   } catch (err) {
+    // critic 自己没跑起来（模型不可用 / 网络故障）——
+    // 这不是"假设不成立"，是"没人验过"。必须保留草稿，只标明未验证。
     return {
       action: 'reject',
       reason: `critic verification unavailable; hypothesis not confirmed（${(err as Error).message}）`,
       adjustedConfidence: 0,
       counterEvidence: [],
+      kind: 'unavailable',
     };
   }
 }

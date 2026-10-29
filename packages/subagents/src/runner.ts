@@ -6,6 +6,8 @@
  */
 import { collectSourceEvidence } from './source-evidence.js';
 import { isDeepStrictEqual } from 'node:util';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import type {
   Subagent,
@@ -27,7 +29,18 @@ export interface RunnerConfig {
    * `??` 遇到 false 不回落 → 全局开关被顶掉，什么都没多采。
    */
   detailed?: boolean;
+  /**
+   * 截图落盘目录（绝对路径）。
+   *
+   * 为什么要有：以前截图只以 base64 data URI 的形式塞在证据里 ——
+   * 报告里是一行 `data:image/png;base64,iVBORw0...`，人打不开，
+   * JSON 报告也被撑大几十倍。落盘成 PNG 后，证据里给的是真实文件路径。
+   */
+  evidenceDir?: string;
 }
+
+/** DOM 快照保留上限（字符）—— 超了必须写明截断，不能假装是完整的 */
+const DOM_MAX_CHARS = 20_000;
 
 export function createRunner(config: RunnerConfig = {}): Subagent {
   return {
@@ -54,7 +67,7 @@ export function createRunner(config: RunnerConfig = {}): Subagent {
           // 单条 flow 的内部异常（如证据采集失败）不能中断整轮，
           // 否则后续 flow 一个都不会跑，且没有任何日志说明漏了什么。
           try {
-            await runFlow(ctx, flow, event.traceId, undefined, evidenceByFlow, config.detailed === true);
+            await runFlow(ctx, flow, event.traceId, undefined, evidenceByFlow, config.detailed === true, config.evidenceDir);
           } catch (err) {
             await ctx.bus.publish({
               type: 'flow.failed',
@@ -76,7 +89,7 @@ export function createRunner(config: RunnerConfig = {}): Subagent {
         const flow = flowsById.get(event.payload.flowId);
         if (!flow) return;
         try {
-          await runFlow(ctx, flow, event.traceId, { phase: 'after-fix', patchId: event.payload.fixId }, evidenceByFlow, config.detailed === true);
+          await runFlow(ctx, flow, event.traceId, { phase: 'after-fix', patchId: event.payload.fixId }, evidenceByFlow, config.detailed === true, config.evidenceDir);
         } catch (err) {
           await ctx.bus.publish({
             type: 'flow.failed',
@@ -103,6 +116,7 @@ async function runFlow(
   phase: { phase: 'after-fix'; patchId: string } | undefined,
   evidenceByFlow: Map<string, Evidence[]>,
   detailed: boolean,
+  evidenceDir?: string,
 ): Promise<void> {
   const start = Date.now();
   await ctx.bus.publish({
@@ -135,7 +149,7 @@ async function runFlow(
   } catch (err) {
     // 失败时收 Evidence
     failureEvidence.push(
-      ...(await collectFailureEvidence(ctx, flow, err as Error)),
+      ...(await collectFailureEvidence(ctx, flow, err as Error, evidenceDir)),
     );
 
     await ctx.bus.publish({
@@ -279,6 +293,7 @@ async function collectFailureEvidence(
   ctx: KernelContext,
   flow: FlowSpec,
   err: Error,
+  evidenceDir?: string,
 ): Promise<Evidence[]> {
   const out: Evidence[] = [];
   const ts = Date.now();
@@ -309,12 +324,31 @@ async function collectFailureEvidence(
       };
 
       if (snap.screenshot) {
+        const hash = h(`shot:${snap.screenshot.slice(0, 50)}`);
+        // 截图落盘成真实文件 —— 以前只塞 base64 data URI：
+        // 报告里是一行打不开的 `data:image/png;base64,…`，JSON 报告也被撑大几十倍。
+        const file = await persistScreenshot(evidenceDir, snap.screenshot, hash);
         out.push({
           kind: 'screenshot',
           source: 'browser',
           timestamp: ts,
-          hash: h(`shot:${snap.screenshot.slice(0, 50)}`),
-          path: `data:image/png;base64,${snap.screenshot}`,
+          hash,
+          path: file ?? `data:image/png;base64,${snap.screenshot}`,
+        });
+      }
+      if (snap.domSnapshot) {
+        // DOM 快照以前**根本没有生产者**（类型有、字段有，就是没人把 domSnapshot 变成证据）——
+        // 失败现场里最有用的"页面当时长什么样"因此整体丢失。
+        const full = snap.domSnapshot;
+        out.push({
+          kind: 'dom-snapshot',
+          source: 'browser',
+          timestamp: ts,
+          hash: h(`dom:${full.slice(0, 200)}`),
+          html:
+            full.length > DOM_MAX_CHARS
+              ? `${full.slice(0, DOM_MAX_CHARS)}<!-- sentinel: 已截断，完整 DOM 共 ${full.length} 字符 -->`
+              : full,
         });
       }
       if (snap.a11yTree) {
@@ -361,4 +395,26 @@ async function collectFailureEvidence(
   const source = await collectSourceEvidence(ctx, flow);
   if (source) out.push(source);
   return out;
+}
+
+/**
+ * 把 base64 截图写成 PNG 文件，返回文件路径。
+ *
+ * 写失败就返回 null —— 调用方会退回内联 data URI，
+ * 证据不能因为"存不下文件"就整个丢掉。
+ */
+async function persistScreenshot(
+  evidenceDir: string | undefined,
+  base64: string,
+  hash: string,
+): Promise<string | null> {
+  if (!evidenceDir) return null;
+  try {
+    await mkdir(evidenceDir, { recursive: true });
+    const file = join(evidenceDir, `shot-${hash}.png`);
+    await writeFile(file, Buffer.from(base64, 'base64'));
+    return file;
+  } catch {
+    return null;
+  }
 }

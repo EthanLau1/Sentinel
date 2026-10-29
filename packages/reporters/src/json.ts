@@ -5,6 +5,7 @@
 import type { BugFinding } from '@sentinel/core';
 import { findTierDecision, type TierDecisionRecord } from './tier.js';
 import { coverageIsUninformative, type CoverageInfo } from './coverage.js';
+import { classifyBug, type BugVerdict } from './aggregate.js';
 
 export interface JsonReport {
   generated_at: string;
@@ -17,6 +18,12 @@ export interface JsonReport {
     by_root_cause_status: Record<string, number>;
     /** 按结论来源分：rule = 确定性规则判定，llm = 模型推断，heuristic = 模型未参与的启发式结论 */
     by_origin: Record<string, number>;
+    /**
+     * 按判定口径分：project-defect = 项目真实缺陷；tool-failure = 工具自己坏了；
+     * sentinel-invalid-url = Sentinel 自造地址造成的覆盖缺口。
+     * CI 只应该对 project-defect 里的 P0/P1 报警。
+     */
+    by_verdict: Record<string, number>;
   };
   /**
    * 本次覆盖范围。
@@ -35,6 +42,10 @@ export interface JsonReport {
    * 只藏在 fixOptions 里，机器读不到 —— 这里补成独立键。
    */
   bugs: JsonBug[];
+  /** 被 critic 判定证据不足而剔除的假设 —— 机器也要看得见，不能静默丢弃 */
+  rejected_findings?: Array<{ bugId: string; reason: string }>;
+  /** 因为 critic 没能运行而未经反向验证的 bug id */
+  unverified_bug_ids?: string[];
 }
 
 /**
@@ -52,6 +63,8 @@ export type JsonBug = BugFinding & {
   auto_fix_tier: number | null;
   /** 字段 11 的依据（硬规则判出来的，不是模型自报的） */
   tier_reason: string;
+  /** 判定口径：这条到底算不算「被测项目的缺陷」 */
+  verdict: BugVerdict;
 };
 
 export function reportToJson(
@@ -63,17 +76,24 @@ export function reportToJson(
     tierDecisions?: TierDecisionRecord[];
     /** 被拒绝的补丁 —— JSON 里也要说清"判成可自动修但实际没改" */
     rejectedPatches?: Array<{ fixId: string; reason: string }>;
+    /** 被 critic 判定证据不足而剔除的假设 */
+    rejectedFindings?: Array<{ bugId: string; reason: string }>;
+    /** 因为 critic 没能运行而未经反向验证的 bug id */
+    unverifiedBugIds?: string[];
   } = {},
 ): JsonReport {
   const by_severity: Record<string, number> = {};
   const by_root_cause_status: Record<string, number> = {};
   const by_origin: Record<string, number> = {};
+  const by_verdict: Record<string, number> = {};
   for (const b of bugs) {
     by_severity[b.severity] = (by_severity[b.severity] ?? 0) + 1;
     by_root_cause_status[b.rootCauseStatus] = (by_root_cause_status[b.rootCauseStatus] ?? 0) + 1;
     // 没标 origin = 旧数据，按 'llm' 处理（保持向后兼容）
     const origin = b.origin ?? 'llm';
     by_origin[origin] = (by_origin[origin] ?? 0) + 1;
+    const verdict = classifyBug(b);
+    by_verdict[verdict] = (by_verdict[verdict] ?? 0) + 1;
   }
 
   const out: JsonReport = {
@@ -83,6 +103,7 @@ export function reportToJson(
       by_severity,
       by_root_cause_status,
       by_origin,
+      by_verdict,
     },
     bugs: bugs.map((b) => toJsonBug(b, meta.tierDecisions, meta.rejectedPatches)),
   };
@@ -90,6 +111,12 @@ export function reportToJson(
   if (meta.llmMode) out.llm_mode = meta.llmMode;
   if (meta.coverage) {
     out.coverage = { ...meta.coverage, uninformative: coverageIsUninformative(meta.coverage) };
+  }
+  if (meta.rejectedFindings && meta.rejectedFindings.length > 0) {
+    out.rejected_findings = meta.rejectedFindings;
+  }
+  if (meta.unverifiedBugIds && meta.unverifiedBugIds.length > 0) {
+    out.unverified_bug_ids = meta.unverifiedBugIds;
   }
   return out;
 }
@@ -114,6 +141,7 @@ function toJsonBug(
       verification_command: '(无)',
       auto_fix_tier: null,
       tier_reason: '(无修复方案，暂不判定)',
+      verdict: classifyBug(bug),
     };
   }
 
@@ -128,6 +156,7 @@ function toJsonBug(
     verification_command: recommended.verificationCommand ?? bug.verificationCommand ?? '(无)',
     auto_fix_tier: tier,
     tier_reason: decision?.reason ?? '(无硬规则判定记录)',
+    verdict: classifyBug(bug),
     // 判成"可自动修"但实际没改 —— 必须同时写进 JSON
     ...(rejection
       ? { tier_reason: `${decision?.reason ?? '(无硬规则判定记录)'}；⚠ 实际未修改：${rejection.reason}` }

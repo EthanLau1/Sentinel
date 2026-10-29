@@ -4,7 +4,7 @@
  */
 
 import type { BugFinding, FixOption } from '@sentinel/core';
-import { isToolFailure } from './aggregate.js';
+import { classifyBug } from './aggregate.js';
 import { findTierDecision, type TierDecisionRecord } from './tier.js';
 import { coverageIsUninformative, type CoverageInfo } from './coverage.js';
 
@@ -24,6 +24,18 @@ export interface MarkdownOptions {
    * 报告如果只写"Tier 1 — 自动修"，就是"报告说能做、实际没做"。
    */
   rejectedPatches?: Array<{ fixId: string; reason: string }>;
+  /**
+   * 被 critic 判定「证据不足」而剔除的草稿。
+   *
+   * 剔除 ≠ 藏起来：报告必须单列出来并写明理由，
+   * 否则用户会以为"这条问题 Sentinel 查过了没问题"。
+   */
+  rejectedFindings?: Array<{ bugId: string; reason: string }>;
+  /**
+   * 因为 critic 自己没跑起来（模型不可用）而未经反向验证的发现。
+   * 这些发现保留在列表里，但必须标明"没验过"。
+   */
+  unverifiedBugIds?: string[];
 }
 
 export function bugToMarkdown(bug: BugFinding, opts: MarkdownOptions = {}): string {
@@ -36,9 +48,23 @@ export function bugToMarkdown(bug: BugFinding, opts: MarkdownOptions = {}): stri
   lines.push(`**${bug.title}**`);
   lines.push('');
 
-  // 工具性失败：Sentinel 自身链路的问题，不是被测项目的缺陷 —— 必须说清楚
-  if (isToolFailure(bug)) {
+  // 三类判定 —— 报告和退出码必须用同一份口径（见 aggregate.ts）
+  const verdict = classifyBug(bug);
+  if (verdict === 'tool-failure') {
     lines.push('> ⚠ **工具性失败**：这是 Sentinel 自身链路的问题，不是被测项目的缺陷。请先修工具链再评估项目。');
+    lines.push('');
+  } else if (verdict === 'sentinel-invalid-url') {
+    lines.push(
+      '> ⚠ **覆盖缺口（Sentinel 自造地址）**：这条 404 是 Sentinel 用路由约定拼出来的占位地址打出来的' +
+      '（例如 `/posts/:id`、`/@modal`），**不是被测项目的缺陷**。' +
+      '真实地址请写进 `.sentinel/app.map.ts`；本条不计入项目缺陷，也不触发失败退出码。',
+    );
+    lines.push('');
+  }
+
+  // critic 没跑起来 → 这条结论没被反向验证过，必须说清楚
+  if (opts.unverifiedBugIds?.includes(bug.id)) {
+    lines.push('> ⚠ **未经反向验证**：critic 未能运行（模型不可用），本条结论只是假设，尚未被验证。');
     lines.push('');
   }
 
@@ -147,6 +173,18 @@ export function reportToMarkdown(
     {} as Record<string, number>,
   );
   lines.push(`**分级**: P0=${counts['P0'] ?? 0}, P1=${counts['P1'] ?? 0}, P2=${counts['P2'] ?? 0}, P3=${counts['P3'] ?? 0}`);
+
+  // 分级只是"总览"，口径必须写清楚：非项目缺陷的条目不参与项目健康判断
+  const nonDefects = bugs.filter((b) => classifyBug(b) !== 'project-defect');
+  if (nonDefects.length > 0) {
+    const toolCount = nonDefects.filter((b) => classifyBug(b) === 'tool-failure').length;
+    const gapCount = nonDefects.length - toolCount;
+    lines.push(
+      `**口径**: 上面 ${bugs.length} 条里有 ${nonDefects.length} 条不是项目缺陷` +
+      `（工具性失败 ${toolCount} 条 · Sentinel 自造地址造成的覆盖缺口 ${gapCount} 条）` +
+      `—— 它们不计入「项目有 P0/P1」，也不触发失败退出码。`,
+    );
+  }
   lines.push('');
   lines.push('---');
   lines.push('');
@@ -180,6 +218,24 @@ export function reportToMarkdown(
 
   for (const b of bugs) {
     lines.push(bugToMarkdown(b, opts));
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+  }
+
+  // 被 critic 拒绝的草稿 —— 剔除不等于藏起来
+  if (opts.rejectedFindings && opts.rejectedFindings.length > 0) {
+    lines.push('## 被 Critic 拒绝的假设');
+    lines.push('');
+    lines.push(
+      `以下 ${opts.rejectedFindings.length} 条根因假设经过反向验证后被判定「证据不足」，` +
+      '**不作为诊断计入上面的列表**。列出来是为了让你知道 Sentinel 查过但没查实 —— ' +
+      '如果你认为其中某条是真问题，需要补证据（截图 / 复现步骤 / 源码位置）后重跑。',
+    );
+    lines.push('');
+    for (const r of opts.rejectedFindings) {
+      lines.push(`- \`${r.bugId}\` — ${r.reason}`);
+    }
     lines.push('');
     lines.push('---');
     lines.push('');
@@ -227,6 +283,16 @@ function coverageSection(coverage: CoverageInfo, bugCount: number): string[] {
   lines.push(`| 规划执行流程 / Planned flows | ${coverage.plannedFlows} |`);
   lines.push(`| 通过 / 失败 / 未跑 / Passed / Failed / Not run | ${coverage.passedFlows} / ${coverage.failedFlows} / ${coverage.untestedFlows} |`);
   lines.push('');
+
+  // 自己拼的地址打出来的失败必须单列 ——
+  // 混在 failedFlows 里会被读成"项目坏了 N 处"，而那其实是 Sentinel 测错了地址。
+  if (coverage.selfGeneratedFailures > 0) {
+    lines.push(
+      `> ⚠ **本次有 ${coverage.selfGeneratedFailures} 条失败来自 Sentinel 自己拼的地址**（路由占位符没被替换成真实值），` +
+      '**不是被测项目的缺陷**，也不计入失败退出码。真实地址请写进 `.sentinel/app.map.ts`。',
+    );
+    lines.push('');
+  }
 
   if (coverage.mapFailures.length > 0) {
     lines.push('**项目理解失败 / Project understanding failed**（下面的数字全部不可信）:');
@@ -281,19 +347,25 @@ function originLabel(origin: BugFinding['origin']): string {
   }
 }
 
-function describeEvidence(e: import('@sentinel/core').Evidence): string {  switch (e.kind) {
-    case 'console':
+function describeEvidence(e: import('@sentinel/core').Evidence): string {  switch (e.kind) {    case 'console':
       return `${e.level}: ${e.message.slice(0, 120)}`;
     case 'network':
       return `${e.method} ${e.url} → ${e.status}${e.failed ? ' FAILED' : ''}`;
     case 'http':
       return `${e.method} ${e.url} → ${e.status}`;
     case 'screenshot':
-      return `image (${e.path.slice(0, 60)}...)`;
+      // 截图现在落盘成真实文件（reports/evidence/*.png），报告要给出能打开的路径；
+      // 只有落盘失败时才退回内联 data URI。
+      return e.path.startsWith('data:')
+        ? `image (内联 ${e.path.slice(0, 40)}…)`
+        : `截图文件 ${e.path}`;
     case 'a11y':
-      return `accessibility tree`;
+      // 以前只显示字面量 "accessibility tree" —— 用户看不到任何内容，
+      // 也就无法人工复核、无法反驳 Agent。这里给一个能读的预览。
+      return `accessibility tree（${a11yPreview(e.tree)}）`;
     case 'dom-snapshot':
-      return `DOM (${e.html.length} chars)`;
+      // 同理：以前只有 "DOM (N chars)"，看不出页面长什么样
+      return `DOM（${e.html.length} 字符）${domPreview(e.html)}`;
     case 'log':
       return `[${e.level}] ${e.message.slice(0, 120)}`;
     case 'storage':
@@ -309,4 +381,24 @@ function describeEvidence(e: import('@sentinel/core').Evidence): string {  switc
     default:
       return e.kind;
   }
+}
+
+/** a11y 树的可读预览（前几行）—— 完整内容在 JSON 报告里 */
+function a11yPreview(tree: unknown): string {
+  const text = typeof tree === 'string' ? tree : JSON.stringify(tree);
+  if (!text) return '(空)';
+  const first = text.split('\n').filter((l) => l.trim()).slice(0, 3).join(' / ');
+  return first.length > 160 ? `${first.slice(0, 160)}…` : first;
+}
+
+/** DOM 的可读预览（标签骨架）—— 完整内容在 JSON 报告里 */
+function domPreview(html: string): string {
+  const skeleton = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!skeleton) return '（空标签）';
+  return skeleton.length > 120 ? `「${skeleton.slice(0, 120)}…」` : `「${skeleton}」`;
 }

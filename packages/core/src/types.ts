@@ -220,7 +220,7 @@ export interface FixOption {
 // 5. Event<T> — bus 上流的消息
 // ────────────────────────────────────────────────────────────────────────────
 
-/** 24 个固定事件类型，必须与 EVENT-CATALOG.md 一致 */
+/** 28 个固定事件类型，必须与 EVENT-CATALOG.md 一致 */
 export type EventType =
   // 项目理解
   | 'project.scanned'

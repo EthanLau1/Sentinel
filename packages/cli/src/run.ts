@@ -48,7 +48,7 @@ import {
   printBug,
   printSummary,
   aggregateDuplicateBugs,
-  isToolFailure,
+  classifyBug,
   createBugCollector,
   applyTierDecisions,
   buildCoverageInfo,
@@ -155,7 +155,7 @@ export async function runRun(): Promise<number> {
     for (const b of bugs) {
       console.log(printBug(b));
     }
-    await writeReports(root, bugs, opts.reportFormat ?? 'both', [], 'offline');
+    await writeReports(root, bugs, { format: opts.reportFormat ?? 'both', llmMode: 'offline' });
     console.log('');
     console.log(color.dim('tokens: 0  cost: $0.0000  duration: demo'));
     console.log(color.dim('reports/sentinel-latest.{md,json}'));
@@ -302,7 +302,7 @@ export async function runRun(): Promise<number> {
   const failedFlowIds = new Set<string>();
   let insufficientEvidenceCount = 0;
   const insufficientEvidence: Array<{ bugId?: string; reason?: string }> = [];
-  const rejectedBugs: Array<{ bugId: string; reason: string }> = [];
+  const rejectedBugs: Array<{ bugId: string; reason: string; kind: 'insufficient-evidence' | 'unavailable' }> = [];
   const appliedPatches: Array<{
     fixId: string;
     files: string[];
@@ -453,8 +453,12 @@ export async function runRun(): Promise<number> {
         statusEvents.onEvidenceFailed(e.payload);
       });
       // critic 的裁决理由不能丢 —— 否则"为什么没确认"永远查不到
-      ctx.bus.subscribe<{ bugId: string; reason: string }>('bug.rejected', (e) => {
-        rejectedBugs.push({ bugId: e.payload.bugId, reason: e.payload.reason });
+      // 同时必须真的**拦截**：证据不足的草稿不能作为诊断进报告（收集器剔除），
+      // 但剔除不等于藏起来 —— 报告里会单列「被 Critic 拒绝的假设」。
+      ctx.bus.subscribe<{ bugId: string; reason: string; kind?: 'insufficient-evidence' | 'unavailable' }>('bug.rejected', (e) => {
+        const kind = e.payload.kind ?? 'insufficient-evidence';
+        rejectedBugs.push({ bugId: e.payload.bugId, reason: e.payload.reason, kind });
+        collector.onRejected(e.payload.bugId, e.payload.reason, kind);
       });
       // 合并而不是覆盖 —— bus 顺序 await 分发，事件到达顺序是"深层先到、浅层后到"：
       // verifier→planner→enhancer→fix.enhanced（带 fixOptions）先到，
@@ -475,7 +479,7 @@ export async function runRun(): Promise<number> {
   const subagents: Subagent[] = [
     createMapper(),
     createSensor({ detailed: opts.detailed === true }),
-    createRunner({ detailed: opts.detailed === true }),
+    createRunner({ detailed: opts.detailed === true, evidenceDir: join(root, 'reports', 'evidence') }),
     // 巡检器：确定性规则，不依赖 LLM —— 有没有模型都会跑
     createInspector(),
     createAnalyst(),
@@ -554,6 +558,8 @@ export async function runRun(): Promise<number> {
     passedFlows,
     failedFlows,
     mapFailures: mapFailures.map((f) => f.error),
+    // Sentinel 自造地址造成的失败要单列 —— 它不是项目的问题
+    selfGeneratedFailures: reportedBugs.filter((b) => classifyBug(b) === 'sentinel-invalid-url').length,
   });
   console.log('');
   console.log(printSummary(reportedBugs));
@@ -581,15 +587,23 @@ export async function runRun(): Promise<number> {
     console.log(printBug(b));
   }
 
-  await writeReports(
-    root,
-    reportedBugs,
-    opts.reportFormat ?? 'both',
-    statusEvents.tierDecisions,
+  // 被 critic 剔除的假设（证据不足）与未验证的结论 —— 报告里要分别体现
+  const rejectedFindings = rejectedBugs
+    .filter((r) => r.kind === 'insufficient-evidence')
+    .map((r) => ({ bugId: r.bugId, reason: r.reason }));
+  const unverifiedBugIds = rejectedBugs
+    .filter((r) => r.kind === 'unavailable')
+    .map((r) => r.bugId);
+
+  await writeReports(root, reportedBugs, {
+    format: opts.reportFormat ?? 'both',
+    tierDecisions: statusEvents.tierDecisions,
     llmMode,
-    coverageInfo,
-    statusEvents.rejectedPatches,
-  );
+    coverage: coverageInfo,
+    rejectedPatches: statusEvents.rejectedPatches,
+    rejectedFindings,
+    unverifiedBugIds,
+  });
 
   // 8. 总结
   const usage = budget.snapshot();
@@ -612,9 +626,19 @@ export async function runRun(): Promise<number> {
     console.log(color.yellow(`   未产生诊断的失败 flow: ${uncovered.join(', ')}`));
   }
   if (rejectedBugs.length > 0) {
-    console.log(color.yellow(`   critic 未确认 ${rejectedBugs.length} 条（原因见 run-status.json）:`));
-    for (const r of rejectedBugs.slice(0, 3)) {
-      console.log(color.dim(`     ${r.bugId}: ${r.reason.slice(0, 160)}`));
+    const blocked = rejectedBugs.filter((r) => r.kind === 'insufficient-evidence');
+    const unverified = rejectedBugs.filter((r) => r.kind === 'unavailable');
+    if (blocked.length > 0) {
+      console.log(color.yellow(`   critic 判定证据不足 ${blocked.length} 条（已从诊断列表剔除，报告里单列）:`));
+      for (const r of blocked.slice(0, 3)) {
+        console.log(color.dim(`     ${r.bugId}: ${r.reason.slice(0, 160)}`));
+      }
+    }
+    if (unverified.length > 0) {
+      console.log(color.yellow(`   critic 未能运行，${unverified.length} 条结论未经反向验证（已在报告里标明）:`));
+      for (const r of unverified.slice(0, 3)) {
+        console.log(color.dim(`     ${r.bugId}: ${r.reason.slice(0, 160)}`));
+      }
     }
   }
   if (appliedPatches.length > 0) {
@@ -663,7 +687,10 @@ export async function runRun(): Promise<number> {
     evidenceFailures: statusEvents.evidenceFailures,
     bugCount: collector.bugs.length,
     reportedBugCount: reportedBugs.length,
-    toolFailures: reportedBugs.filter((b) => isToolFailure(b)).length,
+    // 三类判定各有多少 —— 口径写清楚，机器和人都能核对
+    toolFailures: reportedBugs.filter((b) => classifyBug(b) === 'tool-failure').length,
+    sentinelInvalidUrls: reportedBugs.filter((b) => classifyBug(b) === 'sentinel-invalid-url').length,
+    projectDefects: reportedBugs.filter((b) => classifyBug(b) === 'project-defect').length,
     costUsd: costKnown ? usage.usd : null, durationMs: dur,
     // 预算护栏口径（可核对，不靠猜）
     costMode: costKnown ? 'usd+token' : 'token-only',
@@ -684,8 +711,10 @@ export async function runRun(): Promise<number> {
     coverageRisks: coverage.map?.risks.filter((risk) => risk.id.startsWith('coverage_')) ?? [],
   }, null, 2), 'utf8');
   if (incomplete) return 2;
-  // 工具性失败不是被测项目的缺陷，不应让"项目有问题"的退出码被触发
-  const projectBugs = reportedBugs.filter((b) => !isToolFailure(b));
+  // 只有「项目真实缺陷」里的 P0/P1 才让退出码变成 1 ——
+  // 工具性失败（Sentinel 自己坏了）、Sentinel 自造地址造成的 404 覆盖缺口，
+  // 都不是被测项目的问题，不该拉红退出码。
+  const projectBugs = reportedBugs.filter((b) => classifyBug(b) === 'project-defect');
   return projectBugs.some((b) => b.severity === 'P0' || b.severity === 'P1') ? 1 : 0;
 }
 
@@ -736,33 +765,42 @@ function withRequestCounter(
   };
 }
 
+/** 写报告需要的全部输入 —— 用对象传，避免第 8 个位置参数还得数顺序 */
+interface WriteReportsInput {
+  format: 'markdown' | 'json' | 'both';
+  tierDecisions?: TierDecisionRecord[];
+  llmMode?: 'llm' | 'offline';
+  coverage?: CoverageInfo;
+  rejectedPatches?: Array<{ fixId: string; reason: string }>;
+  /** 被 critic 判定证据不足而剔除的假设 —— 报告里单列，不静默丢弃 */
+  rejectedFindings?: Array<{ bugId: string; reason: string }>;
+  /** critic 没能运行 → 这些结论未经反向验证，报告里必须标明 */
+  unverifiedBugIds?: string[];
+}
+
 async function writeReports(
   root: string,
   bugs: BugFinding[],
-  format: 'markdown' | 'json' | 'both',
-  tierDecisions: TierDecisionRecord[] = [],
-  llmMode: 'llm' | 'offline' = 'llm',
-  coverage?: CoverageInfo,
-  rejectedPatches: Array<{ fixId: string; reason: string }> = [],
+  input: WriteReportsInput,
 ): Promise<void> {
+  const { format, tierDecisions, llmMode, coverage, rejectedPatches, rejectedFindings, unverifiedBugIds } = input;
   const dir = join(root, 'reports');
   if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+  const meta = {
+    project: root.split('/').pop() ?? 'project',
+    ...(llmMode ? { llmMode } : {}),
+    ...(coverage ? { coverage } : {}),
+    ...(tierDecisions ? { tierDecisions } : {}),
+    ...(rejectedPatches ? { rejectedPatches } : {}),
+    ...(rejectedFindings ? { rejectedFindings } : {}),
+    ...(unverifiedBugIds ? { unverifiedBugIds } : {}),
+  };
   if (format === 'markdown' || format === 'both') {
-    const md = reportToMarkdown(
-      bugs,
-      { project: root.split('/').pop() ?? 'project', llmMode },
-      { tierDecisions, llmMode, ...(coverage ? { coverage } : {}), rejectedPatches },
-    );
+    const md = reportToMarkdown(bugs, meta, meta);
     await writeFile(join(dir, 'sentinel-latest.md'), md, 'utf8');
   }
   if (format === 'json' || format === 'both') {
-    const json = reportToJson(bugs, {
-      project: root.split('/').pop() ?? 'project',
-      llmMode,
-      ...(coverage ? { coverage } : {}),
-      tierDecisions,
-      rejectedPatches,
-    });
+    const json = reportToJson(bugs, meta);
     await writeFile(join(dir, 'sentinel-latest.json'), JSON.stringify(json, null, 2), 'utf8');
   }
 }

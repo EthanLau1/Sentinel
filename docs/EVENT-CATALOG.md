@@ -17,7 +17,7 @@
 
 ---
 
-## 完整事件列表（25 个）
+## 完整事件列表（28 个）
 
 ### 项目理解阶段（M3）
 
@@ -111,6 +111,7 @@
 
 ## 总数控制
 
-v1.1 锁定 24 个事件；v1.4 新增 `page.visited`（巡检）→ 25 个。
+v1.1 锁定 24 个事件；v1.4 新增 `page.visited`（巡检）→ 25 个；
+随后陆续补齐执行与监控阶段的事件（`executor.tier_decided` / `patch.*` / `pr.created` / `report.ready` / `budget.exceeded`）→ **28 个**（以 `packages/core/src/types.ts` 的 `EventType` 联合为准，实测 28 项）。
 新增需要充分理由（事件膨胀 = 设计失败）。
 v2 之前不超过 30 个。

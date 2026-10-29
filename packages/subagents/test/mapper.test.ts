@@ -198,6 +198,58 @@ describe('mapper subagent', () => {
     expect(failure).not.toBeNull();
     expect(failure!.error).toContain('app.map.ts');
   });
+
+  it('Next.js 路由约定：自动流程里不出现访问不到的伪 URL', async () => {
+    // 端到端断言（分析文档 §4.2 的要求）：路由解析和 isConcretePath 必须一起对。
+    // 只测 adapter 会漏掉"解析对了、但 mapper 还是拿它去访问"的错配。
+    const root = await mkdtemp(join(tmpdir(), 'sentinel-mapper-routes-'));
+    await writeFile(join(root, 'package.json'), JSON.stringify({
+      name: 'fake', dependencies: { next: '15.0.0', react: '19.0.0' },
+    }), 'utf8');
+    const files = [
+      'app/page.tsx',
+      'app/(marketing)/about/page.tsx',
+      'app/@modal/page.tsx',
+      'app/(.)photo/page.tsx',
+      'app/[[...all]]/page.tsx',
+      'app/blog/[slug]/page.tsx',
+      'app/api/users/route.ts',
+    ];
+    for (const rel of files) {
+      await mkdir(join(root, rel, '..'), { recursive: true });
+      await writeFile(join(root, rel), 'export default () => null', 'utf8');
+    }
+
+    let ready: FeatureMap | null = null;
+    const capture: Subagent = {
+      name: 'capture',
+      register(ctx) {
+        ctx.bus.subscribe<FeatureMap>('map.ready', (e) => { ready = e.payload; });
+      },
+    };
+    const kernel = new Kernel({
+      providers: fakeProviders(),
+      budget: new Budget({}),
+      subagents: [createMapper(), capture],
+    });
+    await kernel.kick('project.scanned', { root }, 'test');
+    await kernel.stop();
+
+    const map = ready!;
+    const visitUrls = map.flows.flatMap((f) =>
+      f.steps.filter((s): s is { action: 'visit'; url: string } => s.action === 'visit').map((s) => s.url),
+    );
+    // 并行槽 / 路由组 / 拦截路由 / 可选捕获 —— 一个都不能出现在待访问地址里
+    expect(visitUrls.some((u) => u.includes('@'))).toBe(false);
+    expect(visitUrls.some((u) => u.includes('[') || u.includes(']'))).toBe(false);
+    expect(visitUrls.some((u) => u.includes('(.)'))).toBe(false);
+    // 真实路由照常被测
+    expect(visitUrls).toContain('/about');
+    expect(visitUrls).toContain('/photo');
+    // 动态路由不自动测，但必须在覆盖缺口里说清楚，不能静默消失
+    expect(map.risks.some((r) => r.description.includes('/blog/:slug'))).toBe(true);
+    expect(map.risks.some((r) => r.description.includes('/:all*'))).toBe(true);
+  });
 });
 
 // keep used import

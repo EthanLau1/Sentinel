@@ -37,6 +37,8 @@
 | [EVENT-CATALOG.md](./EVENT-CATALOG.md) | 所有 Event 类型的固定枚举（防止乱发事件） |
 | [CONFIG-SPEC.md](./CONFIG-SPEC.md) | `.sentinel/*.yml` 配置文件规范 |
 | [STAGE-PRESETS.md](./STAGE-PRESETS.md) | Idea/MVP/Launch/Scale 三套 weights 预设 |
+| [GITHUB-BORROW-ANALYSIS-2026-10-29.md](./GITHUB-BORROW-ANALYSIS-2026-10-29.md) | **对标 GitHub 项目的借鉴点分析 v1.3** — 9 个必借鉴点 + 实测证据 + 路由/证据链的已知缺陷 + 两轮复审更正记录 |
+| [FIX-ROUND-2026-10-29.md](./FIX-ROUND-2026-10-29.md) | **修复轮 R-2026-10-29** — 判定口径补第三类 / 证据链打通 / Next.js 路由约定重写（对应上面分析文档的 P0-A、P0-B、P0-C） |
 
 ---
 

@@ -38,6 +38,13 @@ export interface CoverageInfo {
   untestedFlows: number;
   /** 一个页面/接口都没识别出来 */
   empty: boolean;
+  /**
+   * 本次有几条失败是「Sentinel 自己拼的地址打到了 404」。
+   *
+   * 为什么单列：这批失败**不是被测项目的问题**（是我们自己测错了地址），
+   * 但也不能静默消失 —— 混在 failedFlows 里会被读成"项目坏了 N 处"。
+   */
+  selfGeneratedFailures: number;
   /** 覆盖缺口：没自动测的路由、没点的 CTA、没跑鉴权流程… */
   risks: CoverageRisk[];
   /** 项目理解失败（mapper 报错）——有它就意味着后面所有数字都是 0 */
@@ -49,6 +56,8 @@ export interface CoverageStats {
   passedFlows: number;
   failedFlows: number;
   mapFailures?: string[];
+  /** Sentinel 自造地址造成的失败条数 */
+  selfGeneratedFailures?: number;
 }
 
 /**
@@ -72,6 +81,7 @@ export function buildCoverageInfo(map: FeatureMap | null, stats: CoverageStats):
     failedFlows,
     untestedFlows: Math.max(0, plannedFlows - passedFlows - failedFlows),
     empty: pages === 0 && api === 0,
+    selfGeneratedFailures: stats.selfGeneratedFailures ?? 0,
     risks: (map?.risks ?? [])
       .filter((risk) => risk.id.startsWith('coverage_'))
       .map((risk) => {

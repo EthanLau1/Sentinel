@@ -1,0 +1,31 @@
+{
+  "id": "2026-10-29-008-1",
+  "project": "nextjs-route-conventions-fixture",
+  "feature": "flow_page_parallel_slot",
+  "stage": "MVP",
+  "symptom": "巡检产出一条 P1：「访问 /@modal 返回 HTTP 404」，报告里写成被测项目的缺陷，CI 退出码变成 1",
+  "realRootCause": "packages/adapters/src/frontend/nextjs.ts 没有实现 Next.js 的并行路由槽（@slot）约定：把目录名 @modal 当成了普通 URL 段，拼出 /@modal 这个从来不存在的地址。404 是 Sentinel 自己造地址造成的，**不是被测项目的缺陷**。同类问题还有路由组 (group)、拦截路由 (.)x、可选捕获 [[...all]]（旧实现会解析成带多余方括号的垃圾串）。",
+  "sentinelJudgment": {
+    "rootCauseStatus": "hypothesis",
+    "rootCause": "访问 /@modal 返回 404（路由不存在）",
+    "confidence": 0.7,
+    "evidenceCount": 1,
+    "evidenceKinds": [
+      "network"
+    ]
+  },
+  "hit": false,
+  "recommendedFix": {
+    "id": "fix_nextjs_route_conventions",
+    "title": "nextjs 适配器按官方约定解析路由（先判 app/ 还是 pages/，再套对应约定）",
+    "tier": 2,
+    "effort": "medium",
+    "risk": "low",
+    "score": 0.82
+  },
+  "fixAdopted": true,
+  "fixPassedVerification": true,
+  "notes": "人工确认（2026-10-29）：hit=false —— Sentinel 当时把 404 归咎于「项目缺路由」，没有命中真实根因（是我们自己拼错了地址）。真实根因由人工读 packages/adapters/src/frontend/nextjs.ts 与 Next.js 官方文档（Intercepting Routes / Route Groups / Pages Router 的 Pages and Layouts）核实。三处修正同时落地：(1) 路由解析按官方语义重写，App Router 剥离路由组、并行槽归父路径、拦截路由按路由段层级解析，Pages Router 保留字面量目录名（官方：目录名就是 URL 段）；(2) 判定口径补第三类 sentinel-invalid-url —— 「自己拼的地址打到 404」不再算项目缺陷，也不触发失败退出码；(3) 回归用例钉死：packages/adapters/test/nextjs-routes.test.ts（11 例，App/Pages 两套独立夹具）+ packages/subagents/test/mapper.test.ts 的端到端断言（路由解析必须与 isConcretePath 一起对）。修复轮记录见 docs/FIX-ROUND-2026-10-29.md。本案例没有可重放夹具（不是 LLM 根因分析路径，而是路由解析缺陷），因此不计入回测覆盖率分母之外的断言。",
+  "createdAt": "2026-10-29T18:20:00.000Z",
+  "sentinelVersion": "0.2.0"
+}

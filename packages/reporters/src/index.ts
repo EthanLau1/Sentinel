@@ -8,6 +8,16 @@ export {
   type CoverageStats,
 } from './coverage.js';
 export { color, printBug, printSummary } from './cli.js';
-export { aggregateDuplicateBugs, isToolFailure, mergeBugFinding, normalizeMessage } from './aggregate.js';
-export { createBugCollector, type BugCollector } from './collect.js';
+export {
+  aggregateDuplicateBugs,
+  isToolFailure,
+  isSentinelInvalidUrl,
+  classifyBug,
+  hasRoutePlaceholder,
+  pathOfUrl,
+  mergeBugFinding,
+  normalizeMessage,
+  type BugVerdict,
+} from './aggregate.js';
+export { createBugCollector, type BugCollector, type RejectionKind } from './collect.js';
 export { applyTierDecisions, findTierDecision, type TierDecisionRecord } from './tier.js';

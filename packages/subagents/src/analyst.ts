@@ -28,11 +28,58 @@ import { extractJson } from './json.js';
  */
 const AGENT_LLM_TIMEOUT_MS = 180_000;
 
+/** 单条证据给模型看的字符上限 —— 超了必须写明截断，不能静默砍掉尾巴 */
+const EVIDENCE_TEXT_LIMIT = 4000;
+
+/**
+ * 证据 → 给模型看的文本。
+ *
+ * 三条规矩（以前都踩过）：
+ * 1. **不许从尾部无声砍断** —— 以前 `JSON.stringify(detail).slice(0, 4000)`，
+ *    a11y 树超过 4000 字符时尾巴直接没了，模型拿到的是半棵树却以为看全了。
+ *    现在砍就写明砍了多少。
+ * 2. **不许假装模型看过图片** —— 以前把截图换成 `[image data; inspect separately]`，
+ *    看起来"证据在手上"，实际模型一个字都看不到。
+ *    现在如实说明：截图是文件，模型通道只支持文本，视觉判读没做。
+ * 3. **结构化证据按结构截断** —— a11y 树保头保尾，DOM 保头部。
+ */
 export function formatEvidence(e: Evidence): string {
-  const detail = e.kind === 'screenshot'
-    ? { path: e.path.startsWith('data:') ? '[image data; inspect separately]' : e.path }
-    : e;
-  return `[${e.kind}/${e.source} hash=${e.hash}] ${JSON.stringify(detail).slice(0, 4000)}`;
+  const head = `[${e.kind}/${e.source} hash=${e.hash}]`;
+  switch (e.kind) {
+    case 'screenshot':
+      return `${head} 截图文件：${e.path}（当前模型通道只支持文本，模型未对该图做视觉判读；请以 DOM / a11y / console / network 证据为准）`;
+    case 'a11y': {
+      // Playwright 的 ariaSnapshot 是一段 YAML 文本，不是 JSON —— 直接给原文比 JSON 串好读
+      const text = typeof e.tree === 'string' ? e.tree : JSON.stringify(e.tree);
+      return `${head} ${keepHeadAndTail(text, EVIDENCE_TEXT_LIMIT)}`;
+    }
+    case 'dom-snapshot': {
+      const truncated = e.html.length > EVIDENCE_TEXT_LIMIT;
+      const body = truncated ? e.html.slice(0, EVIDENCE_TEXT_LIMIT) : e.html;
+      const note = truncated ? `\n…（DOM 共 ${e.html.length} 字符，已截断尾部）` : '';
+      return `${head} ${body}${note}`;
+    }
+    default: {
+      const text = JSON.stringify(e);
+      return `${head} ${keepHeadAndTail(text, EVIDENCE_TEXT_LIMIT)}`;
+    }
+  }
+}
+
+/**
+ * 头尾都留，中间写明截断。
+ *
+ * 为什么要留尾巴：证据 JSON 的尾部往往是最有信息量的部分
+ * （文件证据的 snippet 结尾、网络证据的 status）。
+ */
+function keepHeadAndTail(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const headLen = Math.floor(limit * 0.7);
+  const tailLen = Math.max(0, limit - headLen);
+  const head = text.slice(0, headLen);
+  const tail = tailLen > 0 ? text.slice(text.length - tailLen) : '';
+  const omitted = text.length - headLen - tailLen;
+  return `${head}\n…（共 ${text.length} 字符，中间 ${omitted} 字符已省略）…\n${tail}`;
 }
 
 export interface AnalystConfig {
