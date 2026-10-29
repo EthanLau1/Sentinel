@@ -343,6 +343,7 @@ cat /path/to/your-app/reports/sentinel-latest.md
 | `--report <markdown\|json\|both>` | 报告格式，默认两种都出 / Report format; both by default |
 | `--port <port>` | 显式指定 dev server 端口，跳过端口推断 / Explicit dev-server port; skips port inference |
 | `--url <url>` | 显式指定被测地址，**完全跳过**自动启动 dev server / Explicit target URL; skips dev-server auto-start entirely |
+| `--knowledge-rate <rate>` | 调低外部知识检索的流程占比上限（默认 0.3，只许调低不许调高）/ Lower the search rate cap (default 0.3, only reductions allowed) |
 
 > **默认它不会改你的代码。** 即使不加 `--auto-fix`，Tier 1 也只是把补丁写到 `.sentinel/auto-patches/` 里等你审阅。
 > `--auto-fix` 打开后，改完会**重新验证一次**，验证不过自动还原。
@@ -615,6 +616,10 @@ like "not needed".
   **Knowledge retrieval is capped at 30%**: at most 30% of the flows in a run trigger an external
   lookup (a constitution clause, with a machine guard). Lookups skipped by the cap are counted in
   `run-status.json` under `knowledgeSearch` — they are never silently dropped.
+- **同源问题聚类与证据去重**：按错误签名、状态码硬否决合并同类故障；证据按 hash 去重并输出 before/after 字节压缩量化
+  **Root-cause clustering & evidence deduplication**: collapses duplicate errors by normalized signature and hard rejection keys; deduplicates evidence and reports before/after byte reduction.
+- **多模态视觉判读（可选）**：通过 `llm.yml` 的 `vision: true` 开关将截图随消息附给模型（默认关闭保护本地隐私）
+  **Multimodal visual inspection (optional)**: attach screenshots to the model via `vision: true` in `llm.yml` (off by default to protect local privacy).
 
 **还没有 / 只是占位 / Not there yet**
 
@@ -639,13 +644,6 @@ like "not needed".
   **Only Next.js auto-discovers pages and APIs** — the other 12 stacks are recognized but
   produce no measurable target until you write `.sentinel/app.map.ts` by hand
   (see the capability matrix in section 8)
-- **知识增强没有"每次 run 最多 30% 流程"的上限** —— 宪法要求 ≤30%，但当前实现只看
-  方案平均置信度（低于 0.7 就查），**没有按流程比例限流**。
-  文档不宣称这个上限已生效（已知未修项，记在 `scripts/spec-sync-baseline.json`）
-  **Knowledge enhancement has no "at most 30% of flows per run" cap** — the constitution requires
-  ≤30%, but the implementation only looks at the average confidence of the fix options
-  (below 0.7 triggers a lookup); there is no per-run flow-ratio limit. The docs do not claim
-  this cap is in effect (it is a known open item, tracked in `scripts/spec-sync-baseline.json`).
 
 ---
 
@@ -885,12 +883,13 @@ Sentinel/
 ### 守卫与测试 / Guards and tests
 
 ```bash
-bun run lint:core     # core/ 纯度：不许依赖具体框架/平台 / core purity: no framework or platform dependencies
-bun run lint:lines    # core/ 行数 ≤ 500 / core line count ≤ 500
-bun run lint:spec     # 规范 ↔ 实现 ↔ 运行时 三方对账 / three-way reconciliation of spec, implementation, runtime
-bun run guard:offline # 断网实跑：离线模式不许发外网请求 + 离线检测能力不退化 / offline network guard (runs a real browser pass)
-bun run test          # 全量单测 + 集成测试 / full unit and integration test suite
-bun run test:replay   # 用录制的真实案例回放，验证没有退化 / replay recorded real cases to prove no regression
+bun run lint:core      # core/ 纯度：不许依赖具体框架/平台 / core purity: no framework or platform dependencies
+bun run lint:lines     # core/ 行数 ≤ 500 / core line count ≤ 500
+bun run lint:spec      # 规范 ↔ 实现 ↔ 运行时 三方对账 / three-way reconciliation of spec, implementation, runtime
+bun run guard:knowledge # 知识限流守卫：验证流程触发率 ≤30% 硬上限与反证 / knowledge rate-limit guard
+bun run guard:offline  # 断网实跑：离线模式不许发外网请求 + 离线检测能力不退化 / offline network guard (runs a real browser pass)
+bun run test           # 全量单测 + 集成测试 / full unit and integration test suite
+bun run test:replay    # 用录制的真实案例回放，验证没有退化 / replay recorded real cases to prove no regression
 ```
 
 `guard:offline` 会跑一次真实浏览器流程（约 1-2 分钟），所以没放进 `lint:spec` ——

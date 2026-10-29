@@ -647,6 +647,14 @@ export async function runRun(): Promise<number> {
             `  预算模式 ${costKnown ? 'usd+token' : 'token-only'}`,
     ),
   );
+  const ks = enhancer.knowledgeStats();
+  if (ks.totalFlows !== null && ks.totalFlows > 0) {
+    if (ks.maxSearches === 0 && ks.skippedByCap > 0) {
+      console.log(color.dim(`   知识检索: 流程数较少 (${ks.totalFlows} < 3)，按 30% 限流规则上限为 0 次（已跳过 ${ks.skippedByCap} 次）`));
+    } else if (ks.searchedFlows > 0) {
+      console.log(color.dim(`   知识检索: 已触发 ${ks.searchedFlows} 次 / 上限 ${ks.maxSearches} 次 (${(ks.rate * 100).toFixed(0)}% ≤ ${(ks.cap * 100).toFixed(0)}%)`));
+    }
+  }
   const uncovered = [...failedFlowIds].filter((id) => !collector.coveredFlows.has(id));
   if (uncovered.length > 0) {
     console.log(color.yellow(`   未产生诊断的失败 flow: ${uncovered.join(', ')}`));

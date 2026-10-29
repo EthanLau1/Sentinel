@@ -194,7 +194,16 @@ export function similarity(aRaw: string, bRaw: string): number {
 
 /** 一条 bug 的聚类签名 —— 只用症状与根因，不用标题（标题带 flowId，会把同类拆开） */
 export function signatureOf(bug: BugFinding): string {
-  return normalizeSignature(`${bug.symptom} ${bug.rootCause ?? ''}`);
+  const normSym = normalizeSignature(bug.symptom);
+  const normRoot = bug.rootCause ? normalizeSignature(bug.rootCause) : '';
+  if (!normRoot) {
+    return normSym.slice(0, COMPARE_PREFIX_LENGTH);
+  }
+  // 避免长症状把根因挤出前 240 字符：如果症状较长，保留前 160 字符，并给根因留出比较窗口
+  const symPart = normSym.length > 160 ? normSym.slice(0, 160) : normSym;
+  const maxRootLen = Math.max(0, COMPARE_PREFIX_LENGTH - symPart.length - 1);
+  const rootPart = normRoot.slice(0, maxRootLen);
+  return `${symPart} ${rootPart}`.trim();
 }
 
 /**

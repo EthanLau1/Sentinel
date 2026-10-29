@@ -8,6 +8,7 @@ import {
   jaccardSimilarity,
   levenshteinRatio,
   normalizeSignature,
+  signatureOf,
   similarity,
   statusCodes,
   LEVENSHTEIN_THRESHOLD,
@@ -163,5 +164,16 @@ describe('证据去重与量化', () => {
     expect(result.evidence.afterCount).toBe(2);
     expect(result.evidence.afterBytes).toBeLessThan(result.evidence.beforeBytes);
     expect(result.bugs[0]!.title).toContain('同类 2 条已合并');
+  });
+
+  it('超长症状不会把根因挤出比较范围（保头 + 留根因）', () => {
+    const longSymptom = 'Error occurred during complex database transaction '.repeat(10);
+    const b = bug({
+      symptom: longSymptom,
+      rootCause: 'Connection pool exhausted in auth service',
+    });
+    const sig = signatureOf(b);
+    expect(sig.length).toBeLessThanOrEqual(240);
+    expect(sig).toContain('connection pool exhausted');
   });
 });
