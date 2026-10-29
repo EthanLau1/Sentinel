@@ -23,7 +23,7 @@
       "name": "@sentinel/cli",
       "version": "0.1.0-m8",
       "bin": {
-        "sentinel": "./src/index.ts",
+        "sentinel": "./dist/index.js",
       },
       "dependencies": {
         "@sentinel/adapters": "workspace:*",

@@ -1,8 +1,17 @@
 import { defineConfig } from 'vitest/config';
+import path from 'path';
 
 export default defineConfig({
+  // 固定 root，防止 vite/postcss 配置搜索向上爬出 iCloud 目录边界
+  root: path.resolve(__dirname),
+  // 明确设空 postcss 配置，避免 vite 向上爬出项目目录触发 iCloud 权限错误
+  css: {
+    postcss: {},
+  },
   test: {
     include: ['packages/*/test/**/*.test.ts'],
+    // dev-server / ui 测试真起 HTTP 进程，iCloud 目录下启动慢，5s 不够
+    testTimeout: 30_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary', 'html'],

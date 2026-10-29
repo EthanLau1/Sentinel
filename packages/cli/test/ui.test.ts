@@ -58,7 +58,7 @@ describe('Sentinel WebUI HTTP', () => {
       cwd: repo, env: { ...process.env, HOME: home }, stdio: 'ignore',
     });
     let ready = false;
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 200; i++) {
       try {
         const response = await fetch(base + '/api/projects');
         if (response.ok) { ready = true; break; }
