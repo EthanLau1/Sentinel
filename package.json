@@ -13,6 +13,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "setup": "bunx playwright install chromium",
     "build": "tsc -b --pretty && npm --workspace sentinel-ui run build",
     "lint": "npm --workspace sentinel-ui run lint && bun run lint:core && bun run lint:lines",
     "typecheck": "tsc -b --pretty",

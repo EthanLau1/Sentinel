@@ -25,7 +25,8 @@ export function createSensor(config: SensorConfig = {}): Subagent {
           for (const kind of event.payload.kinds) {
             try {
               const e = await collectOne(ctx, kind, event.payload.target, config.detailed === true);
-              if (e) collected.push(e);
+              // collectOne 可能返回多条（storage 有 localStorage/sessionStorage/cookie 三种）
+              if (e) collected.push(...(Array.isArray(e) ? e : [e]));
             } catch (err) {
               await ctx.bus.publish({
                 type: 'evidence.failed',
@@ -38,7 +39,10 @@ export function createSensor(config: SensorConfig = {}): Subagent {
 
           await ctx.bus.publish({
             type: 'evidence.ready',
-            payload: collected,
+            // flowId 必须带上 —— 否则调用方没法把证据对应回是哪条流程/哪个页面。
+            // 以前 payload 只有 Evidence[]，调用方只能靠"发布顺序"去猜，那是隐式契约，
+            // 一旦多并发/多订阅者就会错位。显式带 flowId 才算闭环。
+            payload: { flowId: event.payload.flowId, evidence: collected },
             source: 'sensor',
             traceId: event.traceId,
           });
@@ -58,7 +62,7 @@ async function collectOne(
   kind: EvidenceKind,
   target: string,
   detailed: boolean,
-): Promise<Evidence | null> {
+): Promise<Evidence | Evidence[] | null> {
   const ts = Date.now();
 
   switch (kind) {
@@ -160,14 +164,25 @@ async function collectOne(
         };
       }
       if (kind === 'storage' && snap.storage) {
-        return {
-          kind: 'storage',
-          source: 'browser',
-          timestamp: ts,
-          hash: hashEvidence('storage', JSON.stringify(snap.storage)),
-          storage: 'localStorage',
-          keys: snap.storage.localStorage,
+        // 三种存储都要交出去 ——
+        // 以前只返回 localStorage，cookie 与 sessionStorage 采到了却直接丢掉，
+        // 报告里只看得到 "storage" 三个字，看不到任何 key 名单。
+        const out: Evidence[] = [];
+        const push = (storage: 'localStorage' | 'sessionStorage' | 'cookie', keys: string[]): void => {
+          if (!keys.length) return;
+          out.push({
+            kind: 'storage',
+            source: 'browser',
+            timestamp: ts,
+            hash: hashEvidence('storage', `${storage}:${keys.join(',')}`),
+            storage,
+            keys,
+          });
         };
+        push('localStorage', snap.storage.localStorage);
+        push('sessionStorage', snap.storage.sessionStorage);
+        push('cookie', snap.storage.cookieKeys);
+        return out.length > 0 ? out : null;
       }
       return null;
     }

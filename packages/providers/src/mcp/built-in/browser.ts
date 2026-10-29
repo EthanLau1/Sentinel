@@ -300,7 +300,10 @@ export function createBrowserMCPServer(config: BrowserMCPConfig = {}): MCPServer
           return { filled: true };
         }
         case 'snapshot': {
-          return snapshot(Boolean(args['detailed'] ?? config.detailed));
+          // 「显式 true 或全局开启」——
+          // 以前写的是 `args['detailed'] ?? config.detailed`，但 `??` 只在 null/undefined 时回落，
+          // 调用方传 false 时全局开关就被覆盖掉了 → --detailed 是个空开关。
+          return snapshot(args['detailed'] === true || config.detailed === true);
         }
         case 'inspect': {
           return inspect();

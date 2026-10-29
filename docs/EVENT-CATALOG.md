@@ -31,9 +31,9 @@
 
 | 事件 | 发起者 | 订阅者 | payload |
 |---|---|---|---|
-| `evidence.requested` | sensor | mcp registry | `{ kind: EvidenceKind, target: string }` |
+| `evidence.requested` | runner | sensor | `{ kinds: EvidenceKind[], target: string, flowId?: string }`（runner 在 `--detailed` 时请求 storage 证据） |
 | `evidence.collected` | sensor | (内部) | `Evidence` |
-| `evidence.ready` | sensor | (内部) | `Evidence[]` |
+| `evidence.ready` | sensor | runner | `{ flowId?: string, evidence: Evidence[] }`（flowId 必须显式带回 —— 否则调用方只能靠发布顺序猜是哪条流程） |
 | `evidence.failed` | sensor | reporter | `{ error: string, kind: EvidenceKind }` |
 
 ### 流程执行阶段（M3.5）
@@ -43,7 +43,7 @@
 | `flow.started` | runner | (内部) | `{ flowId: string }` |
 | `flow.passed` | runner | (内部) | `{ flowId: string, duration_ms: number }` |
 | `flow.failed` | runner | analyst / sensor | `{ flowId: string, evidence: Evidence[] }` |
-| `page.visited` | runner | inspector | `{ flowId: string, url: string, snapshot: InspectionSnapshot }`（访问成功后立即巡检：控制台报错 / 未捕获异常 / 失败请求 / 空白页 / 元信息） |
+| `page.visited` | runner | inspector | `{ flowId: string, url: string, snapshot: InspectionSnapshot, extraEvidence?: Evidence[] }`（访问成功后立即巡检：控制台报错 / 未捕获异常 / 失败请求 / 空白页 / 元信息；extraEvidence 是 `--detailed` 采到的额外证据） |
 
 ### 诊断阶段（M4）
 

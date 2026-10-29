@@ -51,6 +51,9 @@ import {
   isToolFailure,
   createBugCollector,
   applyTierDecisions,
+  buildCoverageInfo,
+  coverageIsUninformative,
+  type CoverageInfo,
   type TierDecisionRecord,
   color,
 } from '@sentinel/reporters';
@@ -73,9 +76,14 @@ export interface RunOptions {
   createPr?: boolean;
   /** 强制离线：不调用 LLM、不联网（没有 LLM 配置时也会自动进入） */
   offline?: boolean;
+  /** 显式指定 dev server 端口（--port） */
+  port?: number;
+  /** 显式指定被测地址（--url）—— 不自启 dev server，直接测这个地址 */
+  url?: string;
 }
 
-function parseRunOptions(): RunOptions {
+/** 导出以便单测：参数解析是纯函数，越界/格式错必须在这里被挡住 */
+export function parseRunOptions(): RunOptions {
   const argv = process.argv.slice(2);
   const has = (f: string) => argv.includes(f);
   const get = (f: string) => {
@@ -98,12 +106,41 @@ function parseRunOptions(): RunOptions {
   }
   const fmt = get('--report');
   if (fmt === 'markdown' || fmt === 'json' || fmt === 'both') out.reportFormat = fmt;
+  // --port / --url 是逃生口：端口推断错了、服务在别的地址时，用户可以直接指定
+  const port = get('--port');
+  if (port !== undefined) {
+    if (/^\d+$/.test(port)) {
+      const n = Number(port);
+      // 越界端口会让 socket 层抛 ERR_SOCKET_BAD_PORT，
+      // 用户看到的是一句裸的 "Fatal: Port should be >= 0 and < 65536" ——
+      // 必须在这里拦下来并说人话。0 也不行（= 让系统随机端口，等于白等 30s）。
+      if (n < 1 || n > 65535) {
+        throw new Error(`--port 必须在 1-65535 之间，收到 ${n}`);
+      }
+      out.port = n;
+    } else {
+      throw new Error(`--port 必须是数字，收到 "${port}"`);
+    }
+  }
+  const url = get('--url');
+  if (url !== undefined) {
+    if (!/^https?:\/\//i.test(url)) throw new Error(`--url 必须是 http(s) 地址，收到 "${url}"`);
+    out.url = url;
+  }
   return out;
 }
 
 export async function runRun(): Promise<number> {
   const root = projectRoot();
-  const opts = parseRunOptions();
+  let opts: RunOptions;
+  try {
+    opts = parseRunOptions();
+  } catch (err) {
+    // 参数写错是用户输入问题，不是内部故障 —— 说人话，给用法，别抛 "Fatal"
+    console.error(color.red((err as Error).message));
+    console.error(color.dim('   用法: --port <1-65535>   --url http://127.0.0.1:3000'));
+    return 2;
+  }
 
   console.log(color.cyan('🛰  Sentinel run'));
   console.log(color.dim(`   project: ${root}`));
@@ -118,7 +155,7 @@ export async function runRun(): Promise<number> {
     for (const b of bugs) {
       console.log(printBug(b));
     }
-    await writeReports(root, bugs, opts.reportFormat ?? 'both');
+    await writeReports(root, bugs, opts.reportFormat ?? 'both', [], 'offline');
     console.log('');
     console.log(color.dim('tokens: 0  cost: $0.0000  duration: demo'));
     console.log(color.dim('reports/sentinel-latest.{md,json}'));
@@ -182,12 +219,16 @@ export async function runRun(): Promise<number> {
 
   // 3. 自动启动 dev server（如果需要）
   let devServer: DevServerHandle | null = null;
-  devServer = await startDevServer(root);
+  devServer = await startDevServer(root, {
+    ...(opts.port !== undefined && { port: opts.port }),
+    ...(opts.url !== undefined && { url: opts.url }),
+  });
   if (!devServer) {
     console.error(color.red('No reachable project dev server. Check package.json scripts and run sentinel doctor.'));
+    console.error(color.dim('   也可以用 --port <端口> 或 --url <地址> 显式指定被测服务。'));
     return 2;
   }
-  const baseUrl = `http://127.0.0.1:${devServer.port}`;
+  const baseUrl = devServer.baseUrl;
 
   // 4. 构建 providers
   // 两个口径必须分开：
@@ -434,12 +475,12 @@ export async function runRun(): Promise<number> {
   const subagents: Subagent[] = [
     createMapper(),
     createSensor({ detailed: opts.detailed === true }),
-    createRunner(),
+    createRunner({ detailed: opts.detailed === true }),
     // 巡检器：确定性规则，不依赖 LLM —— 有没有模型都会跑
     createInspector(),
     createAnalyst(),
     createVerifier(),
-    createPlanner({ stage, weights, requireVerified: true }),
+    createPlanner({ stage, weights, requireVerified: true, offline }),
   ];
   // critic 是"LLM 反向验证"环节：没有模型时它做不了这件事，
   // 硬跑只会把每条发现都拒掉（理由：critic verification unavailable），制造噪音。
@@ -508,14 +549,47 @@ export async function runRun(): Promise<number> {
   // 7. 输出报告（同源错误先聚合，避免几十条同质问题淹没用户）
   // 报告里的 tier 必须是硬规则判出来的那个（不是 LLM 自报的）
   const reportedBugs = aggregateDuplicateBugs(applyTierDecisions(collector.bugs, statusEvents.tierDecisions));
+  const coverageInfo = buildCoverageInfo(coverage.map, {
+    plannedFlows,
+    passedFlows,
+    failedFlows,
+    mapFailures: mapFailures.map((f) => f.error),
+  });
   console.log('');
   console.log(printSummary(reportedBugs));
   console.log('');
+  // 终端也必须说清"没测到东西 ≠ 没问题" ——
+  // 只在报告文件里写，盯着终端输出的用户还是会把 0 个 bug 读成"项目健康"。
+  if (coverageIsUninformative(coverageInfo)) {
+    console.log(
+      color.yellow(
+        `⚠  本次未识别到可测目标（页面 ${coverageInfo.pages} / 接口 ${coverageInfo.api} / 流程 ${coverageInfo.plannedFlows}）—— 本次结果没有任何信息量，不代表项目健康。`,
+      ),
+    );
+    if (coverageInfo.mapFailures.length > 0) {
+      for (const f of coverageInfo.mapFailures) console.log(color.dim(`   项目理解失败：${f}`));
+    } else {
+      console.log(
+        color.dim(
+          '   Next.js 项目开箱即用；其它框架需手写 .sentinel/app.map.ts 声明可测页面与流程。',
+        ),
+      );
+    }
+    console.log('');
+  }
   for (const b of reportedBugs) {
     console.log(printBug(b));
   }
 
-  await writeReports(root, reportedBugs, opts.reportFormat ?? 'both', statusEvents.tierDecisions, llmMode);
+  await writeReports(
+    root,
+    reportedBugs,
+    opts.reportFormat ?? 'both',
+    statusEvents.tierDecisions,
+    llmMode,
+    coverageInfo,
+    statusEvents.rejectedPatches,
+  );
 
   // 8. 总结
   const usage = budget.snapshot();
@@ -668,6 +742,8 @@ async function writeReports(
   format: 'markdown' | 'json' | 'both',
   tierDecisions: TierDecisionRecord[] = [],
   llmMode: 'llm' | 'offline' = 'llm',
+  coverage?: CoverageInfo,
+  rejectedPatches: Array<{ fixId: string; reason: string }> = [],
 ): Promise<void> {
   const dir = join(root, 'reports');
   if (!existsSync(dir)) await mkdir(dir, { recursive: true });
@@ -675,12 +751,18 @@ async function writeReports(
     const md = reportToMarkdown(
       bugs,
       { project: root.split('/').pop() ?? 'project', llmMode },
-      { tierDecisions, llmMode },
+      { tierDecisions, llmMode, ...(coverage ? { coverage } : {}), rejectedPatches },
     );
     await writeFile(join(dir, 'sentinel-latest.md'), md, 'utf8');
   }
   if (format === 'json' || format === 'both') {
-    const json = reportToJson(bugs, { project: root.split('/').pop() ?? 'project', llmMode });
+    const json = reportToJson(bugs, {
+      project: root.split('/').pop() ?? 'project',
+      llmMode,
+      ...(coverage ? { coverage } : {}),
+      tierDecisions,
+      rejectedPatches,
+    });
     await writeFile(join(dir, 'sentinel-latest.json'), JSON.stringify(json, null, 2), 'utf8');
   }
 }

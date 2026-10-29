@@ -44,6 +44,15 @@ export interface PlannerConfig {
   stage?: Stage;
   weights?: CostWeights;
   requireVerified?: boolean;
+  /**
+   * 离线模式 —— 没有模型可用。
+   *
+   * 为什么需要这个开关：离线时不注册 critic，草稿永远不会升级成 confirmed，
+   * planner 听不到任何东西 → 报告第 7-11 字段全空。
+   * 但 README 承诺"离线模式给通用模板方案" —— 承诺必须兑现，
+   * 否则又是一条"文档说能做、实际没做"。
+   */
+  offline?: boolean;
 }
 
 export function createPlanner(config: PlannerConfig = {}): Subagent {
@@ -54,60 +63,90 @@ export function createPlanner(config: PlannerConfig = {}): Subagent {
     name: 'planner',
 
     register(ctx: KernelContext): void {
+      // 已确认的 bug —— 走模型（或模型失败后的启发式）
       ctx.bus.subscribe<BugFinding>('bug.confirmed', async (event) => {
         if (config.requireVerified === true && event.source !== 'verifier') return;
-        const bug = event.payload;
-        let options = await llmPlan(ctx, bug, stage).catch(() => null);
+        await planAndPublish(ctx, event.payload, stage, weights, { traceId: event.traceId });
+      });
 
-        if (!options || options.length === 0) {
-          options = heuristicPlan(bug, stage);
-        } else if (options.length < 3) {
-          // 抢救回来的方案比通用模板有用得多 —— 保留它们，只用模板补足数量。
-          // 以前这里直接 `options = heuristicPlan(...)`，等于把模型写的真方案全扔了。
-          const real = options;
-          options = [...real, ...heuristicPlan(bug, stage).slice(0, 3 - real.length)];
-        }
-
-        const scored = options.map((o) => {
-          const score = computeScore(
-            {
-              confidence: o.confidence,
-              impact: severityImpact(bug.severity),
-              stageFit: stageFit(stage, o.stageFit),
-              effort: o.effort,
-              risk: o.risk,
-              runtimeCost: o.runtimeCost,
-              regressionRisk: o.regressionRisk,
-              maintenanceCost: o.maintenanceCost,
-            },
-            weights,
-          );
-          return { ...o, score, whyRecommended: `${o.whyRecommended ?? ''} Qualitative cost only; actual monetary price unknown.`.trim() };
-        });
-        scored.sort((a, b) => b.score - a.score);
-
-        const recommended = scored[0]!;
-        const enriched: BugFinding = {
-          ...bug,
-          fixOptions: scored,
-          recommendedFixId: recommended.id,
-        };
-
-        await ctx.bus.publish({
-          type: 'fix.proposed',
-          // payload includes the enriched bug to avoid losing context
-          // EVENT-CATALOG.md updated to FixProposedPayload
-          payload: { bug: enriched, options: enriched.fixOptions },
-          source: 'planner',
-          traceId: event.traceId,
-        });
-
-        // 同时发增强后的 bug（带 fixOptions），用 fix.enhanced 通道避免循环
-        // bug.confirmed 不能再发，否则 planner 自己又触发自己
-        // 通过 fix.proposed → enhancer → fix.enhanced 链路把完整 bug 带过去
+      // 证据不足的草稿 —— 只在离线模式处理。
+      // 在线模式下草稿会被 analyst/critic 升级成 confirmed，那条路上才有真方案；
+      // 离线没有那条路，只能给**通用模板**（明确标注，不冒充模型推断）。
+      ctx.bus.subscribe<BugFinding>('bug.draft', async (event) => {
+        if (config.offline !== true) return;
+        await planAndPublish(ctx, event.payload, stage, weights, { traceId: event.traceId, templateOnly: true });
       });
     },
   };
+}
+
+/**
+ * 出方案 → 打分排序 → 发布 fix.proposed。
+ *
+ * templateOnly = 只给通用模板（证据不足，不能让模型猜根因）。
+ */
+async function planAndPublish(
+  ctx: KernelContext,
+  bug: BugFinding,
+  stage: Stage,
+  weights: CostWeights,
+  opts: { traceId: string; templateOnly?: boolean },
+): Promise<void> {
+  let options: FixOption[];
+
+  if (opts.templateOnly) {
+    options = heuristicPlan(bug, stage).map((o) => ({
+      ...o,
+      title: `${o.title}（通用模板）`,
+      whyRecommended: '证据不足，以下为通用排查模板，不是针对本项目的定论',
+    }));
+  } else {
+    const llm = await llmPlan(ctx, bug, stage).catch(() => null);
+    if (!llm || llm.length === 0) {
+      options = heuristicPlan(bug, stage);
+    } else if (llm.length < 3) {
+      // 抢救回来的方案比通用模板有用得多 —— 保留它们，只用模板补足数量。
+      // 以前这里直接 `options = heuristicPlan(...)`，等于把模型写的真方案全扔了。
+      const real = llm;
+      options = [...real, ...heuristicPlan(bug, stage).slice(0, 3 - real.length)];
+    } else {
+      options = llm;
+    }
+  }
+
+  const scored = options.map((o) => {
+    const score = computeScore(
+      {
+        confidence: o.confidence,
+        impact: severityImpact(bug.severity),
+        stageFit: stageFit(stage, o.stageFit),
+        effort: o.effort,
+        risk: o.risk,
+        runtimeCost: o.runtimeCost,
+        regressionRisk: o.regressionRisk,
+        maintenanceCost: o.maintenanceCost,
+      },
+      weights,
+    );
+    return { ...o, score, whyRecommended: `${o.whyRecommended ?? ''} Qualitative cost only; actual monetary price unknown.`.trim() };
+  });
+  scored.sort((a, b) => b.score - a.score);
+
+  const recommended = scored[0]!;
+  const enriched: BugFinding = {
+    ...bug,
+    fixOptions: scored,
+    recommendedFixId: recommended.id,
+  };
+
+  await ctx.bus.publish({
+    type: 'fix.proposed',
+    // payload includes the enriched bug to avoid losing context
+    // EVENT-CATALOG.md updated to FixProposedPayload
+    payload: { bug: enriched, options: enriched.fixOptions },
+    source: 'planner',
+    traceId: opts.traceId,
+  });
 }
 
 function severityImpact(s: BugFinding['severity']): number {

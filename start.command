@@ -23,6 +23,10 @@ fi
 # 首次：安装依赖
 [ -d "node_modules" ] || bun install
 
+# 浏览器内核（幂等）——
+# 不装的话 doctor 会判 fail（Playwright Chromium + 系统 Chrome 都没有 → 无法取证）
+bun run setup
+
 # 首次：构建 UI
 [ -f "sentinel-ui/dist/index.html" ] || bun run build
 

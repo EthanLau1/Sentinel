@@ -146,12 +146,22 @@ bun packages/cli/src/index.ts ui
 
 ### "Total: 0 P0: 0 P1: 0" — 没找到 bug？
 
+**先看报告开头的「覆盖范围」区块**，它写明这次识别到几个页面/接口、跑了几个流程。
+
+| 覆盖范围里写的 | 含义 | 该怎么办 |
+|---|---|---|
+| 规划流程 > 0 | 这次真的测过了，没发现 P0/P1 | 确认结果即可 |
+| 规划流程 = 0 | **这次什么都没测** —— 0 个 bug 不代表项目健康 | 见下面三条 |
+
 原因：
 - **自动启动 dev server 失败**（项目没有 `dev`/`start`/`serve` 脚本，或依赖没装）→ 报错 `No reachable project dev server`
+  → 端口推断错了就用 `--port <端口>`，服务在别处就用 `--url <地址>`
+- **框架不是 Next.js** → 只有 Next.js 能自动发现页面和接口；Vue / Nuxt / Svelte / React SPA /
+  Express / Hono / Nest / tRPC 需要你手写 `.sentinel/app.map.ts` 声明可测页面（见 README 第 8 节能力矩阵）
 - 项目太简单 / 运行正常 → 确实没有 bug
-- 流程没排出来 → 没东西可测（比如项目全是 Vue/Nuxt/Svelte/Vite 这类 adapter 覆盖不到的栈）
 
-解决：先确认目标项目能自己跑起来（`npm run dev` 不报错），再重试。
+> 报告和终端都会直接告诉你"没识别到可测目标"，不用再猜。
+> 手写的 `app.map.ts` 写坏了也会**直接报错**（不再静默变成 0 页面）。
 
 ### "browser MCP not registered"
 
@@ -159,7 +169,7 @@ bun packages/cli/src/index.ts ui
 
 解决：
 ```bash
-npx playwright install chromium
+bun run setup            # = bunx playwright install chromium
 ```
 
 ### LLM 返回 404 / 连接失败
@@ -172,6 +182,9 @@ npx playwright install chromium
 - Ollama: `http://localhost:11434/v1`
 
 注意 URL 末尾必须有 `/v1`。
+
+> 但如果 `sentinel doctor` 报的是**"缺少 apiKey"**，那不是地址写错，是 key 没配。
+> 配置里写了 `${SENTINEL_API_KEY}` 却没有 export 时，doctor 会点名说是哪个变量没设置。
 
 ### Budget exceeded
 
@@ -224,11 +237,31 @@ git apply .sentinel/auto-patches/bug_xxx_fix_1.diff
 
 ---
 
-## macOS 快捷启动
+## 快捷启动
 
-双击运行：
+macOS 双击运行：
 ```
-scripts/Start Sentinel.command
+start.command
 ```
+
+Linux：
+```bash
+./start.sh
+```
+
+两者都会自动装依赖、构建 UI、**安装 Playwright Chromium**（浏览器依赖不再靠你自己补）。
 
 或添加 Kiro Hook 一键触发（已配置）。
+
+---
+
+## 退出码（CI 用）
+
+| 退出码 | 含义 |
+|---|---|
+| `0` | 跑完了，没发现 P0/P1 |
+| `1` | 跑完了，发现了 P0 或 P1 |
+| `2` | **没跑完** —— 配置非法 / dev server 起不来 / 浏览器 preflight 失败 / 一个流程都没跑（`plannedFlows = 0`） |
+
+> `2` 的意思是"这次结果不可信"，不是"项目有 2 个问题"。
+> CI 想卡"必须真的测过"，判 `reports/sentinel-run-status.json` 里的 `plannedFlows > 0`。

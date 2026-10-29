@@ -66,6 +66,15 @@ export function mergeBugFinding(prev: BugFinding | undefined, next: BugFinding):
   if (prev.recommendedFixId && !next.recommendedFixId) {
     merged.recommendedFixId = prev.recommendedFixId;
   }
+  // recommendedFixId 必须指向**真实存在**的方案 ——
+  // next 带来新方案集时，prev 的 recommendedFixId 可能已经不在里面了。
+  // 那样报告里"推荐方案"和"是否可自动修"就各说各的（一个指向不存在的 id，
+  // 另一个按真实的第一条算），机器读起来是自相矛盾的。
+  const options = merged.fixOptions ?? [];
+  if (options.length > 0) {
+    const exists = merged.recommendedFixId && options.some((o) => o.id === merged.recommendedFixId);
+    if (!exists) merged.recommendedFixId = options[0]!.id;
+  }
   return merged;
 }
 

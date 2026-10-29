@@ -40,6 +40,9 @@ Options for 'run':
                              (default off — patches are only written to .sentinel/auto-patches/)
   --create-pr                Open a PR for Tier 2 fixes (requires gh CLI, default off)
   --report <markdown|json|both>  Report format (default both)
+  --port <port>               Explicit dev-server port (skips port inference)
+  --url <url>                 Explicit target URL (e.g. http://127.0.0.1:3000).
+                             Skips dev-server auto-start entirely
 
 Global:
   --project <path>            Project root (default cwd)

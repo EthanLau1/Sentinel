@@ -165,6 +165,39 @@ describe('mapper subagent', () => {
     expect(captured?.flows.some(f => f.id === 'flow_api_write')).toBe(false);
     expect(captured?.risks.map(r => r.id)).toEqual(expect.arrayContaining(['coverage_auth', 'coverage_page_private', 'coverage_page_dynamic', 'coverage_api_write', 'coverage_ui_content', 'coverage_api_body']));
   });
+
+  it('app.map.ts 写坏了 → 必须报 map.failed，不能静默变成 0 页面 0 bug', async () => {
+    // 以前 import 异常被 `catch { return base; }` 吞掉 —— 手写覆盖是
+    // 非 Next 项目唯一的救济途径，它坏了却"成功"了，用户完全不知情。
+    const root = await mkdtemp(join(tmpdir(), 'sentinel-mapper-bad-'));
+    await writeFile(join(root, 'package.json'), JSON.stringify({
+      name: 'fake', dependencies: { next: '15.0.0', react: '19.0.0' },
+    }), 'utf8');
+    await mkdir(join(root, '.sentinel'), { recursive: true });
+    await writeFile(join(root, '.sentinel', 'app.map.ts'), 'export default { pages: [ <<< syntax error', 'utf8');
+
+    let ready: FeatureMap | null = null;
+    let failure: { error: string } | null = null;
+    const capture: Subagent = {
+      name: 'capture',
+      register(ctx) {
+        ctx.bus.subscribe<FeatureMap>('map.ready', (e) => { ready = e.payload; });
+        ctx.bus.subscribe<{ error: string }>('map.failed', (e) => { failure = e.payload; });
+      },
+    };
+
+    const kernel = new Kernel({
+      providers: fakeProviders(),
+      budget: new Budget({}),
+      subagents: [createMapper(), capture],
+    });
+    await kernel.kick('project.scanned', { root }, 'test');
+    await kernel.stop();
+
+    expect(ready).toBeNull();
+    expect(failure).not.toBeNull();
+    expect(failure!.error).toContain('app.map.ts');
+  });
 });
 
 // keep used import

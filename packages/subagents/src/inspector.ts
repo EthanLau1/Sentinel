@@ -344,6 +344,8 @@ interface PageVisitedPayload {
   flowId: string;
   url: string;
   snapshot: InspectionSnapshot;
+  /** runner 采集的额外证据（--detailed 时的 storage 键名等）—— 以前采到了没人用 */
+  extraEvidence?: Evidence[];
 }
 
 /** 运行时错误证据 —— verifier 的闸门认这几种 */
@@ -369,7 +371,13 @@ export function createInspector(config: InspectorConfig = {}): Subagent {
         for (const v of violations) {
           // 代码证据（路由 → 源文件）能定位到就附上，定位不到就如实只带运行时证据
           const codeEvidence = await collectRouteEvidence(ctx, snapshot.url);
-          const evidence = [...v.evidence, ...(codeEvidence ? [codeEvidence] : [])];
+          const evidence = [
+            ...v.evidence,
+            ...(codeEvidence ? [codeEvidence] : []),
+            // runner 带回来的额外证据（--detailed 的 storage 键名等）
+            // 以前采到了却没有消费者 —— 现在它进到 bug 的证据链里
+            ...(event.payload.extraEvidence ?? []),
+          ];
 
           const bug: BugFinding = {
             id: `bug_rule_${v.rule}_${hashOf(`${flowId}:${v.title}`).slice(0, 8)}`,

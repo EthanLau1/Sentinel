@@ -62,10 +62,18 @@ async function applyUserMapOverride(root: string, base: FeatureMap): Promise<Fea
   try {
     const mod = await import(`${pathToFileURL(file).href}?t=${Date.now()}`);
     const override = (mod.default ?? mod.overrides ?? mod.map) as Partial<FeatureMap> | undefined;
-    if (!override || typeof override !== 'object') return base;
+    if (!override || typeof override !== 'object') {
+      throw new Error('没有导出 default / overrides / map 中的任何一个对象');
+    }
     return mergeFeatureMap(base, override);
-  } catch {
-    return base;
+  } catch (err) {
+    // 静默失败是最糟的一种失败 ——
+    // 手写 app.map.ts 是非 Next 项目**唯一**的救济途径，它写错了却"成功"了，
+    // 结果是 0 页面 0 流程 0 bug，用户完全不知道是自己的覆盖文件坏了。
+    // 必须抛错 → 走 map.failed 通道 → run 明确报错退出。
+    throw new Error(
+      `加载 .sentinel/app.map.ts 失败：${(err as Error).message}（文件：${file}）`,
+    );
   }
 }
 

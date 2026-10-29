@@ -20,7 +20,7 @@ describe('doctor browser readiness', () => {
     vi.clearAllMocks();
   });
 
-  it('falls back to Chrome and verifies launch, aria snapshot and close', async () => {
+  it('falls back to Chrome but reports it as a warn, not ok', async () => {
     mocks.launch.mockRejectedValueOnce(new Error("Executable doesn't exist"))
       .mockResolvedValueOnce({
         newPage: async () => ({ locator: () => ({ ariaSnapshot: mocks.ariaSnapshot }) }),
@@ -32,7 +32,11 @@ describe('doctor browser readiness', () => {
       expect(mocks.launch).toHaveBeenNthCalledWith(2, { headless: true, channel: 'chrome' });
       expect(mocks.ariaSnapshot).toHaveBeenCalledOnce();
       expect(mocks.close).toHaveBeenCalledOnce();
-      expect(log.mock.calls.map(call => call.join(' ')).join('\n')).toContain('Chromium/Chrome launched and closed');
+      const out = log.mock.calls.map(call => call.join(' ')).join('\n');
+      // 借用系统 Chrome 能跑，但版本不受控 —— 必须说成 warn，不能说成 OK
+      expect(out).toContain('Playwright Chromium 未安装');
+      expect(out).toContain('系统 Google Chrome');
+      expect(out).not.toContain('Chromium/Chrome launched and closed');
     } finally {
       log.mockRestore();
     }

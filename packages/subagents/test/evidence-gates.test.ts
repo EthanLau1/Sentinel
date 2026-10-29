@@ -77,29 +77,32 @@ describe('subagent evidence and patch gates', () => {
   });
 
   it('reads structured FS MCP content for file evidence', async () => {
-    let evidence: unknown[] = [];
+    // evidence.ready 的载荷现在是 { flowId?, evidence } ——
+    // flowId 必须显式带回，否则调用方只能靠发布顺序猜是哪条流程（隐式契约）。
+    let payload: { flowId?: string; evidence: unknown[] } | undefined;
     const capture: Subagent = { name: 'capture', register(ctx) {
-      ctx.bus.subscribe<unknown[]>('evidence.ready', (e) => { evidence = e.payload; });
+      ctx.bus.subscribe<{ flowId?: string; evidence: unknown[] }>('evidence.ready', (e) => { payload = e.payload; });
     } };
     const kernel = new Kernel({
       providers: providers(async () => response({}), async () => ({ exists: true, content: 'first\nsecond', size: 12 })),
       budget: new Budget({}), subagents: [createSensor(), capture],
     });
-    await kernel.kick('evidence.requested', { kinds: ['file'], target: 'src/a.ts:2' }, 'test');
-    expect(evidence).toMatchObject([{ kind: 'file', snippet: 'first\nsecond' }]);
+    await kernel.kick('evidence.requested', { kinds: ['file'], target: 'src/a.ts:2', flowId: 'flow_1' }, 'test');
+    expect(payload!.evidence).toMatchObject([{ kind: 'file', snippet: 'first\nsecond' }]);
+    expect(payload!.flowId).toBe('flow_1');
   });
 
   it('does not invent git evidence when FS MCP has no exec tool', async () => {
-    let evidence: unknown[] = [];
+    let payload: { flowId?: string; evidence: unknown[] } | undefined;
     const capture: Subagent = { name: 'capture', register(ctx) {
-      ctx.bus.subscribe<unknown[]>('evidence.ready', (e) => { evidence = e.payload; });
+      ctx.bus.subscribe<{ flowId?: string; evidence: unknown[] }>('evidence.ready', (e) => { payload = e.payload; });
     } };
     const kernel = new Kernel({
       providers: providers(async () => response({}), async () => { throw Error('unknown tool'); }),
       budget: new Budget({}), subagents: [createSensor(), capture],
     });
     await kernel.kick('evidence.requested', { kinds: ['git'], target: 'log' }, 'test');
-    expect(evidence).toEqual([]);
+    expect(payload!.evidence).toEqual([]);
   });
 
   it('skips search but emits fix.enhanced', async () => {

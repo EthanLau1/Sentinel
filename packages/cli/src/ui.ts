@@ -773,18 +773,29 @@ export async function runUi(): Promise<number> {
           : join(homedir(), '.sentinel', 'llm.yml');
 
         const type = payload.type === 'ollama-native' ? 'ollama-native' : 'openai-compatible';
-        const providerName = payload.providerName?.trim() || (type === 'ollama-native' ? 'local' : 'cloud');
         const baseUrl = payload.baseUrl?.trim() || '';
         const model = payload.model?.trim() || '';
         let apiKey = String(payload.apiKey ?? '').trim();
 
         const existing = await loadLlmConfigFile(configPath);
+
+        // provider 名回落顺序：前端传的 → 现有配置的 default → 类型默认值。
+        // 只用 'cloud' 兜底会把自定义 provider 名（如 'minimax'）的 pricing 抹掉。
+        const providerName = payload.providerName?.trim()
+          || existing?.default
+          || (type === 'ollama-native' ? 'local' : 'cloud');
+
         const looksMasked = apiKey.includes('••••') || apiKey === '<configured>';
 
         // Preserve only the key already saved in this scope.
         if (!apiKey || looksMasked) {
           apiKey = existing ? activeLlmProvider(existing).apiKey ?? '' : '';
         }
+
+        // pricing 必须一起带回去 ——
+        // 以前这里重建配置时不带 pricing，于是「用 Web Settings 存一次配置」就把单价抹了，
+        // budget.yml 的 maxCostUsdPerRun 护栏随之静默失效。
+        const pricing = existing?.providers?.[providerName]?.pricing;
 
         const nextConfig: LlmConfig = {
           default: providerName,
@@ -794,6 +805,7 @@ export async function runUi(): Promise<number> {
               ...(baseUrl ? { baseUrl } : {}),
               ...(apiKey ? { apiKey } : {}),
               model,
+              ...(pricing ? { pricing } : {}),
             },
           },
         };

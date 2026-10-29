@@ -6,6 +6,7 @@
 import type { BugFinding, FixOption } from '@sentinel/core';
 import { isToolFailure } from './aggregate.js';
 import { findTierDecision, type TierDecisionRecord } from './tier.js';
+import { coverageIsUninformative, type CoverageInfo } from './coverage.js';
 
 /** 报告选项：带上 executor 硬规则的 tier 判定（决定实际会不会改代码） */
 export interface MarkdownOptions {
@@ -13,6 +14,16 @@ export interface MarkdownOptions {
   tierDecisions?: TierDecisionRecord[];
   /** 运行模式：offline 时方案来自模板而不是模型，措辞要跟着变 */
   llmMode?: 'llm' | 'offline';
+  /** 本次覆盖范围 —— 报告必须告诉用户"测了什么、没测什么" */
+  coverage?: CoverageInfo;
+  /**
+   * 被拒绝的补丁（executor 判定"没法产出这个改动"）。
+   *
+   * 为什么必须进报告：硬规则可能把方案判成 Tier 1「自动修」，
+   * 但执行时发现没有可用 patch → 什么都没改。
+   * 报告如果只写"Tier 1 — 自动修"，就是"报告说能做、实际没做"。
+   */
+  rejectedPatches?: Array<{ fixId: string; reason: string }>;
 }
 
 export function bugToMarkdown(bug: BugFinding, opts: MarkdownOptions = {}): string {
@@ -96,12 +107,15 @@ export function bugToMarkdown(bug: BugFinding, opts: MarkdownOptions = {}): stri
     const tier = decision?.tier ?? recommended.tier;
     const tierDesc = ['只报告', '自动修', '写 patch 待审核', '仅建议'][tier];
     const reason = decision ? `（依据：${decision.reason}）` : '';
+    // 判成"自动修"但实际没改 —— 必须同时说出来
+    const rejection = opts.rejectedPatches?.find((r) => r.fixId === recommended.id);
+    const outcome = rejection ? ` **⚠ 实际未修改：${rejection.reason}**` : '';
     // 离线模式没有模型，方案来自通用模板 —— 写"LLM 原判"是撒谎
     const sourceLabel = opts.llmMode === 'offline' ? '方案模板' : 'LLM';
     const mismatch = decision?.llmTier !== undefined && decision.llmTier !== tier
       ? ` [${sourceLabel} 原判 Tier ${decision.llmTier}，硬规则已降级]`
       : '';
-    lines.push(`**11. 是否可自动修**: Tier ${tier} — ${tierDesc}${reason}${mismatch}`);
+    lines.push(`**11. 是否可自动修**: Tier ${tier} — ${tierDesc}${reason}${mismatch}${outcome}`);
   } else {
     lines.push('**11. 是否可自动修**: (无修复方案，暂不判定)');
   }
@@ -137,6 +151,33 @@ export function reportToMarkdown(
   lines.push('---');
   lines.push('');
 
+  // 覆盖范围区块必须排在 bug 列表**前面** ——
+  // 用户先看到"没测到东西"，再看到 0 条 bug，顺序反了就会读成"项目没问题"。
+  if (opts.coverage) {
+    lines.push(...coverageSection(opts.coverage, bugs.length));
+    lines.push('---');
+    lines.push('');
+  }
+
+  if (bugs.length === 0) {
+    const cov = opts.coverage;
+    const warned = cov && coverageIsUninformative(cov);
+    // 有流程失败 / 未跑 → 绝不能说"都通过了巡检"。
+    // 以前只判 plannedFlows > 0 就写"全部通过"，
+    // 于是表格里写着"1 失败 / 2 未跑"、正文却说"都通过了" —— 报告自己打自己。
+    const incomplete = cov && (cov.failedFlows > 0 || cov.untestedFlows > 0);
+    if (warned) {
+      lines.push('**本次未产生任何诊断** —— 因为没有识别到可测目标（见上方覆盖范围），不是"项目没有问题"。');
+    } else if (incomplete) {
+      lines.push(
+        `**本次未产生任何诊断** —— 但有 ${cov!.failedFlows} 条流程失败、${cov!.untestedFlows} 条流程未跑，**结果不完整**，不能当作"没有问题"。`,
+      );
+    } else {
+      lines.push('**本次未产生任何诊断** —— 已识别的目标都通过了巡检。');
+    }
+    lines.push('');
+  }
+
   for (const b of bugs) {
     lines.push(bugToMarkdown(b, opts));
     lines.push('');
@@ -145,6 +186,65 @@ export function reportToMarkdown(
   }
 
   return lines.join('\n');
+}
+
+/**
+ * 覆盖范围区块。
+ *
+ * 存在的理由：mapper 早就把"没识别到页面"这类缺口写成了 risk，
+ * 但旧报告层不读它 —— 缺口只落在 run-status.json 里，用户看的报告里没有。
+ * 结果就是"0 个 bug"被当成"项目健康"。
+ */
+function coverageSection(coverage: CoverageInfo, bugCount: number): string[] {
+  const lines: string[] = [];
+  lines.push('## 覆盖范围 / Coverage');
+  lines.push('');
+
+  if (coverageIsUninformative(coverage)) {
+    // 文案不能硬写"0 个 bug" —— 本函数只在"一条流程都没跑"时才被调用，
+    // 但万一有别的路径进来，写死了就会和上面的「Bug 总数」自相矛盾。
+    lines.push('> ⚠ **本次未识别到可测目标 —— 本次结果没有任何信息量，不代表项目健康。**');
+    lines.push('>');
+    lines.push(
+      `> 识别到的页面 ${coverage.pages} 个、接口 ${coverage.api} 个、可执行流程 ${coverage.plannedFlows} 条。`,
+    );
+    if (bugCount > 0) {
+      lines.push('>');
+      lines.push(`> 注意：本次仍产出了 ${bugCount} 条诊断，但它们来自有限的覆盖，结果不完整。`);
+    }
+    lines.push('>');
+    lines.push(
+      '> Next.js 项目开箱即用；其它框架（Vue / Svelte / React SPA / Express / Hono / Nest / tRPC）需要手写 `.sentinel/app.map.ts` 声明可测页面与流程。',
+    );
+    lines.push('');
+  }
+
+  lines.push('| 项目 / Item | 数量 / Count |');
+  lines.push('|---|---|');
+  lines.push(`| 识别到的页面 / Pages discovered | ${coverage.pages} |`);
+  lines.push(`| 识别到的接口 / APIs discovered | ${coverage.api} |`);
+  lines.push(`| 自动生成流程 / Auto-generated flows | ${coverage.flows} |`);
+  lines.push(`| 规划执行流程 / Planned flows | ${coverage.plannedFlows} |`);
+  lines.push(`| 通过 / 失败 / 未跑 / Passed / Failed / Not run | ${coverage.passedFlows} / ${coverage.failedFlows} / ${coverage.untestedFlows} |`);
+  lines.push('');
+
+  if (coverage.mapFailures.length > 0) {
+    lines.push('**项目理解失败 / Project understanding failed**（下面的数字全部不可信）:');
+    for (const f of coverage.mapFailures) {
+      lines.push(`   - ${f}`);
+    }
+    lines.push('');
+  }
+
+  if (coverage.risks.length > 0) {
+    lines.push(`**覆盖缺口 / Coverage gaps**（${coverage.risks.length} 项，本次没测到的地方）:`);
+    for (const r of coverage.risks) {
+      lines.push(`   - \`${r.id}\` (${r.severity}) ${r.description}`);
+    }
+    lines.push('');
+  }
+
+  return lines;
 }
 
 function severityIcon(s: BugFinding['severity']): string {
@@ -196,6 +296,16 @@ function describeEvidence(e: import('@sentinel/core').Evidence): string {  switc
       return `DOM (${e.html.length} chars)`;
     case 'log':
       return `[${e.level}] ${e.message.slice(0, 120)}`;
+    case 'storage':
+      // 以前落到 default 分支只显示 "storage" —— 采到的 key 名单看不见，
+      // --detailed 唯一的产出在报告里等于不存在。
+      return `${e.storage} (${e.keys.length} keys: ${e.keys.slice(0, 8).join(', ')}${e.keys.length > 8 ? ', …' : ''})`;
+    case 'git':
+      return `git ${e.subject} ${e.ref}`;
+    case 'db':
+      return `db ${e.query} (${e.rows} rows)`;
+    case 'trace':
+      return `trace ${e.service}/${e.traceId}`;
     default:
       return e.kind;
   }

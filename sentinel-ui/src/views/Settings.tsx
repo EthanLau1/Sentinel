@@ -39,6 +39,7 @@ export function Settings(): React.JSX.Element {
 
   // Form state
   const [providerType, setProviderType] = useState('openai-compatible');
+  const [providerName, setProviderName] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('');
@@ -55,6 +56,10 @@ export function Settings(): React.JSX.Element {
       })
       .then(data => {
         setProviderType(data.type ?? 'openai-compatible');
+        // provider 名要回填 ——
+        // 旧前端不传 providerName，服务端只能回落成 'cloud'，
+        // 于是自定义 provider 名（如 'minimax'）的 pricing 会被抹掉。
+        setProviderName(data.providerName ?? '');
         setBaseUrl(data.baseUrl ?? '');
         setModel(data.model ?? '');
         setApiKey('');
@@ -97,6 +102,7 @@ export function Settings(): React.JSX.Element {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: providerType,
+          ...(providerName ? { providerName } : {}),
           baseUrl,
           apiKey,
           model,

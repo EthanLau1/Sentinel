@@ -341,6 +341,8 @@ cat /path/to/your-app/reports/sentinel-latest.md
 | `--auto-fix` | 允许 Tier 1 真正修改你的源代码（**默认关**）/ Allow Tier 1 to actually modify your source code (**off by default**) |
 | `--create-pr` | 为 Tier 2 修复建分支、提交、推送并开 PR（需要 `gh` CLI，**默认关**）/ Branch, commit, push, and open a PR for Tier 2 fixes (requires the `gh` CLI, **off by default**) |
 | `--report <markdown\|json\|both>` | 报告格式，默认两种都出 / Report format; both by default |
+| `--port <port>` | 显式指定 dev server 端口，跳过端口推断 / Explicit dev-server port; skips port inference |
+| `--url <url>` | 显式指定被测地址，**完全跳过**自动启动 dev server / Explicit target URL; skips dev-server auto-start entirely |
 
 > **默认它不会改你的代码。** 即使不加 `--auto-fix`，Tier 1 也只是把补丁写到 `.sentinel/auto-patches/` 里等你审阅。
 > `--auto-fix` 打开后，改完会**重新验证一次**，验证不过自动还原。
@@ -351,27 +353,136 @@ cat /path/to/your-app/reports/sentinel-latest.md
 > afterwards** and automatically reverted if the re-check fails. `--create-pr` performs **real external
 > actions** (pushing a branch, opening a PR) and only happens when you pass the flag explicitly.
 
+### 退出码 / Exit codes
+
+**中文**
+
+| 退出码 / Code | 含义 / Meaning |
+|---|---|
+| `0` | 跑完了，没发现 P0/P1 问题 / Finished; no P0/P1 issue found |
+| `1` | 跑完了，发现了 P0 或 P1 问题 / Finished; a P0 or P1 issue was found |
+| `2` | **没跑完**：配置非法、dev server 起不来、浏览器 preflight 失败、有流程失败却没产出诊断，或**一个流程都没跑**（`plannedFlows = 0`）/ **Did not finish**: invalid config, dev server unreachable, browser preflight failed, a failed flow produced no diagnosis, or **not a single flow ran** (`plannedFlows = 0`) |
+
+> `2` 说的是"这次的结果不可信"，不是"你的项目有 2 个问题"。
+> `sentinel doctor` 也用这套语义：**阻塞项**失败 → `1`；只有**非阻塞项**（比如没配 LLM）→ `0`，
+> 并且提示文案会写明"不阻塞 run"—— 提示和实际行为必须一致。
+>
+> **Code `2` means "this result is not trustworthy", not "your project has two problems".**
+> `sentinel doctor` follows the same convention: a **blocking** failure exits `1`; only
+> **non-blocking** items (e.g. no LLM configured) exit `0`, and the wording says so explicitly —
+> the message must match what actually happens.
+
 ---
 
 ## 8. 支持的技术栈 / Supported Stack
 
 **中文**
 
-范围以 `packages/adapters/src/` 里**真实存在的 13 个 adapter** 为准 —— 没有 adapter 的栈不在服务范围内。
+先说清楚一句：**Sentinel 只在 Next.js 上能自动找出"该点哪些页面"。**
+其它框架它能**认出技术栈**，但不会自动列出页面和接口 —— 那种项目跑出来是
+**0 个流程、0 个 bug**。这**不代表你的项目没问题**，只代表 Sentinel 这次**没有可测目标**。
+报告里现在会直接把这件事写出来（见本节末尾「0 个 bug 到底意味着什么」）。
+
+下面这张表是**逐栈的真实能力**，不是"我们支持这个框架"的客套话。
 
 **English**
 
-The supported scope is defined by the **13 adapters that actually exist** in `packages/adapters/src/`
-— a stack without an adapter is out of scope.
+Up front: **Sentinel only auto-discovers which pages to visit on Next.js.**
+For other frameworks it recognizes the stack, but it does not enumerate pages or APIs — those
+projects produce **0 flows and 0 bugs**. That does **not** mean your project is fine; it means
+Sentinel had **no measurable target** this time. The report now states this explicitly
+(see "What '0 bugs' really means" at the end of this section).
 
-| 层 / Layer | 已支持 / Supported |
-|---|---|
-| 前端 / Frontend | Next.js · React · Vue · Svelte |
-| 后端 / Backend | Express · Hono · NestJS · tRPC |
-| 数据 / Data | Prisma · Drizzle · Supabase |
-| LLM 应用 / LLM app | Vercel AI SDK · LangChain |
+The table below is the **per-stack reality**, not a list of frameworks we nod at.
+
+| 技术栈 / Stack | 识别依赖 / Detects | 自动发现页面与接口 / Auto-discovers pages & APIs | 开箱即用 / Works out of the box |
+|---|---|---|---|
+| Next.js（pages / app router） | ✅ | ✅ | ✅ 唯一开箱即用 / the only one |
+| React（CRA / Vite SPA） | ✅ | ❌ | ❌ 需手写 `app.map.ts` / needs `app.map.ts` |
+| Vue / Nuxt | ✅ | ❌ | ❌ 需手写 `app.map.ts` / needs `app.map.ts` |
+| Svelte / SvelteKit | ✅ | ❌ | ❌ 需手写 `app.map.ts` / needs `app.map.ts` |
+| Express / Hono / NestJS | ✅ | ❌ | ❌ 需手写 `app.map.ts` / needs `app.map.ts` |
+| tRPC | ✅ | ❌ | ❌ 需手写 `app.map.ts` / needs `app.map.ts` |
+| Prisma | ✅ | 仅数据模型 / schema only | — |
+| Drizzle / Supabase | ✅ | ❌ | — |
+| Vercel AI SDK / LangChain | ✅ | ❌ | — |
 
 **不服务 / Not covered**：iOS / Android 原生 / native apps、嵌入式与硬件 / embedded and hardware、桌面应用（Electron 仅基本支持）/ desktop apps (Electron only basic support)、游戏引擎 / game engines、操作系统与驱动 / operating systems and drivers。
+
+### 非 Next.js 项目怎么测 / How to test a non-Next.js project
+
+**中文**
+
+在项目里建 `.sentinel/app.map.ts`，告诉 Sentinel 该测哪些页面。写坏了会**直接报错**
+（以前是静默失败 → 你会拿到 0 个页面却不知道为什么）。
+
+```ts
+export default {
+  pages: [
+    { id: 'home', path: '/', title: '首页' },
+    { id: 'pricing', path: '/pricing', title: '价格' },
+  ],
+  flows: [
+    {
+      id: 'pricing-visible',
+      description: '价格页能打开且有内容',
+      steps: [
+        { action: 'visit', url: '/pricing' },
+        { action: 'assert', kind: 'visible', selector: 'body' },
+      ],
+    },
+  ],
+};
+```
+
+**English**
+
+Create `.sentinel/app.map.ts` in the project and tell Sentinel which pages to test. A broken
+file now **fails loudly** (it used to fail silently, leaving you with 0 pages and no clue).
+
+```ts
+export default {
+  pages: [
+    { id: 'home', path: '/', title: 'Home' },
+    { id: 'pricing', path: '/pricing', title: 'Pricing' },
+  ],
+  flows: [
+    {
+      id: 'pricing-visible',
+      description: 'Pricing page opens and has content',
+      steps: [
+        { action: 'visit', url: '/pricing' },
+        { action: 'assert', kind: 'visible', selector: 'body' },
+      ],
+    },
+  ],
+};
+```
+
+### 0 个 bug 到底意味着什么 / What '0 bugs' really means
+
+**中文**
+
+报告开头有一节「覆盖范围」，写明这次识别到几个页面、几个接口、跑了几个流程。
+两种"0 个 bug"完全不同：
+
+- `覆盖范围` 里 **planned flows > 0** → 这次真的测过了，没发现 P0/P1 问题
+- `覆盖范围` 里 **planned flows = 0** → 这次**什么都没测**，报告顶部会挂一条橙色警告
+  **0 个 bug 不代表项目健康**，请先让它找到可测目标（或手写 `app.map.ts`）
+
+`reports/sentinel-run-status.json` 里的 `plannedFlows` 是同一个口径，CI 可以直接判它。
+
+**English**
+
+Every report opens with a "Coverage" section stating how many pages, APIs and flows were found.
+The two kinds of "0 bugs" are not the same thing:
+
+- **planned flows > 0** → Sentinel really tested something and found no P0/P1 issue
+- **planned flows = 0** → Sentinel tested **nothing**; the report carries an orange warning that
+  **0 bugs does not mean the project is healthy**. Give it a measurable target first
+  (or write `app.map.ts` by hand)
+
+`plannedFlows` in `reports/sentinel-run-status.json` is the same figure; CI can gate on it.
 
 ---
 
@@ -473,9 +584,27 @@ like "not needed".
   Tier 2 pull request (requires `--create-pr` plus the `gh` CLI).
 - Web 控制台：项目列表、设置、运行、报告查看
   Web console: project list, settings, run, report viewer.
+- **报告里有「覆盖范围」区块**：识别到几个页面/接口、跑了几个流程、哪些没测到
+  一眼能分清"测过了没问题"和"压根没测到东西"
+  **The report carries a "Coverage" section**: pages/APIs discovered, flows executed, gaps left —
+  so "tested and clean" and "never measured anything" are told apart at a glance.
+- **真实 run 的 JSON 报告顶层有 `coverage` 字段**，CI 可以直接判 `plannedFlows == 0` 并让流水线失败
+  （`--demo` 是硬编码假数据，没有真实覆盖，因此不带 `coverage`）
+  **A real run's JSON report has a top-level `coverage` field**, so CI can gate on
+  `plannedFlows == 0` and fail the pipeline instead of reading "0 bugs" as "all good"
+  (`--demo` is hardcoded sample data with no real coverage, so it carries no `coverage`)
 - 自检门禁：配置坏了直接拒绝启动；外部服务不通则降级但不阻塞
   Self-check gate: a broken configuration blocks the run outright; an unreachable external
   service degrades instead of blocking.
+- **退出码有明确语义**：`0` 干净 / `1` 发现 P0·P1 / `2` 没跑完（结果不可信）
+  **Exit codes are explicit**: `0` clean / `1` a P0·P1 was found / `2` did not finish (result untrustworthy)
+- **浏览器依赖进安装流程**：`bun run setup` 装 Playwright Chromium；`doctor` 借用系统 Chrome 时判 warn 而不是 OK
+  **The browser dependency is part of setup**: `bun run setup` installs Playwright Chromium;
+  `doctor` reports "borrowing system Chrome" as a warn, not as OK
+- **dev server 复用前三重校验**：HTTP 能不能访问、服务是不是本项目、子进程真实报错
+  端口被别的项目占着时不会再"误判为已启动"
+  **Dev-server reuse is triple-checked**: HTTP reachability, is-it-actually-this-project, and the
+  child's real error output — a port held by another project is no longer mistaken for "already running"
 - **离线模式**：没有 LLM、没有网络也能检测（见第 14 节）
   **Offline mode**: detects problems with no LLM and no network at all (see section 14).
 - **离线模式有机器守卫**：断网实跑验证"一次外网请求都不发"（`bun run guard:offline`）
@@ -500,6 +629,11 @@ like "not needed".
   **Offline mode offers no targeted fix and cannot land a patch** — the fix options are generic
   templates ("quick fix (workaround / patch)" and the like), because no model writes a concrete
   patch; field 11 of the report states the reason.
+- **只有 Next.js 能自动发现页面和接口** —— 其余 12 个栈只识别依赖，
+  需要你手写 `.sentinel/app.map.ts` 才有可测目标（见第 8 节的能力矩阵）
+  **Only Next.js auto-discovers pages and APIs** — the other 12 stacks are recognized but
+  produce no measurable target until you write `.sentinel/app.map.ts` by hand
+  (see the capability matrix in section 8)
 - **知识增强没有"每次 run 最多 30% 流程"的上限** —— 宪法要求 ≤30%，但当前实现只看
   方案平均置信度（低于 0.7 就查），**没有按流程比例限流**。
   文档不宣称这个上限已生效（已知未修项，记在 `scripts/spec-sync-baseline.json`）
@@ -672,8 +806,13 @@ installed. Install the dependencies and add a `dev` script.
 Playwright 没装 / Playwright is not installed:
 
 ```bash
-npx playwright install chromium
+bun run setup            # = bunx playwright install chromium
 ```
+
+> 装浏览器现在是**安装流程的一部分**（`start.command` / `start.sh` 会自动跑）。
+> 借用系统 Chrome 能跑，但版本不受控 —— `sentinel doctor` 会把它判成 warn。
+> Installing the browser is now **part of setup** (`start.command` / `start.sh` run it for you).
+> Borrowing system Chrome works, but the version is uncontrolled — `sentinel doctor` reports it as a warn.
 
 **LLM 返回 404 / 连不上 / LLM returns 404 or refuses to connect**
 `baseUrl` 填错了 / the `baseUrl` is wrong. 常见正确值 / Common correct values:
@@ -683,6 +822,14 @@ npx playwright install chromium
 - Ollama：`http://localhost:11434/v1`
 
 注意末尾要有 `/v1` / Note the trailing `/v1`.
+
+> 如果 `sentinel doctor` 报的是 **"缺少 apiKey"**，那不是地址写错 —— 是 key 没配。
+> （以前这里会错误地去探 Ollama，然后把 404 解释成"baseUrl 漏了 /v1"，把人带偏。）
+> 配置里写 `${SENTINEL_API_KEY}` 但没 export 时，doctor 会**点名**说是哪个变量没设置。
+> If `sentinel doctor` says **"apiKey missing"**, the URL is not the problem — the key is not set.
+> (It used to probe Ollama instead and then blame the baseUrl for a 404, which points you the wrong way.)
+> When the config uses `${SENTINEL_API_KEY}` and the variable is not exported, doctor now **names**
+> the missing variable.
 
 **Budget exceeded**
 默认每次 run 上限 $0.5 / The default cap is $0.50 per run. 调 `.sentinel/budget.yml` / edit `.sentinel/budget.yml`:

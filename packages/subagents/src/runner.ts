@@ -19,15 +19,34 @@ import type {
 export interface RunnerConfig {
   /** 单个 flow 超时 */
   flowTimeoutMs?: number;
+  /**
+   * 采集详细证据（cookie / storage 键名）。
+   *
+   * 以前 `--detailed` 是个空开关：CLI 把开关传给了 browser MCP，
+   * 但 runner 取证时硬编码 `snapshot({ detailed: false })`，
+   * `??` 遇到 false 不回落 → 全局开关被顶掉，什么都没多采。
+   */
+  detailed?: boolean;
 }
 
-export function createRunner(_config: RunnerConfig = {}): Subagent {
+export function createRunner(config: RunnerConfig = {}): Subagent {
   return {
     name: 'runner',
 
     register(ctx: KernelContext): void {
       // 缓存 flow 定义 —— 修复后要能重跑同一条 flow
       const flowsById = new Map<string, FlowSpec>();
+      // sensor 交回来的证据，按 flowId 归档（flowId 由 evidence.ready 显式带回）
+      const evidenceByFlow = new Map<string, Evidence[]>();
+
+      // 以前 evidence.requested 运行时**根本没人发布** ——
+      // sensor 订阅着它，却永远收不到请求，于是 --detailed 采不到 storage，
+      // 采到的 storage 也没有消费者。现在 runner 真的会去请求。
+      ctx.bus.subscribe<{ flowId?: string; evidence: Evidence[] }>('evidence.ready', (event) => {
+        const { flowId, evidence } = event.payload;
+        if (!flowId) return;
+        evidenceByFlow.set(flowId, evidence);
+      });
 
       ctx.bus.subscribe<FeatureMap>('map.ready', async (event) => {
         for (const flow of event.payload.flows) flowsById.set(flow.id, flow);
@@ -35,7 +54,7 @@ export function createRunner(_config: RunnerConfig = {}): Subagent {
           // 单条 flow 的内部异常（如证据采集失败）不能中断整轮，
           // 否则后续 flow 一个都不会跑，且没有任何日志说明漏了什么。
           try {
-            await runFlow(ctx, flow, event.traceId);
+            await runFlow(ctx, flow, event.traceId, undefined, evidenceByFlow, config.detailed === true);
           } catch (err) {
             await ctx.bus.publish({
               type: 'flow.failed',
@@ -57,7 +76,7 @@ export function createRunner(_config: RunnerConfig = {}): Subagent {
         const flow = flowsById.get(event.payload.flowId);
         if (!flow) return;
         try {
-          await runFlow(ctx, flow, event.traceId, { phase: 'after-fix', patchId: event.payload.fixId });
+          await runFlow(ctx, flow, event.traceId, { phase: 'after-fix', patchId: event.payload.fixId }, evidenceByFlow, config.detailed === true);
         } catch (err) {
           await ctx.bus.publish({
             type: 'flow.failed',
@@ -81,7 +100,9 @@ async function runFlow(
   ctx: KernelContext,
   flow: FlowSpec,
   traceId: string,
-  phase?: { phase: 'after-fix'; patchId: string },
+  phase: { phase: 'after-fix'; patchId: string } | undefined,
+  evidenceByFlow: Map<string, Evidence[]>,
+  detailed: boolean,
 ): Promise<void> {
   const start = Date.now();
   await ctx.bus.publish({
@@ -98,7 +119,7 @@ async function runFlow(
 
   try {
     for (const step of flow.steps) {
-      await executeStep(ctx, step, flow.id, traceId);
+      await executeStep(ctx, step, flow.id, traceId, evidenceByFlow, detailed);
     }
     await ctx.bus.publish({
       type: 'flow.passed',
@@ -132,7 +153,14 @@ async function runFlow(
   }
 }
 
-async function executeStep(ctx: KernelContext, step: FlowStep, flowId: string, traceId: string): Promise<void> {
+async function executeStep(
+  ctx: KernelContext,
+  step: FlowStep,
+  flowId: string,
+  traceId: string,
+  evidenceByFlow: Map<string, Evidence[]>,
+  detailed: boolean,
+): Promise<void> {
   switch (step.action) {
     case 'visit': {
       const browser = ctx.providers.mcp.get('browser');
@@ -140,7 +168,7 @@ async function executeStep(ctx: KernelContext, step: FlowStep, flowId: string, t
       await browser.call('visit', { url: step.url });
       // 被动巡检：访问成功不代表页面没毛病 ——
       // "返回 200 但控制台在报错 / 资源 404 / 白屏"是旧链路完全测不到的一类错。
-      await publishInspection(ctx, browser, flowId, step.url, traceId);
+      await publishInspection(ctx, browser, flowId, step.url, traceId, detailed, evidenceByFlow);
       return;
     }
     case 'fill': {
@@ -207,13 +235,38 @@ async function publishInspection(
   flowId: string,
   url: string,
   traceId: string,
+  detailed = false,
+  evidenceByFlow: Map<string, Evidence[]> = new Map(),
 ): Promise<void> {
   try {
     const snapshot = await browser.call('inspect', {});
     if (!snapshot || typeof snapshot !== 'object') return;
+
+    // 详细证据（storage / cookie 键名）必须真的去要 ——
+    // 以前 evidence.requested 运行时没有任何人发布，sensor 永远收不到请求，
+    // 于是 --detailed 采不到东西，采到的东西也没有消费者。
+    let extraEvidence: Evidence[] = [];
+    if (detailed) {
+      try {
+        // 先清掉上一轮的残留，再请求 ——
+        // bus 的 publish 会 await 完所有 handler 才返回，
+        // 所以请求返回时，sensor 的 evidence.ready 已经落到 evidenceByFlow 里了。
+        evidenceByFlow.delete(flowId);
+        await ctx.bus.publish({
+          type: 'evidence.requested',
+          payload: { kinds: ['storage'], target: url, flowId },
+          source: 'runner',
+          traceId,
+        });
+        extraEvidence = evidenceByFlow.get(flowId) ?? [];
+      } catch (err) {
+        console.warn(`[sentinel] runner: 详细证据采集失败（不影响巡检）：${(err as Error).message}`);
+      }
+    }
+
     await ctx.bus.publish({
       type: 'page.visited',
-      payload: { flowId, url, snapshot },
+      payload: { flowId, url, snapshot, ...(extraEvidence.length > 0 && { extraEvidence }) },
       source: 'runner',
       traceId,
     });
@@ -247,7 +300,7 @@ async function collectFailureEvidence(
   const browser = ctx.providers.mcp.get('browser');
   if (browser) {
     try {
-      const snap = (await browser.call('snapshot', { detailed: false })) as {
+      const snap = (await browser.call('snapshot', {})) as {
         screenshot?: string;
         domSnapshot?: string;
         a11yTree?: unknown;
