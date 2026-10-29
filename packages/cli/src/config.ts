@@ -23,6 +23,12 @@ export interface LlmConfig {
        * 不配 → budget.yml 的 maxCostUsdPerRun 不生效，只剩 token 上限。
        */
       pricing?: { pricePerMTokIn: number; pricePerMTokOut: number };
+      /**
+       * 模型支持看图时置 true —— 截图会作为图片随消息发给模型。
+       *
+       * 默认 false：截图是本机现场内容，发给模型等于传出本机，必须显式同意。
+       */
+      vision?: boolean;
     }
   >;
   agents?: Record<string, string>;
@@ -321,6 +327,9 @@ export function llmConfigToYaml(config: LlmConfig): string {
     yml += `      pricePerMTokIn: ${provider.pricing.pricePerMTokIn}\n`;
     yml += `      pricePerMTokOut: ${provider.pricing.pricePerMTokOut}\n`;
   }
+  // vision 同理必须写回去 —— 存一次配置就把"模型能看图"悄悄抹掉，
+  // 用户会以为截图已经给模型了，实际一直在走纯文本通道。
+  if (provider.vision) yml += `    vision: true\n`;
   return yml;
 }
 
@@ -332,6 +341,8 @@ export function publicLlmSettings(config: LlmConfig): {
   apiKeyConfigured: boolean;
   apiKey: string;
   model: string;
+  /** 模型是否支持看图（截图会随消息发给模型） */
+  vision: boolean;
 } {
   const provider = activeLlmProvider(config);
   return {
@@ -342,5 +353,6 @@ export function publicLlmSettings(config: LlmConfig): {
     apiKeyConfigured: Boolean(provider.apiKey),
     apiKey: maskSecret(provider.apiKey),
     model: provider.model,
+    vision: provider.vision === true,
   };
 }

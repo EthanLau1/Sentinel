@@ -33,6 +33,16 @@ export interface OpenAICompatibleConfig {
   timeoutMs?: number;
   /** Provider 显示名（默认 'openai-compatible'） */
   displayName?: string;
+  /**
+   * 该模型**支持看图**时置 true —— 截图会作为图片随消息发给模型。
+   *
+   * 为什么默认关闭：
+   *   1. 很多模型收图片会直接报错（"content must be a string"），整轮 run 会挂；
+   *   2. 截图会**上传到外部 API** —— 这是把现场页面内容传出本机，必须用户显式同意；
+   *   3. 图片 token 比文本贵得多，会打爆 token 预算。
+   * 不开这个开关，截图仍然落盘在 reports/evidence/，报告里仍能打开。
+   */
+  vision?: boolean;
 }
 
 /**
@@ -66,15 +76,53 @@ function estimateTokens(text: string): number {
   return Math.ceil(cjk / 1.5 + rest / 4);
 }
 
+/**
+ * 图片的粗略 token 估算。
+ *
+ * OpenAI 视觉模型一张 1024×1024 图约 1000+ token，跟 base64 长度只是弱相关。
+ * 这里按 base64 长度折算，**只用于 provider 没返回 usage 时的兜底**，
+ * 目的是别把带图请求记成 0 token（记 0 = 预算护栏完全失效）。
+ */
+function estimateImageTokens(base64Length: number): number {
+  return Math.ceil(base64Length / 750);
+}
+
+/**
+ * 把内部消息转成 OpenAI 协议的请求体形状。
+ *
+ * 有图时 content 变成数组（text + image_url）—— 这是 OpenAI 视觉输入的官方格式。
+ * 只有 user 消息能带图：system / assistant 带图会被服务端拒。
+ * provider 不支持视觉时，图片直接丢掉（不发也不报错），文本内容保持原样。
+ */
+function toWireMessage(
+  m: ChatMessage,
+  vision: boolean,
+): { role: string; content: string | Array<Record<string, unknown>> } {
+  const images = vision && m.role === 'user' ? (m.images ?? []) : [];
+  if (images.length === 0) return { role: m.role, content: m.content };
+  return {
+    role: m.role,
+    content: [
+      { type: 'text', text: m.content },
+      ...images.map((img) => ({
+        type: 'image_url',
+        image_url: { url: `data:${img.mimeType};base64,${img.data}` },
+      })),
+    ],
+  };
+}
+
 export function createOpenAICompatibleProvider(
   config: OpenAICompatibleConfig,
 ): LLMProvider {
   const pricing = config.pricing ?? { pricePerMTokIn: 0, pricePerMTokOut: 0 };
+  const vision = config.vision === true;
   let warnedAboutMissingUsage = false;
 
   return {
     name: config.displayName ?? 'openai-compatible',
     supportsTools: true,
+    supportsVision: vision,
 
     async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatResponse> {
       const url = `${config.baseUrl.replace(/\/$/, '')}/chat/completions`;
@@ -84,7 +132,7 @@ export function createOpenAICompatibleProvider(
 
       const body = {
         model: options.model ?? config.model,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        messages: messages.map((m) => toWireMessage(m, vision)),
         ...(options.temperature !== undefined && { temperature: options.temperature }),
         ...(maxTokens !== undefined && { max_tokens: maxTokens }),
         ...(options.tools && {
@@ -128,7 +176,15 @@ export function createOpenAICompatibleProvider(
         if (!usage) {
           const promptText = messages.map((m) => m.content).join('\n');
           const completionText = choice.message.content ?? '';
-          const promptTokens = estimateTokens(promptText);
+          // 带图的请求，图片 token 也得算进去 —— 记 0 等于预算护栏失效
+          const imageTokens = vision
+            ? messages.reduce(
+                (sum, m) =>
+                  sum + (m.images ?? []).reduce((s, img) => s + estimateImageTokens(img.data.length), 0),
+                0,
+              )
+            : 0;
+          const promptTokens = estimateTokens(promptText) + imageTokens;
           const completionTokens = estimateTokens(completionText);
           usage = {
             prompt_tokens: promptTokens,

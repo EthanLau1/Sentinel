@@ -18,10 +18,10 @@ import { createProjectScan } from '../src/scan.js';
  * 混在一份夹具里断言会互相干扰（App 的 /about 和 Pages 的 /(group)/about 同时出现）。
  */
 
-async function writeAt(root: string, rel: string): Promise<void> {
+async function writeAt(root: string, rel: string, content = 'export default () => null'): Promise<void> {
   const full = join(root, rel);
   await mkdir(dirname(full), { recursive: true });
-  await writeFile(full, 'export default () => null', 'utf8');
+  await writeFile(full, content, 'utf8');
 }
 
 async function makeProject(files: string[]): Promise<string> {
@@ -70,8 +70,71 @@ async function collect(files: string[]): Promise<{ pages: string[]; api: string[
 const collectApp = () => collect(APP_FILES);
 const collectPages = () => collect(PAGES_FILES);
 
-describe('nextjsAdapter · App Router 约定', () => {
-  it('路由组不进 URL', async () => {
+describe('nextjsAdapter · 路由处理器与 basePath', () => {
+  it('任何目录下的 route.ts 都是 API 端点（不只是在 api/ 下）', async () => {
+    const root = await makeProject([
+      'app/page.tsx',
+      'app/users/route.ts',
+      'app/api/orders/route.ts',
+    ]);
+    const scan = await createProjectScan(root);
+    const routes = await nextjsAdapter.routes!(scan);
+    const api = (routes.api ?? []).map((a) => `${a.method} ${a.path}`);
+    // 以前 app/users/route.ts 整个被丢掉 → 这个端点从来没被巡检过
+    expect(api).toContain('GET /users');
+    expect(api).toContain('GET /api/orders');
+  });
+
+  it('API 的真实方法从 route.ts 里解析（只导出 POST 的不能当 GET 用）', async () => {
+    const root = await makeProject([
+      'app/page.tsx',
+      'app/users/route.ts',
+    ]);
+    await writeAt(root, 'app/users/route.ts', 'export async function POST() { return new Response("ok"); }');
+    const scan = await createProjectScan(root);
+    const routes = await nextjsAdapter.routes!(scan);
+    const api = (routes.api ?? []).map((a) => `${a.method} ${a.path}`);
+    expect(api).toContain('POST /users');
+    expect(api).not.toContain('GET /users');
+  });
+
+  it('一个 route.ts 导出多个方法 → 每个方法各算一条', async () => {
+    const root = await makeProject(['app/page.tsx', 'app/items/route.ts']);
+    await writeAt(root, 'app/items/route.ts', 'export const GET = async () => 1;\nexport const DELETE = async () => 1;');
+    const scan = await createProjectScan(root);
+    const routes = await nextjsAdapter.routes!(scan);
+    const api = (routes.api ?? []).map((a) => `${a.method} ${a.path}`);
+    expect(api).toContain('GET /items');
+    expect(api).toContain('DELETE /items');
+  });
+
+  it('basePath 是所有地址的前缀（不读它就全是少了前缀的假地址）', async () => {
+    const root = await makeProject([
+      'app/page.tsx',
+      'app/about/page.tsx',
+      'app/api/users/route.ts',
+    ]);
+    await writeAt(root, 'next.config.js', 'module.exports = { basePath: "/shop" };');
+    const scan = await createProjectScan(root);
+    const routes = await nextjsAdapter.routes!(scan);
+    const pages = (routes.pages ?? []).map((p) => p.path);
+    const api = (routes.api ?? []).map((a) => a.path);
+    expect(pages).toContain('/shop');
+    expect(pages).toContain('/shop/about');
+    expect(api).toContain('/shop/api/users');
+    expect(pages).not.toContain('/about');
+  });
+
+  it('basePath 写成变量时不做猜测（宁可不加也不加错）', async () => {
+    const root = await makeProject(['app/page.tsx']);
+    await writeAt(root, 'next.config.js', 'module.exports = { basePath: process.env.BASE_PATH };');
+    const scan = await createProjectScan(root);
+    const routes = await nextjsAdapter.routes!(scan);
+    expect((routes.pages ?? []).map((p) => p.path)).toContain('/');
+  });
+});
+
+describe('nextjsAdapter · App Router 约定', () => {  it('路由组不进 URL', async () => {
     const { pages } = await collectApp();
     expect(pages).toContain('/about');
     expect(pages.some((p) => p.includes('marketing'))).toBe(false);

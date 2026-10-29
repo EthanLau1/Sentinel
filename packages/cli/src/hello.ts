@@ -33,11 +33,13 @@ export async function runHello(): Promise<number> {
       baseUrl: providerCfg.baseUrl,
       apiKey: providerCfg.apiKey,
       model: providerCfg.model,
+      ...(providerCfg.vision === true && { vision: true }),
     });
   } else {
     provider = createOllamaNativeProvider({
       ...(providerCfg.baseUrl && { baseUrl: providerCfg.baseUrl }),
       model: providerCfg.model,
+      ...(providerCfg.vision === true && { vision: true }),
     });
   }
 
@@ -51,6 +53,11 @@ export async function runHello(): Promise<number> {
 
   console.log(color.cyan('🛰  Sentinel hello'));
   console.log(color.dim(`   provider: ${provider.name} (${providerCfg.model})`));
+  console.log(
+    color.dim(
+      `   vision: ${provider.supportsVision === true ? 'on（截图会随消息发给模型）' : 'off（截图只落盘，模型走文本通道）'}`,
+    ),
+  );
   console.log('');
 
   try {

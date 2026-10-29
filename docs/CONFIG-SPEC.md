@@ -48,11 +48,20 @@ providers:
     pricing:
       pricePerMTokIn: 2.5
       pricePerMTokOut: 10
+    # 模型能不能看图。true = 截图会作为图片随消息发给模型（模型能直接看截图）；
+    # false 或不填 = 截图只落盘到 reports/evidence/，模型走纯文本通道。
+    # 为什么默认关着：① 不少模型收图片会直接报错，整轮 run 会挂；
+    #            ② 截图是本机现场内容，发给模型等于传出本机，必须你点头；
+    #            ③ 图片 token 比文字贵得多，容易打爆预算。
+    vision: false
 
   local-fast:
     type: ollama-native          # 取值只有 openai-compatible / ollama-native
     baseUrl: http://localhost:11434
     model: qwen3:7b
+    # 本地视觉模型（llava / llama3.2-vision 等）可以开这个。
+    # 前提是 Ollama 里真装了视觉权重，否则模型会当没收到图。
+    vision: false
 
   local-coder:
     type: ollama-native

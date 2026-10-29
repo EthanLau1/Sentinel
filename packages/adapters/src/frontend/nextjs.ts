@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { Adapter, ProjectScan } from '../types.js';
@@ -137,12 +137,67 @@ function toPath(url: string[]): string {
 const PAGE_FILES = ['page.tsx', 'page.ts', 'page.jsx', 'page.js'];
 const ROUTE_FILES = ['route.ts', 'route.js', 'route.tsx', 'route.jsx'];
 
+/** 路由处理器支持的 HTTP 方法 —— 用别名避免在表达式里写内联索引类型 */
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
 /** 收集到的一条路由（带来源标记：并行槽产出的不算独立可访问地址） */
 interface CollectedRoute {
   kind: 'page' | 'api';
   path: string;
   /** 来自并行槽 —— 只有父路径本身有真页面时才可访问 */
   fromSlot: boolean;
+  /** API 路由的真实 HTTP 方法（从 route.ts 源码解析） */
+  method?: HttpMethod;
+}
+
+/**
+ * 从 route.ts 源码里解析它导出的 HTTP 方法。
+ *
+ * 为什么必须解析：以前所有 API 路由一律当成 GET ——
+ * 于是只导出 POST 的端点会被"用 GET 去访问" → 405 Method Not Allowed →
+ * 又一条假 P1。Next.js 的 Route Handler 必须按名字导出方法：
+ *   export async function GET(req) {}
+ *   export const POST = async () => {}
+ *   export { GET, POST }
+ */
+function detectRouteMethods(source: string): HttpMethod[] {
+  const allowed: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+  const out = new Set<HttpMethod>();
+  const named = /\bexport\s+(?:async\s+)?(?:function|const|let|var)\s+(GET|POST|PUT|PATCH|DELETE)\b/g;
+  for (const m of source.matchAll(named)) {
+    if (allowed.includes(m[1] as HttpMethod)) out.add(m[1] as HttpMethod);
+  }
+  const reExported = /\bexport\s*\{([^}]*)\}/g;
+  for (const m of source.matchAll(reExported)) {
+    for (const part of (m[1] ?? '').split(',')) {
+      const name = (part.split(/\s+as\s+/)[0] ?? '').trim();
+      if (allowed.includes(name as HttpMethod)) out.add(name as HttpMethod);
+    }
+  }
+  return [...out];
+}
+
+/**
+ * 读 next.config 里的 `basePath`。
+ *
+ * 为什么重要：带 basePath 的项目，所有页面和接口的真实地址都多一段前缀。
+ * 不读它 → Sentinel 访问的全是少了前缀的地址 → 全部 404 → 又一批假 P1。
+ *
+ * 只认字面量（'basePath: "/xxx"'）；写成变量（basePath: process.env.X）读不出来，
+ * 那就不猜 —— 猜错比不猜更糟。
+ */
+async function readBasePath(scan: ProjectScan): Promise<string> {
+  for (const file of ['next.config.js', 'next.config.mjs', 'next.config.cjs', 'next.config.ts']) {
+    if (!scan.has(file)) continue;
+    const text = await scan.read(file);
+    if (!text) continue;
+    const m = /basePath\s*:\s*['"`]([^'"`]+)['"`]/.exec(text);
+    if (m?.[1]) {
+      const bp = m[1].replace(/\/+$/, '');
+      return bp && bp !== '/' ? bp : '';
+    }
+  }
+  return '';
 }
 
 /**
@@ -150,11 +205,15 @@ interface CollectedRoute {
  *
  * url 是「已经落到 URL 上的段」，路由组和并行槽不进 url，
  * 所以 app/(marketing)/about/page.tsx → /about、app/@modal/page.tsx → /。
+ *
+ * 注意：**任何目录下的 route.ts 都是 API 端点**（不只是在 `api/` 目录下）——
+ * Next.js 的 Route Handler 约定就是"route.js 定义一个路由处理器"。
+ * 以前只在 `api/` 目录树里收集，`app/users/route.ts` 这类端点被整个丢掉。
  */
 async function walkRoutes(
+  scan: ProjectScan,
   base: string,
   url: string[],
-  isApiDir: boolean,
   inSlot: boolean,
 ): Promise<CollectedRoute[]> {
   if (!existsSync(base)) return [];
@@ -167,18 +226,20 @@ async function walkRoutes(
       const seg = parseSegment(e.name, 'app');
       const child = url.slice();
       pushSegment(child, seg, 'app');
-      const nested = await walkRoutes(
-        full,
-        child,
-        isApiDir || e.name === 'api',
-        inSlot || seg.kind === 'slot',
-      );
+      const nested = await walkRoutes(scan, full, child, inSlot || seg.kind === 'slot');
       out.push(...nested);
     } else if (e.isFile()) {
       if (PAGE_FILES.includes(e.name)) {
         out.push({ kind: 'page', path: toPath(url), fromSlot: inSlot });
-      } else if (isApiDir && ROUTE_FILES.includes(e.name)) {
-        out.push({ kind: 'api', path: toPath(url), fromSlot: inSlot });
+      } else if (ROUTE_FILES.includes(e.name)) {
+        // route.ts 在 App Router 里就是路由处理器 —— 不限 api 目录
+        const source = (await scan.read(relative(scan.root, full))) ?? '';
+        const methods = detectRouteMethods(source);
+        // 一个 route.ts 可以导出多个方法 → 每个方法各算一条 API 规格
+        const list = methods.length > 0 ? methods : (['GET'] as HttpMethod[]);
+        for (const method of list) {
+          out.push({ kind: 'api', path: toPath(url), fromSlot: inSlot, method });
+        }
       }
     }
   }
@@ -255,7 +316,7 @@ export const nextjsAdapter: Adapter = {
     const collected: CollectedRoute[] = [];
     for (const root of [appDir, srcAppDir]) {
       if (existsSync(root) && (await stat(root)).isDirectory()) {
-        collected.push(...(await walkRoutes(root, [], false, false)));
+        collected.push(...(await walkRoutes(scan, root, [], false)));
       }
     }
     for (const root of [pagesDir, srcPagesDir]) {
@@ -273,30 +334,40 @@ export const nextjsAdapter: Adapter = {
       (r) => !r.fromSlot || (r.kind === 'page' && realPagePaths.has(r.path)),
     );
 
+    // basePath 是所有地址的前缀 —— 不加就全是少了前缀的假地址
+    const basePath = await readBasePath(scan);
+    const withBase = (p: string): string => {
+      if (!basePath) return p;
+      return p === '/' ? basePath : `${basePath}${p}`;
+    };
+
     const pages: PageSpec[] = [];
     const api: ApiSpec[] = [];
     // 同一个真实路径可能从多个目录树解析出来（并行槽、路由组、app+pages 并存），
-    // 去重后才不会生成重复流程
+    // 去重后才不会生成重复流程；API 的去重要带上方法（同一路径可以有两个方法）
     const seenPages = new Set<string>();
     const seenApi = new Set<string>();
     let i = 0;
     for (const r of usable) {
+      const path = withBase(r.path);
       if (r.kind === 'page') {
-        if (seenPages.has(r.path)) continue;
-        seenPages.add(r.path);
+        if (seenPages.has(path)) continue;
+        seenPages.add(path);
         pages.push({
           id: `page_${i++}`,
-          path: r.path,
+          path,
           requiresAuth: false,
           criticalCTAs: [],
         });
       } else {
-        if (seenApi.has(r.path)) continue;
-        seenApi.add(r.path);
+        const method = r.method ?? 'GET';
+        const key = `${method} ${path}`;
+        if (seenApi.has(key)) continue;
+        seenApi.add(key);
         api.push({
           id: `api_${i++}`,
-          method: 'GET',
-          path: r.path,
+          method,
+          path,
           requiresAuth: false,
         });
       }

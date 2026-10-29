@@ -14,6 +14,13 @@ import type {
 export interface OllamaNativeConfig {
   baseUrl?: string;
   model: string;
+  /**
+   * 该模型支持看图时置 true —— 截图会随消息附给模型。
+   *
+   * 默认关闭的原因同 openai-compatible：截图是本机现场内容，
+   * 发给模型等于传出本机，必须用户显式同意；本地小模型也不一定装了视觉权重。
+   */
+  vision?: boolean;
 }
 
 interface OllamaResp {
@@ -25,16 +32,26 @@ interface OllamaResp {
 
 export function createOllamaNativeProvider(config: OllamaNativeConfig): LLMProvider {
   const baseUrl = config.baseUrl ?? 'http://localhost:11434';
+  const vision = config.vision === true;
 
   return {
     name: 'ollama-native',
     supportsTools: false,
+    supportsVision: vision,
 
     async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatResponse> {
       const url = `${baseUrl.replace(/\/$/, '')}/api/chat`;
       const body = {
         model: options.model ?? config.model,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        // Ollama 原生视觉输入走 images 字段（base64 数组），不是 OpenAI 那种 content 数组
+        messages: messages.map((m) => {
+          const images = vision && m.role === 'user' ? (m.images ?? []) : [];
+          return {
+            role: m.role,
+            content: m.content,
+            ...(images.length > 0 ? { images: images.map((i) => i.data) } : {}),
+          };
+        }),
         stream: false,
         ...(options.temperature !== undefined && {
           options: { temperature: options.temperature },

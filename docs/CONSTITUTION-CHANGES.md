@@ -2,6 +2,61 @@
 
 > 按版本从新到旧排列。
 
+## v1.5 → v1.6（2026-10-29）
+
+### why
+
+本轮要让**模型真的看到截图**（P1-3）。以前截图只是证据里的一个路径字符串，
+模型通道只认文本，analyst 只能如实写"模型未对该图做视觉判读"——
+诚实，但等于白采：最有信息量的现场（页面长什么样）被挡在模型之外。
+
+要让模型看图，就得让"图片"能随消息一起发出去，也就是要改 `ChatMessage` / `LLMProvider` 端口。
+**而红线 3 写的是"子代理升级不能改 core"。**
+
+这一条一直只有一句话，两个方向都能解释：
+① 严格读：任何子代理相关的改动都不许碰 core → 那视觉能力只能靠类型强转硬塞，契约不落在端口上；
+② 宽泛读：只要子代理逻辑写在 core 之外，随便改 core → 红线形同虚设。
+
+所以本次不是"要不要破例"，而是**把这条红线说到能机检的程度**：
+子代理的**逻辑**升级不许改 core；新增 provider 能力只能以**可选端口扩展**落地，
+且必须同时满足红线 1（core 不依赖任何具体实现）、红线 2（总行数 ≤500），并按升级流程留档。
+
+### what
+
+| # | 条款 | v1.5 | v1.6 |
+|---|---|---|---|
+| 1 | 红线 3 | 只有一句"子代理升级不能改 core" | 补**执行口径**：子代理逻辑升级不许改 core；新增 provider 能力走**可选端口扩展**，core 只许加可选字段/类型定义，且不破红线 1/2 |
+| 2 | 核心行数口径 | 763 / 491 | **770 / 494**（本轮给 `ports.ts` 加了视觉输入的端口定义，两个数都重新核过） |
+
+**本轮实例（视觉输入）**：
+
+- `packages/core/src/ports.ts`（+3 行，守卫口径 491 → 494）：
+  `ChatMessage.images?: ContentImage[]` + `LLMProvider.supportsVision?: boolean` + `ContentImage` 类型。
+  两者都是**可选**的 —— 不开视觉的 provider 与老测试桩一行都不用改。
+- `packages/providers/src/llm/openai-compatible.ts`：`vision: true` 时按 OpenAI 官方
+  `content: [{type:'text'},{type:'image_url',image_url:{url:'data:image/png;base64,…'}}]` 发图；
+  关闭时图片被忽略（不发也不报错）。provider 不返回 usage 时，图片 token 也计入估算（记 0 = 预算护栏失效）。
+- `packages/providers/src/llm/ollama-native.ts`：`vision: true` 时走 Ollama 原生 `images` 字段（base64 数组）。
+- `packages/subagents/src/analyst.ts`：截图读盘 → base64 → 随消息附给模型；
+  **只有真的附上了图**，文字描述才改成"已作为图片附给模型"，否则仍如实写"模型通道只支持文本"。
+  最多 3 张、单张 ≤5MB、读失败跳过（不让整轮 run 挂）。
+- `packages/cli/src/config.ts` + `run.ts` + `init.ts`：`llm.yml` 新增 `vision` 字段，
+  默认 **false**（截图是本机现场内容，发给模型等于传出本机，必须用户显式同意）。
+
+### impact
+
+| 规范条款 | 红线 3 补执行口径；核心行数口径 770 / 494 |
+|---|---|
+| 守卫 | `lint:spec` 继续核对两个行数口径（改 core 不改宪法会直接报"文档口径与实际脱节"）；`lint:core`（纯度）、`lint:lines`（≤500）不变 |
+| 未退化验证 | `lint:spec` 0 偏差；`lint:core` / `lint:lines` 通过；全量用例全绿；`guard:offline` 通过 |
+| 向后兼容 | `images` / `supportsVision` 都是可选字段 —— 不开视觉的老 provider、老测试桩、老 `llm.yml` 全部照旧工作；截图仍落盘在 `reports/evidence/`，报告里仍能打开 |
+
+**顺带记一条判断**（本轮的取舍，不是新条款）：
+"截图传给模型 = 把本机现场内容传出本机"，所以 `vision` 默认关闭，
+且 `llmConfigToYaml` 必须把它写回去 —— 否则"用 Web Settings 存一次配置"
+就把这个开关悄悄抹掉，用户以为截图已经给模型了，实际一直在走纯文本通道
+（与 v1.4 记的 `pricing` 被抹掉是同一类缺陷）。
+
 ## v1.4 → v1.5（2026-10-26）
 
 ### why

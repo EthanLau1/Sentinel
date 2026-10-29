@@ -23,6 +23,9 @@ providers:
     pricing:
       pricePerMTokIn: 2.5
       pricePerMTokOut: 10
+    # 模型支持看图时改成 true：截图会随消息发给模型。
+    # 保持 false（或删掉）时截图只落盘到 reports/evidence/，模型走纯文本通道。
+    vision: false
 
   local-fast:
     type: ollama-native

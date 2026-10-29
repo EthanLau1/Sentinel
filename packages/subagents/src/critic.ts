@@ -168,7 +168,7 @@ async function llmCriticism(
   draft: BugFinding,
 ): Promise<{ shouldReject: boolean; verifiedRootCause: boolean; supportingEvidence: string[]; reason: string; adjustedConfidence: number }> {
   const evidenceSummary = draft.evidence
-    .map(formatEvidence)
+    .map((e) => formatEvidence(e))
     .join('\n');
 
   // 可引用的 hash 清单 —— 必须单独列出来。

@@ -21,7 +21,12 @@ export interface ChatMessage {
   content: string;
   /** tool 调用结果时填 */
   toolCallId?: string;
+  /** 视觉输入：随消息附给模型的图片（provider 不支持视觉时会被忽略） */
+  images?: ContentImage[];
 }
+
+/** 视觉输入图片：base64 编码，不含 data: 前缀 */
+export type ContentImage = { mimeType: string; data: string };
 
 export interface ChatOptions {
   model?: string;
@@ -52,6 +57,8 @@ export interface LLMProvider {
   readonly name: string;
   /** 是否支持 tool calling */
   readonly supportsTools: boolean;
+  /** 是否支持视觉输入（能看图）—— 不支持时附图会被忽略，而不是发给模型后报错 */
+  readonly supportsVision?: boolean;
   /** 主对话接口 */
   chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse>;
   /** 估算 token 数对应的 USD 成本（用于预估） */

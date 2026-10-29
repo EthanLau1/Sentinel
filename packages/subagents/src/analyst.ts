@@ -7,6 +7,8 @@
  *   - 必须填 reproSteps / counterEvidence(可空) / confidence
  */
 
+import { readFile } from 'node:fs/promises';
+
 import type {
   Subagent,
   KernelContext,
@@ -14,6 +16,7 @@ import type {
   BugFinding,
   BugSource,
   Severity,
+  ContentImage,
 } from '@sentinel/core';
 import { extractJson } from './json.js';
 
@@ -31,6 +34,12 @@ const AGENT_LLM_TIMEOUT_MS = 180_000;
 /** 单条证据给模型看的字符上限 —— 超了必须写明截断，不能静默砍掉尾巴 */
 const EVIDENCE_TEXT_LIMIT = 4000;
 
+/** 单次请求最多附几张截图 —— 图片 token 比文本贵，附太多会打爆预算 */
+const MAX_VISION_IMAGES = 3;
+
+/** 单张截图最大字节数 —— 超了跳过，不能把整个请求撑爆 */
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
 /**
  * 证据 → 给模型看的文本。
  *
@@ -40,14 +49,17 @@ const EVIDENCE_TEXT_LIMIT = 4000;
  *    现在砍就写明砍了多少。
  * 2. **不许假装模型看过图片** —— 以前把截图换成 `[image data; inspect separately]`，
  *    看起来"证据在手上"，实际模型一个字都看不到。
- *    现在如实说明：截图是文件，模型通道只支持文本，视觉判读没做。
+ *    现在分两种情况说清楚：图片确实附在消息里（visionAttached），
+ *    或者 provider 根本不支持看图。
  * 3. **结构化证据按结构截断** —— a11y 树保头保尾，DOM 保头部。
  */
-export function formatEvidence(e: Evidence): string {
+export function formatEvidence(e: Evidence, opts: { visionAttached?: boolean } = {}): string {
   const head = `[${e.kind}/${e.source} hash=${e.hash}]`;
   switch (e.kind) {
     case 'screenshot':
-      return `${head} 截图文件：${e.path}（当前模型通道只支持文本，模型未对该图做视觉判读；请以 DOM / a11y / console / network 证据为准）`;
+      return opts.visionAttached
+        ? `${head} 截图文件：${e.path}（本次已作为图片随本条消息附给模型，请直接看图判断）`
+        : `${head} 截图文件：${e.path}（当前模型通道只支持文本，模型未对该图做视觉判读；请以 DOM / a11y / console / network 证据为准）`;
     case 'a11y': {
       // Playwright 的 ariaSnapshot 是一段 YAML 文本，不是 JSON —— 直接给原文比 JSON 串好读
       const text = typeof e.tree === 'string' ? e.tree : JSON.stringify(e.tree);
@@ -85,6 +97,59 @@ function keepHeadAndTail(text: string, limit: number): string {
 export interface AnalystConfig {
   /** 最小置信度阈值，低于此值标 P3 */
   minConfidence?: number;
+}
+
+/**
+ * 把截图证据读成图片，随消息附给模型。
+ *
+ * 为什么以前做不到：截图只是 `path` 字符串，模型通道只认文本，
+ * 于是 analyst 只能写一句"模型看不到图"。现在这里真的把 PNG 读出来附上去。
+ *
+ * 三个边界：
+ * 1. **读不到就跳过，不报错** —— 证据读不出来不该让整轮 run 挂掉；
+ * 2. **只认本地文件或 data URI** —— 不去下载远程 URL；
+ * 3. **最多 3 张、单张 ≤5MB** —— 图片 token 贵，防止一次请求打爆预算。
+ *
+ * 返回 attached（证据 hash 集合）是为了让文字描述如实写"已附图"，
+ * 而不是让模型以为只有一句路径。
+ */
+export async function collectVisionImages(
+  evidence: Evidence[],
+): Promise<{ images: ContentImage[]; attached: Set<string> }> {
+  const images: ContentImage[] = [];
+  const attached = new Set<string>();
+
+  for (const e of evidence) {
+    if (e.kind !== 'screenshot') continue;
+    if (images.length >= MAX_VISION_IMAGES) break;
+    try {
+      const img = await loadImage(e.path);
+      if (!img) continue;
+      images.push(img);
+      attached.add(e.hash);
+    } catch (err) {
+      console.warn(`[sentinel] analyst: 截图读取失败（跳过附图）：${(err as Error).message}`);
+    }
+  }
+
+  return { images, attached };
+}
+
+/** 读一张截图 → base64；data URI 直接拆，文件路径则读盘 */
+async function loadImage(path: string): Promise<ContentImage | null> {
+  if (path.startsWith('data:')) {
+    const m = /^data:([^;]+);base64,(.*)$/s.exec(path);
+    if (!m) return null;
+    return { mimeType: m[1]!, data: m[2]! };
+  }
+  const buf = await readFile(path);
+  if (buf.byteLength > MAX_IMAGE_BYTES) {
+    console.warn(`[sentinel] analyst: 截图超过 ${MAX_IMAGE_BYTES} 字节，跳过附图（${path}）`);
+    return null;
+  }
+  const ext = path.toLowerCase().split('.').pop() ?? '';
+  const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+  return { mimeType: mime, data: buf.toString('base64') };
 }
 
 interface FlowFailedPayload {
@@ -258,7 +323,11 @@ async function llmAnalyse(
   hint: { source: BugSource; severity: Severity; confidence: number },
   url?: string,
 ): Promise<{ rootCause: string; confidence: number; reproSteps: string[] } | null> {
-  const evidenceSummary = evidence.map(formatEvidence).join('\n');
+  const vision = ctx.providers.llm.supportsVision === true;
+  const { images, attached } = vision ? await collectVisionImages(evidence) : { images: [], attached: new Set<string>() };
+  const evidenceSummary = evidence
+    .map((e) => formatEvidence(e, { visionAttached: attached.has(e.hash) }))
+    .join('\n');
 
   const prompt = `你是一个谨慎的 Web 应用调试专家。一个用户流程失败了，你只能基于下面提供的 Evidence 给出根因假设。
 
@@ -287,7 +356,11 @@ ${evidenceSummary}
 
   const resp = await ctx.providers.llm.chat([
     { role: 'system', content: '你是 Sentinel debug agent 的分析师子代理。' },
-    { role: 'user', content: prompt },
+    {
+      role: 'user',
+      content: prompt,
+      ...(images.length > 0 ? { images } : {}),
+    },
   ], { timeoutMs: AGENT_LLM_TIMEOUT_MS });
 
   ctx.budget.consume(resp.usage.totalTokens, resp.costUsd);

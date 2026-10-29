@@ -731,11 +731,13 @@ function buildLlm(
       model: cfg.model,
       ...(cfg.pricing ? { pricing: cfg.pricing } : {}),
       ...(maxTokensPerRequest !== undefined && { maxTokensPerRequest }),
+      ...(cfg.vision === true && { vision: true }),
     });
   }
   return createOllamaNativeProvider({
     ...(cfg.baseUrl && { baseUrl: cfg.baseUrl }),
     model: cfg.model,
+    ...(cfg.vision === true && { vision: true }),
   });
 }
 

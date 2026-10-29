@@ -337,7 +337,7 @@ bug 标题: ${bug.title}
 复现步骤: ${(bug.reproSteps ?? []).join(' / ')}
 当前阶段: ${stage}
 证据:
-${bug.evidence.map(formatEvidence).join('\n')}
+${bug.evidence.map((e) => formatEvidence(e)).join('\n')}
 ${fileContext(bug)}
 
 输出一个 JSON 数组，恰好 3 个元素，每个元素字段如下：

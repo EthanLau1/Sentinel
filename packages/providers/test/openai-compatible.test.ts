@@ -165,4 +165,108 @@ describe('OpenAI-compatible provider', () => {
     });
     await expect(provider.chat([{ role: 'user', content: 'x' }])).rejects.toThrow(/超时/);
   });
+
+  // ── 视觉输入（vision）──
+  // 以前截图只能变成一句"模型看不到图"，现在 vision: true 时图片真的随消息发出去。
+
+  it('supportsVision 如实暴露配置状态（默认 false）', () => {
+    const plain = createOpenAICompatibleProvider({ baseUrl: 'x', apiKey: 'k', model: 'm' });
+    const visual = createOpenAICompatibleProvider({ baseUrl: 'x', apiKey: 'k', model: 'm', vision: true });
+    expect(plain.supportsVision).toBe(false);
+    expect(visual.supportsVision).toBe(true);
+  });
+
+  it('vision: true → 图片按 OpenAI 官方 image_url 格式随消息发出', async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { role: 'assistant', content: '看到了' } }],
+          usage: { prompt_tokens: 100, completion_tokens: 5, total_tokens: 105 },
+        }),
+        { status: 200 },
+      ),
+    );
+    const provider = createOpenAICompatibleProvider({
+      baseUrl: 'https://x.com/v1',
+      apiKey: 'k',
+      model: 'gpt-4o',
+      vision: true,
+    });
+    await provider.chat([
+      { role: 'user', content: '看这张图', images: [{ mimeType: 'image/png', data: 'AAAA' }] },
+    ]);
+    const body = JSON.parse((mockFetch.mock.calls[0]![1] as RequestInit).body as string);
+    const content = body.messages[0].content;
+    expect(Array.isArray(content)).toBe(true);
+    expect(content[0]).toEqual({ type: 'text', text: '看这张图' });
+    expect(content[1].type).toBe('image_url');
+    expect(content[1].image_url.url).toBe('data:image/png;base64,AAAA');
+  });
+
+  it('vision 关闭 → 图片被忽略，content 仍是纯字符串（不发图也不报错）', async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { role: 'assistant', content: 'ok' } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+        { status: 200 },
+      ),
+    );
+    const provider = createOpenAICompatibleProvider({
+      baseUrl: 'https://x.com/v1',
+      apiKey: 'k',
+      model: 'gpt-4o',
+    });
+    await provider.chat([
+      { role: 'user', content: '看这张图', images: [{ mimeType: 'image/png', data: 'AAAA' }] },
+    ]);
+    const body = JSON.parse((mockFetch.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body.messages[0].content).toBe('看这张图');
+  });
+
+  it('vision 关闭时 system 消息即使带图也不转数组（服务端会拒）', async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { role: 'assistant', content: 'ok' } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+        { status: 200 },
+      ),
+    );
+    const provider = createOpenAICompatibleProvider({
+      baseUrl: 'https://x.com/v1',
+      apiKey: 'k',
+      model: 'gpt-4o',
+      vision: true,
+    });
+    await provider.chat([
+      { role: 'system', content: '你是分析师', images: [{ mimeType: 'image/png', data: 'AAAA' }] },
+    ]);
+    const body = JSON.parse((mockFetch.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body.messages[0].content).toBe('你是分析师');
+  });
+
+  it('provider 不返回 usage 时，图片 token 也计入估算（不能记 0）', async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok' } }] }),
+        { status: 200 },
+      ),
+    );
+    const provider = createOpenAICompatibleProvider({
+      baseUrl: 'https://x.com/v1',
+      apiKey: 'k',
+      model: 'gpt-4o',
+      vision: true,
+      pricing: { pricePerMTokIn: 2.5, pricePerMTokOut: 10 },
+    });
+    const r = await provider.chat([
+      { role: 'user', content: '看图', images: [{ mimeType: 'image/png', data: 'A'.repeat(3000) }] },
+    ]);
+    // 纯文本 "看图" 只有极少 token，图片估算必须把它抬上去
+    expect(r.usage.promptTokens).toBeGreaterThan(3);
+    expect(r.costUsd).toBeGreaterThan(0);
+  });
 });
