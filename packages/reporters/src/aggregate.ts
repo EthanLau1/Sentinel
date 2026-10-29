@@ -21,6 +21,7 @@
  */
 
 import type { BugFinding, Evidence } from '@sentinel/core';
+import { clusterAndDedupe, type ClusterResult } from './cluster.js';
 
 /** Sentinel 自身链路故障的特征串 —— 这类问题不是被测项目的缺陷 */
 const TOOL_FAILURE_PATTERNS = [
@@ -188,33 +189,20 @@ export function mergeBugFinding(prev: BugFinding | undefined, next: BugFinding):
 }
 
 /**
- * 聚合同源 bug：同 source + 同 severity + 同症状只保留一条，其余折叠为计数。
- * 证据合并（最多 10 条），避免报告被同质证据淹没。
+ * 聚合同源 bug：同 source + 同 severity + **签名相似度 ≥ 0.85** 的算一条，其余折叠为计数。
+ *
+ * 以前是"症状全文精确匹配" —— 抓不到"同一个错、只差一个数字/路径/时间戳"的重复，
+ * 而那正是真实运行里最常见的形态（2026-06-15 一次跑出 25 条几乎相同的假阳性）。
+ * 相似度算法与归一化规则见 `cluster.ts`（阈值口径来自 cats 的 ErrorSimilarityDetector）。
+ * 证据同时去重（同一 hash 只留一份），并给出**压缩前后字节数** —— "变简洁了"要能核对。
  */
 export function aggregateDuplicateBugs(bugs: BugFinding[]): BugFinding[] {
-  const groups = new Map<string, BugFinding[]>();
-  for (const bug of bugs) {
-    const key = `${bug.source}|${bug.severity}|${normalizeMessage(bug.symptom)}`;
-    const group = groups.get(key);
-    if (group) group.push(bug);
-    else groups.set(key, [bug]);
-  }
+  return clusterAndDedupe(bugs).bugs;
+}
 
-  const out: BugFinding[] = [];
-  for (const group of groups.values()) {
-    const [first, ...rest] = group;
-    if (!first) continue;
-    if (rest.length === 0) {
-      out.push(first);
-      continue;
-    }
-    const merged = [...first.evidence, ...rest.flatMap((r) => r.evidence)].slice(0, 10);
-    out.push({
-      ...first,
-      title: `${first.title} [同类 ${group.length} 条已合并]`,
-      symptom: `${first.symptom}\n   （已合并 ${rest.length} 条同源问题）`,
-      evidence: merged,
-    });
-  }
-  return out;
+/**
+ * 同上，但**带量化结果** —— 报告与 run-status.json 要能说清"合并了多少、去重省了多少字节"。
+ */
+export function aggregateDuplicateBugsWithStats(bugs: BugFinding[]): ClusterResult {
+  return clusterAndDedupe(bugs);
 }

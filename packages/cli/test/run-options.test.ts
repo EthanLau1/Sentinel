@@ -50,4 +50,30 @@ describe('run 参数解析（越界必须在入口被挡住）', () => {
     expect(opts.port).toBeUndefined();
     expect(opts.url).toBeUndefined();
   });
+
+  it('--knowledge-rate 正常值（调低）→ 收下', () => {
+    setArgv('--knowledge-rate', '0.1');
+    expect(parseRunOptions().knowledgeRate).toBe(0.1);
+  });
+
+  it('--knowledge-rate 0 → 收下（等于彻底不查外部知识）', () => {
+    setArgv('--knowledge-rate', '0');
+    expect(parseRunOptions().knowledgeRate).toBe(0);
+  });
+
+  it('--knowledge-rate 超过宪法上限 0.3 → 报错（上限是条款，只能调低）', () => {
+    // 调高 = 让工具违反自己的宪法，必须在入口挡住，不能静默接受
+    setArgv('--knowledge-rate', '0.9');
+    expect(() => parseRunOptions()).toThrow(/0-0\.3/);
+  });
+
+  it('--knowledge-rate 不是数字 → 报错说人话', () => {
+    setArgv('--knowledge-rate', 'abc');
+    expect(() => parseRunOptions()).toThrow(/0-0\.3/);
+  });
+
+  it('没给 --knowledge-rate → undefined（用宪法默认 0.3）', () => {
+    setArgv();
+    expect(parseRunOptions().knowledgeRate).toBeUndefined();
+  });
 });

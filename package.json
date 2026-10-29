@@ -25,6 +25,7 @@
     "lint:lines": "node scripts/check-core-lines.mjs",
     "lint:spec": "node scripts/check-spec-sync.mjs",
     "guard:offline": "bun scripts/check-offline-guard.mjs",
+    "guard:knowledge": "bun scripts/check-knowledge-rate.mjs",
     "sentinel:run": "bun packages/cli/src/index.ts run",
     "sentinel:ui": "bun packages/cli/src/index.ts ui",
     "sentinel:init": "bun packages/cli/src/index.ts init",

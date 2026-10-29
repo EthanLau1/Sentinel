@@ -8,7 +8,7 @@ export { extractJson, salvageTruncatedJsonArray } from './json.js';
 export { normalizePatch, ensureTrailingNewline, stripThinkResidue } from './diff.js';
 export { createVerifier } from './verifier.js';
 export { createPlanner, splitPlannerOutput, extractDiff } from './planner.js';
-export { createEnhancer } from './enhancer.js';
+export { createEnhancer, MAX_SEARCH_RATE, maxSearchesFor, type KnowledgeSearchStats } from './enhancer.js';
 export { createExecutor, classifyTier, validPatch, isRenameOnlyPatch, applyPatch, patchTargets } from './executor.js';
 
 export {

@@ -610,6 +610,11 @@ like "not needed".
 - **离线模式有机器守卫**：断网实跑验证"一次外网请求都不发"（`bun run guard:offline`）
   **The offline mode has a machine guard**: a real disconnected run proves that not a single
   outbound request is made (`bun run guard:offline`).
+- **知识检索有 30% 上限**：每次 run 最多触发 30% 的流程去查外部知识（宪法条款，有机器守卫）
+  被上限挡下来的会在 `run-status.json` 的 `knowledgeSearch` 里写明跳过次数 —— 不是静默丢弃
+  **Knowledge retrieval is capped at 30%**: at most 30% of the flows in a run trigger an external
+  lookup (a constitution clause, with a machine guard). Lookups skipped by the cap are counted in
+  `run-status.json` under `knowledgeSearch` — they are never silently dropped.
 
 **还没有 / 只是占位 / Not there yet**
 

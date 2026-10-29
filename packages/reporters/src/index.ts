@@ -10,6 +10,7 @@ export {
 export { color, printBug, printSummary } from './cli.js';
 export {
   aggregateDuplicateBugs,
+  aggregateDuplicateBugsWithStats,
   isToolFailure,
   isSentinelInvalidUrl,
   classifyBug,
@@ -19,5 +20,21 @@ export {
   normalizeMessage,
   type BugVerdict,
 } from './aggregate.js';
+export {
+  clusterBugs,
+  clusterAndDedupe,
+  similarity,
+  levenshteinRatio,
+  jaccardSimilarity,
+  normalizeSignature,
+  errorTypeKeys,
+  dedupeEvidence,
+  LEVENSHTEIN_THRESHOLD,
+  JACCARD_THRESHOLD,
+  PATTERN_MATCH_BONUS,
+  COMPARE_PREFIX_LENGTH,
+  type ClusterResult,
+  type EvidenceDedupeStats,
+} from './cluster.js';
 export { createBugCollector, type BugCollector, type RejectionKind } from './collect.js';
 export { applyTierDecisions, findTierDecision, type TierDecisionRecord } from './tier.js';

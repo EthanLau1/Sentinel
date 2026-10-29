@@ -36,6 +36,18 @@ export interface MarkdownOptions {
    * 这些发现保留在列表里，但必须标明"没验过"。
    */
   unverifiedBugIds?: string[];
+  /**
+   * 同源合并与证据去重的**量化结果**。
+   *
+   * 为什么必须写进报告：以前"合并了 25 条重复"只是体感，
+   * 现在给出可核对的数字 —— 合并了几条、证据从几条/几字节变成几条/几字节。
+   * 少写这一行，用户会怀疑"是不是把不同的问题也合并掉了"。
+   */
+  dedupe?: {
+    mergedCount: number;
+    clusterCount: number;
+    evidence: { beforeCount: number; afterCount: number; beforeBytes: number; afterBytes: number };
+  };
 }
 
 export function bugToMarkdown(bug: BugFinding, opts: MarkdownOptions = {}): string {
@@ -173,6 +185,16 @@ export function reportToMarkdown(
     {} as Record<string, number>,
   );
   lines.push(`**分级**: P0=${counts['P0'] ?? 0}, P1=${counts['P1'] ?? 0}, P2=${counts['P2'] ?? 0}, P3=${counts['P3'] ?? 0}`);
+
+  // 同源合并与证据去重要给出**数字** —— "看起来简洁了"不是结论，"25 条 → 3 组"才是
+  if (opts.dedupe && (opts.dedupe.mergedCount > 0 || opts.dedupe.evidence.afterCount < opts.dedupe.evidence.beforeCount)) {
+    const d = opts.dedupe;
+    lines.push(
+      `**同源合并**: ${d.mergedCount} 条重复发现已合并（剩 ${d.clusterCount} 组）；` +
+        `证据去重 ${d.evidence.beforeCount} 条 → ${d.evidence.afterCount} 条` +
+        `（${d.evidence.beforeBytes} → ${d.evidence.afterBytes} 字节）`,
+    );
+  }
 
   // 分级只是"总览"，口径必须写清楚：非项目缺陷的条目不参与项目健康判断
   const nonDefects = bugs.filter((b) => classifyBug(b) !== 'project-defect');

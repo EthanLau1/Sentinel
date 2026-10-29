@@ -41,13 +41,14 @@ import {
   createExecutor,
   PRESETS,
   DEFAULT_WEIGHTS,
+  MAX_SEARCH_RATE,
 } from '@sentinel/subagents';
 import {
   reportToMarkdown,
   reportToJson,
   printBug,
   printSummary,
-  aggregateDuplicateBugs,
+  aggregateDuplicateBugsWithStats,
   classifyBug,
   createBugCollector,
   applyTierDecisions,
@@ -80,6 +81,8 @@ export interface RunOptions {
   port?: number;
   /** 显式指定被测地址（--url）—— 不自启 dev server，直接测这个地址 */
   url?: string;
+  /** 知识检索的流程占比上限（--knowledge-rate）—— 只允许调低（0 ~ 0.3，宪法上限） */
+  knowledgeRate?: number;
 }
 
 /** 导出以便单测：参数解析是纯函数，越界/格式错必须在这里被挡住 */
@@ -126,6 +129,16 @@ export function parseRunOptions(): RunOptions {
   if (url !== undefined) {
     if (!/^https?:\/\//i.test(url)) throw new Error(`--url 必须是 http(s) 地址，收到 "${url}"`);
     out.url = url;
+  }
+  // --knowledge-rate 只能调**低**：30% 是宪法条款，调高就是让工具违反自己的宪法。
+  // 越界必须当场报错，不能静默忽略（静默忽略 = 用户以为限流生效了）。
+  const kr = get('--knowledge-rate');
+  if (kr !== undefined) {
+    const n = Number(kr);
+    if (!Number.isFinite(n) || n < 0 || n > MAX_SEARCH_RATE) {
+      throw new Error(`--knowledge-rate 必须在 0-${MAX_SEARCH_RATE} 之间，收到 "${kr}"（0.3 是宪法上限，只能调低）`);
+    }
+    out.knowledgeRate = n;
   }
   return out;
 }
@@ -493,7 +506,12 @@ export async function runRun(): Promise<number> {
     subagents.push(createCritic());
   }
   // 离线模式必须彻底关掉外部知识检索 —— 目标就是"没有网络也能用"
-  subagents.push(createEnhancer({ skipSearch: opts.noEnhance === true || offline }));
+  // enhancer 实例要留下来：run 结束后要读它的触发统计（宪法 30% 上限可核对）
+  const enhancer = createEnhancer({
+    skipSearch: opts.noEnhance === true || offline,
+    ...(opts.knowledgeRate !== undefined && { maxSearchRate: opts.knowledgeRate }),
+  });
+  subagents.push(enhancer);
   subagents.push(
     createExecutor({
       // 默认 3 = 宪法定义的 Tier 1/2/3 各自产出对应产物；
@@ -552,7 +570,14 @@ export async function runRun(): Promise<number> {
 
   // 7. 输出报告（同源错误先聚合，避免几十条同质问题淹没用户）
   // 报告里的 tier 必须是硬规则判出来的那个（不是 LLM 自报的）
-  const reportedBugs = aggregateDuplicateBugs(applyTierDecisions(collector.bugs, statusEvents.tierDecisions));
+  // 聚类结果要带量化数字 —— "合并了重复"必须可核对（合并几条、证据省多少字节）
+  const clustered = aggregateDuplicateBugsWithStats(applyTierDecisions(collector.bugs, statusEvents.tierDecisions));
+  const reportedBugs = clustered.bugs;
+  const dedupeStats = {
+    mergedCount: clustered.mergedCount,
+    clusterCount: clustered.clusterCount,
+    evidence: clustered.evidence,
+  };
   const coverageInfo = buildCoverageInfo(coverage.map, {
     plannedFlows,
     passedFlows,
@@ -603,6 +628,7 @@ export async function runRun(): Promise<number> {
     rejectedPatches: statusEvents.rejectedPatches,
     rejectedFindings,
     unverifiedBugIds,
+    dedupe: dedupeStats,
   });
 
   // 8. 总结
@@ -687,6 +713,8 @@ export async function runRun(): Promise<number> {
     evidenceFailures: statusEvents.evidenceFailures,
     bugCount: collector.bugs.length,
     reportedBugCount: reportedBugs.length,
+    // 同源合并与证据去重：合并了几条重复发现、证据省了多少字节
+    dedupe: dedupeStats,
     // 三类判定各有多少 —— 口径写清楚，机器和人都能核对
     toolFailures: reportedBugs.filter((b) => classifyBug(b) === 'tool-failure').length,
     sentinelInvalidUrls: reportedBugs.filter((b) => classifyBug(b) === 'sentinel-invalid-url').length,
@@ -706,6 +734,8 @@ export async function runRun(): Promise<number> {
     knowledgeRequests,
     knowledgeResults,
     knowledgeCacheHits,
+    // 知识检索的**流程占比**：宪法硬条款 ≤30%，这里写清分母、实际值、上限、超限跳过数
+    knowledgeSearch: enhancer.knowledgeStats(),
     discoveredPages: coverage.map?.pages.length ?? 0,
     discoveredApi: coverage.map?.api.length ?? 0,
     coverageRisks: coverage.map?.risks.filter((risk) => risk.id.startsWith('coverage_')) ?? [],
@@ -778,6 +808,12 @@ interface WriteReportsInput {
   rejectedFindings?: Array<{ bugId: string; reason: string }>;
   /** critic 没能运行 → 这些结论未经反向验证，报告里必须标明 */
   unverifiedBugIds?: string[];
+  /** 同源合并与证据去重的量化结果 —— 报告里给出数字，不靠"看起来简洁了" */
+  dedupe?: {
+    mergedCount: number;
+    clusterCount: number;
+    evidence: { beforeCount: number; afterCount: number; beforeBytes: number; afterBytes: number };
+  };
 }
 
 async function writeReports(
@@ -785,7 +821,7 @@ async function writeReports(
   bugs: BugFinding[],
   input: WriteReportsInput,
 ): Promise<void> {
-  const { format, tierDecisions, llmMode, coverage, rejectedPatches, rejectedFindings, unverifiedBugIds } = input;
+  const { format, tierDecisions, llmMode, coverage, rejectedPatches, rejectedFindings, unverifiedBugIds, dedupe } = input;
   const dir = join(root, 'reports');
   if (!existsSync(dir)) await mkdir(dir, { recursive: true });
   const meta = {
@@ -796,6 +832,7 @@ async function writeReports(
     ...(rejectedPatches ? { rejectedPatches } : {}),
     ...(rejectedFindings ? { rejectedFindings } : {}),
     ...(unverifiedBugIds ? { unverifiedBugIds } : {}),
+    ...(dedupe ? { dedupe } : {}),
   };
   if (format === 'markdown' || format === 'both') {
     const md = reportToMarkdown(bugs, meta, meta);

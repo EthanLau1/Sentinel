@@ -60,12 +60,6 @@
       "id": "stale-dist",
       "since": "0.2.0",
       "expect": "start.command 只在 dist 缺失时构建 —— 改过源码后启动仍是旧前端"
-    },
-    {
-      "dimension": "enhancer",
-      "id": "no-rate-limit",
-      "since": "0.2.0",
-      "expect": "宪法要求触发率 ≤30%，enhancer 没有每次 run 的触发比例上限"
     }
   ]
 }

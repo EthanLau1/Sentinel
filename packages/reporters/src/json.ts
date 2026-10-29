@@ -46,6 +46,24 @@ export interface JsonReport {
   rejected_findings?: Array<{ bugId: string; reason: string }>;
   /** 因为 critic 没能运行而未经反向验证的 bug id */
   unverified_bug_ids?: string[];
+  /**
+   * 同源合并与证据去重的量化结果。
+   *
+   * 为什么要有：以前"合并了重复结论"只是报告里的一句话，机器无从核对。
+   * 现在给出 before/after 的条数与字节数 —— 压缩效果是可测的，不是感觉。
+   */
+  dedupe?: {
+    /** 合并掉的重复发现条数 */
+    mergedCount: number;
+    /** 合并后剩几组问题 */
+    clusterCount: number;
+    evidence: {
+      beforeCount: number;
+      afterCount: number;
+      beforeBytes: number;
+      afterBytes: number;
+    };
+  };
 }
 
 /**
@@ -80,6 +98,12 @@ export function reportToJson(
     rejectedFindings?: Array<{ bugId: string; reason: string }>;
     /** 因为 critic 没能运行而未经反向验证的 bug id */
     unverifiedBugIds?: string[];
+    /** 同源合并与证据去重的量化结果（机器也要能核对"合并了多少"） */
+    dedupe?: {
+      mergedCount: number;
+      clusterCount: number;
+      evidence: { beforeCount: number; afterCount: number; beforeBytes: number; afterBytes: number };
+    };
   } = {},
 ): JsonReport {
   const by_severity: Record<string, number> = {};
@@ -117,6 +141,9 @@ export function reportToJson(
   }
   if (meta.unverifiedBugIds && meta.unverifiedBugIds.length > 0) {
     out.unverified_bug_ids = meta.unverifiedBugIds;
+  }
+  if (meta.dedupe) {
+    out.dedupe = meta.dedupe;
   }
   return out;
 }

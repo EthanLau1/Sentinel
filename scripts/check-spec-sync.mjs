@@ -302,10 +302,43 @@ const addBlocked = (dimension, id, detail) => blocked.push({ dimension, id, deta
 }
 
 // ── 11. 知识检索触发率上限 ─────────────────────────────────────────────────
+//
+// 宪法：「触发率上限: ≤30%（每次 run 中触发检索的流程占比）」。
+// 这条要成立，光有实现不够 —— 必须**可核对**：有守卫脚本、统计写进 run-status。
+// 「守卫优先于自觉」：凡是宪法里能机检的条款，都要有对应守卫，否则第二次改代码就会漂移。
+const knowledgeRateImplemented = /maxSearchRate|triggerRate|RATE_LIMIT|maxSearches|searchBudget/i.test(
+  read('packages/subagents/src/enhancer.ts'),
+);
 {
   const enhancer = read('packages/subagents/src/enhancer.ts');
-  if (!/maxSearchRate|triggerRate|RATE_LIMIT|maxSearches|searchBudget/i.test(enhancer)) {
+  const runSrc = read('packages/cli/src/run.ts');
+  if (!knowledgeRateImplemented) {
     add('enhancer', 'no-rate-limit', '宪法要求触发率 ≤30%，enhancer 没有每次 run 的触发比例上限');
+  } else {
+    // 实现有了，但上限值必须还是宪法写的 30%（被人调成 0.9 也不能算合规）
+    if (!/MAX_SEARCH_RATE\s*=\s*0\.3\b/.test(enhancer)) {
+      add(
+        'enhancer',
+        'knowledge-rate-value',
+        'enhancer 有触发率上限，但 MAX_SEARCH_RATE 不是 0.3 —— 宪法写的是 ≤30%',
+      );
+    }
+    // 触发率必须可核对：写进 run-status.json
+    if (!/knowledgeSearch/.test(runSrc)) {
+      add(
+        'enhancer',
+        'knowledge-rate-not-reported',
+        '宪法要求触发率 ≤30%，但 run-status.json 里没有 knowledgeSearch —— 超限了查不出来',
+      );
+    }
+    // 守卫脚本必须存在（守卫优先于自觉）
+    if (!exists('scripts/check-knowledge-rate.mjs')) {
+      add(
+        'enhancer',
+        'knowledge-rate-unguarded',
+        '触发率上限没有机器守卫（scripts/check-knowledge-rate.mjs 不存在）—— 实现会被改坏而没人知道',
+      );
+    }
   }
 }
 
@@ -744,6 +777,9 @@ if (!exists('packages/reporters/src/html.ts')) {
       // README 里出现这些短语 = 声称该能力已具备
       claimedPhrases: ['最多触发 30%', 'at most 30% of flows', '30% 的流程'],
       detail: '宪法要求知识增强每次 run 的触发流程占比 ≤30%，代码里没有这个限流（只看平均置信度 <0.7）',
+      // 已实现就别再按"未实现"拦 README ——
+      // 这条清单的用途是防"报告说能做、实际没做"，能力真有了还拦着就是另一种失真。
+      implemented: knowledgeRateImplemented,
     },
   ];
   const workingStart = readme.indexOf('**已经能用');
@@ -752,6 +788,7 @@ if (!exists('packages/reporters/src/html.ts')) {
     workingStart === -1 ? '' : readme.slice(workingStart, workingEnd === -1 ? undefined : workingEnd);
   if (workingSection) {
     for (const cap of unimplementedCapabilities) {
+      if (cap.implemented) continue;
       for (const phrase of cap.claimedPhrases) {
         if (workingSection.includes(phrase)) {
           add(
