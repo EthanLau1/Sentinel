@@ -523,6 +523,7 @@ your-app/
 ├── reports/
 │   ├── sentinel-latest.md           ← Markdown 报告 / Markdown report
 │   ├── sentinel-latest.json         ← JSON 报告 / JSON report
+│   ├── events.ndjson                ← 黑匣子事件流（NDJSON，红线 6 留档与回放底座）/ event stream NDJSON (red line 6)
 │   ├── patches/                     ← Tier 2 补丁（.patch）/ Tier 2 patches (.patch)
 │   └── suggestions/                 ← Tier 3 建议（.md）/ Tier 3 suggestions (.md)
 └── .sentinel/runs/webui.json        ← Web 控制台的运行历史 / web console run history

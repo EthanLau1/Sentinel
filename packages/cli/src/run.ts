@@ -54,6 +54,7 @@ import {
   applyTierDecisions,
   buildCoverageInfo,
   coverageIsUninformative,
+  writeEventsNdjson,
   type CoverageInfo,
   type TierDecisionRecord,
   color,
@@ -533,7 +534,8 @@ export async function runRun(): Promise<number> {
     subagents,
   });
 
-  // 6. 启动
+  // 6. 启动（红线 6：开始录制所有 bus 事件，run 结束后落盘 reports/events.ndjson）
+  kernel.bus.startRecording();
   const startMs = Date.now();
   let failed = false;
   try {
@@ -557,6 +559,13 @@ export async function runRun(): Promise<number> {
       );
     }
   } finally {
+    // 红线 6：停止录制，把本次 run 的所有 bus 事件落盘（黑匣子，可回放）
+    const recordedEvents = kernel.bus.stopRecording();
+    try {
+      await writeEventsNdjson(join(root, 'reports'), recordedEvents);
+    } catch {
+      // 落盘失败不中断 run 结果 —— 事件文件是辅助，不是主报告
+    }
     try {
       await kernel.stop();
     } finally {

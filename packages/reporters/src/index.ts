@@ -38,3 +38,4 @@ export {
 } from './cluster.js';
 export { createBugCollector, type BugCollector, type RejectionKind } from './collect.js';
 export { applyTierDecisions, findTierDecision, type TierDecisionRecord } from './tier.js';
+export { writeEventsNdjson } from './recorder.js';
