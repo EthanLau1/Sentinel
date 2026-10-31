@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppState';
-import { CheckCircle, XCircle, Loader, Save, Wifi, ArrowRight } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader, ArrowLeft } from 'lucide-react';
 
 interface TestResult {
   ok: boolean;
@@ -25,7 +25,7 @@ interface LoadedSettings {
 
 export function Settings(): React.JSX.Element {
   const { state, navigate } = useApp();
-  const project = state.projects.find(p => p.id === state.selectedProjectId);
+  const project = state.projects.find((p) => p.id === state.selectedProjectId);
   const projectId = project?.id;
 
   const [testResult, setTestResult] = useState<TestResult | null>(null);
@@ -48,17 +48,17 @@ export function Settings(): React.JSX.Element {
   useEffect(() => {
     if (scope === 'project' && !projectId) return;
     const controller = new AbortController();
-    const query = new URLSearchParams({ scope, ...(scope === 'project' && projectId ? { projectId } : {}) });
+    const query = new URLSearchParams({
+      scope,
+      ...(scope === 'project' && projectId ? { projectId } : {}),
+    });
     fetch('/api/settings?' + query, { signal: controller.signal })
-      .then(res => {
+      .then((res) => {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json() as Promise<LoadedSettings>;
       })
-      .then(data => {
+      .then((data) => {
         setProviderType(data.type ?? 'openai-compatible');
-        // provider 名要回填 ——
-        // 旧前端不传 providerName，服务端只能回落成 'cloud'，
-        // 于是自定义 provider 名（如 'minimax'）的 pricing 会被抹掉。
         setProviderName(data.providerName ?? '');
         setBaseUrl(data.baseUrl ?? '');
         setModel(data.model ?? '');
@@ -67,7 +67,7 @@ export function Settings(): React.JSX.Element {
         setLoadError('');
         setLoadedKey(scopeKey);
       })
-      .catch(err => {
+      .catch((err) => {
         if (!controller.signal.aborted) {
           setLoadError(String(err));
           setLoadedKey(scopeKey);
@@ -85,7 +85,7 @@ export function Settings(): React.JSX.Element {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ baseUrl, apiKey, model, scope, projectId }),
       });
-      const data = await res.json() as TestResult;
+      const data = (await res.json()) as TestResult;
       setTestResult(data);
     } catch (err) {
       setTestResult({ ok: false, error: String(err) });
@@ -110,7 +110,7 @@ export function Settings(): React.JSX.Element {
           ...(scope === 'project' ? { projectId } : {}),
         }),
       });
-      const data = await res.json() as SaveResult;
+      const data = (await res.json()) as SaveResult;
       setSaveResult(data);
     } catch (err) {
       setSaveResult({ ok: false, error: String(err) });
@@ -127,174 +127,255 @@ export function Settings(): React.JSX.Element {
 
   if (loadedKey !== scopeKey) {
     return (
-      <div className="max-w-2xl mx-auto flex items-center justify-center" style={{ paddingTop: '4rem' }}>
-        <Loader size={20} className="animate-spin" style={{ color: 'var(--accent-blue)' }} />
+      <div className="flex flex-col items-center justify-center h-full py-20 text-center">
+        <Loader size={20} className="animate-spin text-neutral-400 mb-2" />
+        <span className="text-xs text-neutral-400">正在读取配置…</span>
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="mb-6">
-        <h2 className="text-2xl font-semibold mb-1">Step 1: Setup</h2>
-        <p className="text-secondary text-sm">
-          Configure your LLM provider. Sentinel uses AI to analyze bugs and generate fixes.
-        </p>
-      </div>
-
-      <div className="flex gap-2 mb-4" role="group" aria-label="Configuration scope">
-        <button className={`btn ${scope === 'global' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setScope('global')}>Global default</button>
-        <button className={`btn ${scope === 'project' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setScope('project')} disabled={!projectId}>Project override</button>
-      </div>
-      {scope === 'project' && <p className="text-sm text-secondary mb-4">{project?.name}: settings saved here override the global default. Leave unconfigured to use the global default.</p>}
-      {loadError && <p role="alert" className="text-accent-red mb-4">Unable to load settings: {loadError}</p>}
-
-      {/* LLM Configuration Form */}
-      <div className="card mb-6">
-        <h3 className="font-semibold mb-4 pb-2 border-b border-color" style={{ borderColor: 'var(--border-color)' }}>
-          LLM Provider Configuration
-        </h3>
-
-        <div className="flex flex-col gap-4">
-          {/* Type */}
+    <div className="flex flex-col h-full justify-between">
+      <div>
+        {/* Header */}
+        <div className="flex items-start justify-between">
           <div>
-            <label className="block text-sm font-medium mb-1">Type</label>
-            <select
-              className="w-full px-3 py-2 rounded text-sm"
-              style={{ backgroundColor: 'var(--bg-base)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
-              value={providerType}
-              onChange={e => setProviderType(e.target.value)}
+            <h2 className="text-2xl font-bold text-neutral-900 tracking-tight">
+              模型与规则配置
+            </h2>
+            <p className="text-xs text-neutral-500 mt-1">
+              配置用于根因分析与代码修复的 LLM 供应商，可按项目覆盖默认配置。
+            </p>
+          </div>
+          <div className="border border-neutral-200 rounded px-2.5 py-1 text-xs font-mono text-neutral-500 uppercase tracking-wider">
+            05 / SETTINGS
+          </div>
+        </div>
+
+        {/* Top Status Strip */}
+        <div className="border border-neutral-200 rounded-xl p-3.5 flex items-center justify-between bg-white mt-5">
+          <div className="flex items-center gap-2 text-xs font-medium text-neutral-800">
+            <span className="status-dot status-dot-green"></span>
+            <span>
+              当前作用域：{scope === 'global' ? '全局默认配置 (~/.sentinel/llm.yml)' : `${project?.name} 专属覆盖`}
+            </span>
+          </div>
+
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => setScope('global')}
+              className={`px-3 py-1 text-xs rounded-lg font-medium transition cursor-pointer border ${
+                scope === 'global'
+                  ? 'bg-black text-white border-black'
+                  : 'bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50'
+              }`}
             >
-              <option value="openai-compatible">Cloud API (OpenAI, Anthropic, MiniMax, DeepSeek, Groq...)</option>
-              <option value="ollama-native">Local Model (Ollama, LM Studio, LocalAI)</option>
-            </select>
+              全局默认
+            </button>
+            <button
+              onClick={() => setScope('project')}
+              disabled={!projectId}
+              className={`px-3 py-1 text-xs rounded-lg font-medium transition cursor-pointer border ${
+                scope === 'project'
+                  ? 'bg-black text-white border-black'
+                  : 'bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50'
+              }`}
+            >
+              项目专属
+            </button>
           </div>
+        </div>
 
-          {/* Base URL */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Base URL</label>
-            <input
-              type="text"
-              className="w-full px-3 py-2 rounded text-sm"
-              style={{ backgroundColor: 'var(--bg-base)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
-              value={baseUrl}
-              onChange={e => setBaseUrl(e.target.value)}
-              placeholder={providerType === 'ollama-native' ? 'http://localhost:11434' : 'https://api.minimaxi.com/v1'}
-            />
+        {loadError && (
+          <div className="border border-neutral-200 bg-neutral-50 text-neutral-700 p-3 rounded-xl text-xs mt-3">
+            无法读取配置文件: {loadError}
           </div>
+        )}
 
-          {/* API Key */}
-          {providerType === 'openai-compatible' && (
-            <div>
-              <label className="block text-sm font-medium mb-1">API Key</label>
-              <input
-                type="password"
-                className="w-full px-3 py-2 rounded text-sm"
-                style={{ backgroundColor: 'var(--bg-base)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
-                value={apiKey}
-                onChange={e => { setApiKey(e.target.value); setHasExistingKey(false); }}
-                placeholder={hasExistingKey ? '••• Already configured (type new key to change)' : 'your-api-key'}
-              />
-              {hasExistingKey && !apiKey && (
-                <p className="text-xs mt-1" style={{ color: 'var(--accent-green)' }}>
-                  ✓ API Key already saved. Leave empty to keep current key.
-                </p>
+        {/* Two-Card Grid - Responsive */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 mt-4 sm:mt-5">
+          {/* Card 1: 模型参数输入 */}
+          <div className="border border-neutral-200 rounded-xl p-5 bg-white flex flex-col justify-between">
+            <div className="flex flex-col gap-3">
+              <div>
+                <div className="font-bold text-sm text-neutral-900">
+                  供应商与端点
+                </div>
+                <div className="text-xs text-neutral-500 mt-0.5 mb-2">
+                  选择模型协议及目标接口 Base URL。
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1">
+                  接口协议类型
+                </label>
+                <select
+                  value={providerType}
+                  onChange={(e) => setProviderType(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="openai-compatible">OpenAI-Compatible (DeepSeek / MiniMax / OpenAI / Qwen)</option>
+                  <option value="ollama-native">Ollama 本地原生 (127.0.0.1:11434)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1">
+                  Base URL 地址
+                </label>
+                <input
+                  type="text"
+                  placeholder="https://api.openai.com/v1 或 http://127.0.0.1:11434"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  className="input-field"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1">
+                  模型标识 (Model)
+                </label>
+                <input
+                  type="text"
+                  placeholder="如: deepseek-chat, gpt-4o, qwen2.5-coder"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="input-field"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1">
+                  API 密钥 (API Key)
+                </label>
+                <input
+                  type="password"
+                  placeholder={hasExistingKey ? '•••••••• (已配置，留空保留原值)' : 'sk-...'}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  className="input-field"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 mt-2 pt-3 border-t border-neutral-100">
+                <button
+                  onClick={saveSettings}
+                  disabled={saving}
+                  className="btn-primary flex-1 justify-center"
+                >
+                  {saving ? <Loader className="animate-spin" size={13} /> : null}
+                  {saving ? '保存中…' : '保存配置'}
+                </button>
+
+                <button
+                  onClick={runConnectivityTest}
+                  disabled={testing}
+                  className="btn-secondary"
+                >
+                  {testing ? <Loader className="animate-spin" size={13} /> : null}
+                  {testing ? '测试中…' : '测试连接'}
+                </button>
+              </div>
+
+              {/* Save & Test Results */}
+              {saveResult && (
+                <div
+                  className={`p-2.5 rounded-lg text-xs flex items-center gap-2 border ${
+                    saveResult.ok
+                      ? 'border-neutral-200 bg-neutral-50 text-neutral-800'
+                      : 'border-neutral-300 bg-neutral-100 text-neutral-900'
+                  }`}
+                >
+                  {saveResult.ok ? (
+                    <CheckCircle2 size={14} className="text-black" />
+                  ) : (
+                    <XCircle size={14} className="text-black" />
+                  )}
+                  <span>{saveResult.ok ? '配置已成功持久化至磁盘。' : `保存失败: ${saveResult.error}`}</span>
+                </div>
+              )}
+
+              {testResult && (
+                <div
+                  className={`p-2.5 rounded-lg text-xs flex items-center gap-2 border ${
+                    testResult.ok
+                      ? 'border-neutral-200 bg-neutral-50 text-neutral-800'
+                      : 'border-neutral-300 bg-neutral-100 text-neutral-900'
+                  }`}
+                >
+                  {testResult.ok ? (
+                    <CheckCircle2 size={14} className="text-black" />
+                  ) : (
+                    <XCircle size={14} className="text-black" />
+                  )}
+                  <span>
+                    {testResult.ok
+                      ? '连接测试通过：通道畅通且响应正常。'
+                      : `测试失败: ${testResult.error}`}
+                  </span>
+                </div>
               )}
             </div>
-          )}
-
-          {/* Model */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Model</label>
-            <input
-              type="text"
-              className="w-full px-3 py-2 rounded text-sm"
-              style={{ backgroundColor: 'var(--bg-base)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
-              value={model}
-              onChange={e => setModel(e.target.value)}
-              placeholder="e.g. MiniMax-M3, gpt-4o, qwen3:7b"
-            />
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              className="btn btn-primary"
-              onClick={saveSettings}
-              disabled={saving || Boolean(loadError)}
-            >
-              {saving ? <Loader size={14} className="animate-spin" /> : <Save size={14} />}
-              {saving ? 'Saving…' : 'Save'}
-            </button>
+          {/* Card 2: 预算护栏与离线模式 */}
+          <div className="border border-neutral-200 rounded-xl p-5 bg-white flex flex-col justify-between">
+            <div>
+              <div className="font-bold text-sm text-neutral-900">
+                规则护栏与隐私准则
+              </div>
+              <div className="text-xs text-neutral-500 mt-0.5 mb-4">
+                Sentinel 自带确定性护栏，避免模型死循环或意外开销。
+              </div>
 
-            <button
-              className="btn"
-              onClick={runConnectivityTest}
-              disabled={testing || !baseUrl}
-              style={{ border: '1px solid var(--border-color)' }}
-            >
-              {testing ? <Loader size={14} className="animate-spin" /> : <Wifi size={14} />}
-              {testing ? 'Testing…' : 'Test Connection'}
-            </button>
-          </div>
+              <div className="flex flex-col gap-2.5 text-xs">
+                <div className="flex items-center justify-between p-2.5 rounded-lg border border-neutral-100 bg-neutral-50/50">
+                  <span className="text-neutral-600 font-medium">离线自治能力 (Offline Mode)</span>
+                  <span className="font-medium text-neutral-900">原生支持</span>
+                </div>
+                <div className="flex items-center justify-between p-2.5 rounded-lg border border-neutral-100 bg-neutral-50/50">
+                  <span className="text-neutral-600 font-medium">知识检索限流 (宪法硬条款)</span>
+                  <span className="font-mono text-neutral-800">≤ 30% 流程占比</span>
+                </div>
+                <div className="flex items-center justify-between p-2.5 rounded-lg border border-neutral-100 bg-neutral-50/50">
+                  <span className="text-neutral-600 font-medium">多模态截图传输 (Vision)</span>
+                  <span className="font-mono text-neutral-700">默认关闭 (需显式开启)</span>
+                </div>
+                <div className="flex items-center justify-between p-2.5 rounded-lg border border-neutral-100 bg-neutral-50/50">
+                  <span className="text-neutral-600 font-medium">配置文件磁盘权限</span>
+                  <span className="font-mono text-neutral-800">0600 (仅当前用户只读写)</span>
+                </div>
+              </div>
+            </div>
 
-          {/* Results */}
-          <div className="flex flex-col gap-2">
-            {saveResult && (
-              <span className={`flex items-center gap-1 text-sm ${saveResult.ok ? 'text-accent-green' : 'text-accent-red'}`}>
-                {saveResult.ok ? <CheckCircle size={16} /> : <XCircle size={16} />}
-                {saveResult.ok ? 'Configuration saved!' : `Save failed: ${saveResult.error}`}
-              </span>
-            )}
-            {testResult && (
-              <span className={`flex items-center gap-1 text-sm ${testResult.ok ? 'text-accent-green' : 'text-accent-red'}`}>
-                {testResult.ok ? <CheckCircle size={16} /> : <XCircle size={16} />}
-                {testResult.ok ? 'LLM connected successfully!' : `Connection failed: ${testResult.error ?? `HTTP ${testResult.status}`}`}
-              </span>
-            )}
+            <div className="p-3 rounded-lg border border-neutral-100 bg-neutral-50/50 text-xs text-neutral-500 leading-relaxed mt-4">
+              提示：若不配置任何 LLM 密钥，Sentinel 将自动启用确定性离线模式，依然能够无损扫描页面、捕获控制台报错、网络失败并生成完整的测试报告。
+            </div>
           </div>
+        </div>
+
+        {/* Bottom Informational Strips */}
+        <div className="border border-neutral-200 bg-neutral-50/60 rounded-xl p-3 text-xs text-neutral-600 font-mono mt-5">
+          全局配置路径: ~/.sentinel/llm.yml · 单价与预算: .sentinel/budget.yml
+        </div>
+        <div className="border border-neutral-200 bg-neutral-50/60 rounded-xl p-3 text-xs text-neutral-500 mt-2">
+          所有 API 密钥仅在与配置的端点交互时读取，不记录在版本控制，也不向任何第三方遥测上报。
         </div>
       </div>
 
-      {/* Next Step Guide — shows after save */}
-      {saveResult?.ok && (
-        <button
-          className="card mb-6 card-interactive w-full text-left"
-          onClick={() => navigate('run')}
-          style={{
-            cursor: 'pointer',
-            borderColor: 'var(--accent-green)',
-            borderLeftWidth: '3px',
-            padding: '1rem 1.25rem',
-            display: 'block',
-          }}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-green)', marginBottom: '0.25rem' }}>
-                ✓ STEP 1 COMPLETE
-              </p>
-              <p style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-                Next: Add a project and run debug
-              </p>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Click here to go to Step 2 → Select your web project folder → Click Run
-              </p>
-            </div>
-            <ArrowRight size={20} style={{ color: 'var(--accent-green)', flexShrink: 0 }} />
-          </div>
-        </button>
-      )}
-
-      {/* Info */}
-      <div className="card">
-        <h3 className="font-semibold mb-3 pb-2 border-b border-color" style={{ borderColor: 'var(--border-color)' }}>
-          Supported Providers
-        </h3>
-        <ul className="text-sm text-secondary flex flex-col gap-2">
-          <li>• <strong>OpenAI Compatible</strong> — OpenAI, MiniMax, DeepSeek, Groq, Together AI, etc.</li>
-          <li>• <strong>Ollama Native</strong> — Local models via Ollama or LM Studio (free, no key)</li>
-        </ul>
+      {/* Bottom Step Navigation */}
+      <div className="border-t border-neutral-100 pt-5 mt-6 flex items-center justify-between">
+        <div className="font-mono text-xs text-neutral-400 font-medium">
+          05 / 05
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate('debug')} className="btn-secondary">
+            <ArrowLeft size={13} /> 上一步: 缺陷工单 (04)
+          </button>
+        </div>
       </div>
     </div>
   );

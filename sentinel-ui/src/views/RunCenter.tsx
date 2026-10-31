@@ -1,13 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { useApp } from '../context/AppState';
 import { apiClient } from '../api/client';
-import type { UiRunRecord, RunSummary } from '../types';
-import { RunSummaryPanel } from '../components/RunSummaryPanel';
-import { Play, Square, Loader, CheckCircle, Terminal, FolderPlus } from 'lucide-react';
+import type { UiRunRecord } from '../types';
+import { Play, Square, Loader, CheckCircle, Terminal, ArrowRight, ArrowLeft } from 'lucide-react';
 
 export function RunCenter() {
-  const { state, setProjects, selectProject } = useApp();
-  const project = state.projects.find(p => p.id === state.selectedProjectId);
+  const { state, navigate } = useApp();
+  const project = state.projects.find((p) => p.id === state.selectedProjectId);
 
   const [isRunning, setIsRunning] = useState(false);
   const [runMode, setRunMode] = useState<'scan' | 'debug' | null>(null);
@@ -15,8 +14,9 @@ export function RunCenter() {
   const [logs, setLogs] = useState<{ time: string; msg: string }[]>([]);
   const pendingRunRef = useRef(false);
   const [stopping, setStopping] = useState(false);
-  const [history, setHistory] = useState<UiRunRecord[]>([]);
-  const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
+  const [, setHistory] = useState<UiRunRecord[]>([]);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
   const projectId = project?.id;
 
   useEffect(() => {
@@ -27,14 +27,16 @@ export function RunCenter() {
         const status = await apiClient.getRunStatus(projectId);
         if (!mounted) return;
         setHistory(status.history);
-        void apiClient.getRunSummary(projectId)
-          .then(summary => { if (mounted) setRunSummary(summary); })
-          .catch(err => { if (mounted) console.error('Failed to load run summary', err); });
         setIsRunning(Boolean(status.active) || pendingRunRef.current);
         const active = status.active;
         if (active) {
           setRunMode(active.mode === 'run' ? 'debug' : 'scan');
-          setLogs(active.events.map(e => ({ time: new Date(active.startedAt).toLocaleTimeString(), msg: e.message })));
+          setLogs(
+            active.events.map((e) => ({
+              time: new Date(active.startedAt).toLocaleTimeString(),
+              msg: e.message,
+            }))
+          );
           setCurrentStep(active.events.at(-1)?.step ?? 0);
         }
       } catch (err) {
@@ -43,47 +45,27 @@ export function RunCenter() {
     };
     void refresh();
     const timer = window.setInterval(() => void refresh(), 1500);
-    return () => { mounted = false; window.clearInterval(timer); };
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
   }, [projectId]);
 
-  const handleAddProject = async (): Promise<void> => {
-    try {
-      // Call backend to open macOS system folder picker
-      const res = await fetch('/api/pick-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      const data = await res.json() as { ok: boolean; path?: string; cancelled?: boolean; error?: string };
-
-      if (data.cancelled || !data.ok) return;
-      if (!data.path) return;
-
-      const path = data.path;
-      const suggestedName = path.split('/').filter(Boolean).at(-1) ?? 'project';
-      const nameInput = window.prompt('Give it a short name (optional):', suggestedName);
-      const name = nameInput?.trim() ? nameInput.trim() : undefined;
-
-      const created = await apiClient.addProject(path, name);
-      const projects = await apiClient.getProjects();
-      setProjects(projects);
-      selectProject(created.id);
-    } catch (err) {
-      window.alert(`Failed to add project: ${String(err)}`);
-    }
-  };
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
 
   if (!project) {
     return (
-      <div className="flex items-center justify-center h-full text-muted">
-        <div className="text-center">
-          <FolderPlus size={48} className="mx-auto mb-4 opacity-40" style={{ color: 'var(--accent-blue)' }} />
-          <p className="mb-2" style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-            Add a project to debug
-          </p>
-          <p className="mb-6" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Select your web project folder, then click Run Debug.
-          </p>
-          <button onClick={handleAddProject} className="btn btn-primary">
-            <FolderPlus size={16} /> Add Project
-          </button>
-        </div>
+      <div className="flex flex-col items-center justify-center h-full py-16 text-center">
+        <div className="text-sm font-semibold text-neutral-800">未选择项目</div>
+        <div className="text-xs text-neutral-400 mt-1 mb-4">请从左侧导航或顶栏选择一个项目工作区。</div>
+        <button
+          onClick={() => navigate('quickstart')}
+          className="btn-primary text-xs"
+        >
+          回到快速启航
+        </button>
       </div>
     );
   }
@@ -93,178 +75,242 @@ export function RunCenter() {
     setIsRunning(true);
     setRunMode(mode);
     setCurrentStep(0);
-    setLogs([{
-      time: new Date().toLocaleTimeString(),
-      msg: mode === 'scan' ? 'Starting project scan…' : 'Starting debug session…',
-    }]);
+    setLogs([
+      {
+        time: new Date().toLocaleTimeString(),
+        msg: mode === 'scan' ? '正在启动项目架构扫描…' : '正在启动全链路缺陷诊断…',
+      },
+    ]);
 
     const runner = mode === 'scan' ? apiClient.scanProject : apiClient.runDebug;
-    const result = await runner(
-      project.id,
-      (step, msg) => {
-        setCurrentStep(step);
-        setLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), msg }]);
-      },
-    );
+    const result = await runner(project.id, (step, msg) => {
+      setCurrentStep(step);
+      setLogs((prev) => [...prev, { time: new Date().toLocaleTimeString(), msg }]);
+    });
     pendingRunRef.current = false;
 
     setIsRunning(false);
-    if (result.success) setCurrentStep(prev => (prev < 6 ? 6 : prev));
-    setLogs(prev => [...prev, {
-      time: new Date().toLocaleTimeString(),
-      msg: result.success
-        ? (mode === 'scan' ? 'Scan complete.' : result.exitCode === 1 ? 'Run completed with P0/P1 findings.' : 'Run complete.')
-        : result.status === 'cancelled' ? (mode === 'scan' ? 'Scan cancelled.' : 'Run cancelled.')
-        : (mode === 'scan' ? 'Scan failed. Check the log above.' : 'Run failed. Check the log above.'),
-    }]);
+    if (result.success) setCurrentStep((prev) => (prev < 6 ? 6 : prev));
+    setLogs((prev) => [
+      ...prev,
+      {
+        time: new Date().toLocaleTimeString(),
+        msg: result.success
+          ? mode === 'scan'
+            ? '扫描已完成。'
+            : result.exitCode === 0
+            ? '诊断完成：未发现致命缺陷。'
+            : '诊断完成：已检出缺陷，报告已生成。'
+          : result.exitCode !== undefined
+          ? `运行异常退出码: ${result.exitCode}`
+          : '运行异常终止',
+      },
+    ]);
   };
 
-  const stopRun = async () => {
+  const stopRun = async (): Promise<void> => {
+    if (!project || stopping) return;
     setStopping(true);
     try {
-      await apiClient.cancelRun(project.id);
-      setLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), msg: 'Cancellation requested.' }]);
+      await fetch(`/api/projects/${encodeURIComponent(project.id)}/run/stop`, {
+        method: 'POST',
+      });
+      setLogs((prev) => [
+        ...prev,
+        { time: new Date().toLocaleTimeString(), msg: '用户请求停止运行…' },
+      ]);
     } catch (err) {
-      setLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), msg: 'Cancellation failed: ' + String(err) }]);
+      console.error('Stop failed', err);
     } finally {
       setStopping(false);
     }
   };
 
-  const steps = [
-    'Checking setup',
-    'Mapping project',
-    'Collecting evidence',
-    'Analyzing bugs',
-    'Planning fixes',
-    'Writing report',
+  const pipelineSteps = [
+    '项目理解与路由扫描 (Mapper)',
+    '用户交互与流程探索 (Sensor)',
+    '用例运行与现场采证 (Runner)',
+    '规则判定与根因分析 (Analyst)',
+    '反向验证与假设剔除 (Critic)',
+    '生成修复杂与留档报告 (Reporter)',
   ];
 
   return (
-    <div className="max-w-4xl mx-auto flex flex-col h-full">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold mb-1">Run Center</h2>
-          <p className="text-secondary text-sm">Execute diagnostic and mapping commands for <strong>{project.name}</strong>.</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            className="btn btn-secondary"
-            onClick={() => runFlow('scan')}
-            disabled={isRunning}
-          >
-            Scan Project
-          </button>
-          <button
-            onClick={() => runFlow('debug')}
-            disabled={isRunning}
-            className={`btn ${isRunning ? 'btn-secondary' : 'btn-primary'}`}
-          >
-            {isRunning ? <Loader className="animate-spin" size={16} /> : <Play size={16} />}
-            {isRunning ? (runMode === 'scan' ? 'Scanning…' : 'Running…') : 'Run Debug'}
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1 min-h-0">
-        {/* Progress Sidebar */}
-        <div className="card md:col-span-1 flex flex-col gap-4">
-          <h3 className="font-medium border-b border-color pb-2" style={{ borderColor: 'var(--border-color)' }}>
-            Progress
-          </h3>
-
-          <div className="flex flex-col gap-3">
-            {steps.map((stepName, idx) => {
-              const stepNumber = idx + 1;
-              const isPast = currentStep > stepNumber;
-              const isCurrent = currentStep === stepNumber;
-
-              return (
-                <div key={idx} className="flex items-center gap-3">
-                  {isPast ? (
-                    <CheckCircle size={18} className="text-accent-green" />
-                  ) : isCurrent ? (
-                    <Loader size={18} className="text-accent-blue animate-spin" />
-                  ) : (
-                    <div
-                      className="w-[18px] h-[18px] rounded-full border-2"
-                      style={{ borderColor: 'var(--border-color)' }}
-                    />
-                  )}
-                  <span
-                    className={`text-sm ${
-                      isCurrent ? 'font-medium text-primary' : isPast ? 'text-secondary' : 'text-muted'
-                    }`}
-                  >
-                    Step {stepNumber}/6: {stepName}
-                  </span>
-                </div>
-              );
-            })}
+    <div className="flex flex-col h-full justify-between">
+      <div>
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-neutral-900 tracking-tight">
+              执行全链路巡检
+            </h2>
+            <p className="text-xs text-neutral-500 mt-1">
+              自动探测页面与接口拓扑，驱动真实无头浏览器采证，并闭环验证修复方案。
+            </p>
           </div>
-
-          <div className="mt-auto pt-4 border-t border-color" style={{ borderColor: 'var(--border-color)' }}>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-muted">Provider:</span>
-              <span>{project.provider}</span>
-            </div>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-muted">Status:</span>
-              <span className={`badge ${project.status === 'fresh' ? 'badge-green' : project.status === 'possibly_stale' ? 'badge-yellow' : 'badge-blue'}`}>
-                {project.status}
-              </span>
-            </div>
+          <div className="border border-neutral-200 rounded px-2.5 py-1 text-xs font-mono text-neutral-500 uppercase tracking-wider">
+            03 / RUN
           </div>
         </div>
 
-        {/* Real-time Logs */}
-        <div
-          className="card md:col-span-2 flex flex-col h-full"
-          style={{ padding: 0, overflow: 'hidden' }}
-        >
-          <div
-            className="p-3 border-b border-color flex items-center justify-between"
-            style={{ backgroundColor: 'var(--bg-surface-elevated)', borderColor: 'var(--border-color)' }}
-          >
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Terminal size={16} /> Console Output
-            </div>
+        {/* Top Status Strip */}
+        <div className="border border-neutral-200 rounded-xl p-3.5 flex items-center justify-between bg-white mt-5">
+          <div className="flex items-center gap-2 text-xs font-medium text-neutral-800">
+            <span
+              className={`status-dot ${isRunning ? 'status-dot-amber' : 'status-dot-green'}`}
+            ></span>
+            <span>
+              {isRunning
+                ? `巡检执行中 (${runMode === 'scan' ? '仅架构扫描' : '全流程诊断'})`
+                : '运行通道就绪 · 等待触发'}
+            </span>
+            <span className="font-mono text-neutral-400">· {project.name}</span>
+          </div>
+
+          <div className="flex items-center gap-2">
             {isRunning && (
-              <button onClick={() => void stopRun()} disabled={stopping} className="btn btn-ghost text-xs py-1 px-2">
-                <Square size={12} fill="currentColor" /> Stop
+              <button
+                onClick={() => void stopRun()}
+                disabled={stopping}
+                className="border border-neutral-200 bg-white rounded-lg px-3 py-1 text-xs text-neutral-700 font-medium hover:bg-neutral-50 transition cursor-pointer flex items-center gap-1.5"
+              >
+                <Square size={12} fill="currentColor" /> 停止运行
               </button>
             )}
           </div>
-          <div
-            className="flex-1 p-4 overflow-y-auto font-mono text-xs"
-            style={{ backgroundColor: '#0d0d0d' }}
-          >
-            {logs.length === 0 ? (
-              <div className="text-muted italic">No logs yet. Click 'Run Debug' to start.</div>
-            ) : (
-              logs.map((l, i) => (
-                <div key={i} className="mb-1" style={{ color: '#e2e8f0' }}>
-                  <span style={{ color: '#64748b' }} className="mr-2">[{l.time}]</span>
-                  {l.msg}
+        </div>
+
+        {/* Two-Card Grid - Responsive */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 mt-4 sm:mt-5">
+          {/* Card 1: 巡检触发与流水线 */}
+          <div className="border border-neutral-200 rounded-xl p-5 bg-white flex flex-col justify-between">
+            <div>
+              <div className="font-bold text-sm text-neutral-900">
+                触发操作与执行状态
+              </div>
+              <div className="text-xs text-neutral-500 mt-1 mb-4">
+                点击一键启动自动化诊断，过程严格遵循黑匣子事件驱动。
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-2 mb-5">
+                <button
+                  onClick={() => runFlow('debug')}
+                  disabled={isRunning}
+                  className="btn-primary flex-1 justify-center"
+                >
+                  {isRunning && runMode === 'debug' ? (
+                    <Loader className="animate-spin" size={14} />
+                  ) : (
+                    <Play size={14} />
+                  )}
+                  {isRunning && runMode === 'debug' ? '全链路诊断中…' : '启动全链路诊断'}
+                </button>
+
+                <button
+                  onClick={() => runFlow('scan')}
+                  disabled={isRunning}
+                  className="btn-secondary"
+                >
+                  {isRunning && runMode === 'scan' ? '扫描中…' : '仅扫描架构'}
+                </button>
+              </div>
+
+              {/* Step indicator */}
+              <div className="flex flex-col gap-2">
+                <div className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1">
+                  智能体流水线阶段
                 </div>
-              ))
-            )}
+                {pipelineSteps.map((name, idx) => {
+                  const stepNumber = idx + 1;
+                  const isDone = currentStep > stepNumber;
+                  const isCurrent = currentStep === stepNumber;
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex items-center gap-2.5 p-2 rounded-lg text-xs transition ${
+                        isCurrent
+                          ? 'bg-neutral-100 font-medium text-black'
+                          : isDone
+                          ? 'text-neutral-500'
+                          : 'text-neutral-400'
+                      }`}
+                    >
+                      {isDone ? (
+                        <CheckCircle size={14} className="text-black flex-shrink-0" />
+                      ) : isCurrent ? (
+                        <span className="w-2 h-2 rounded-full bg-black flex-shrink-0 animate-ping"></span>
+                      ) : (
+                        <span className="w-2 h-2 rounded-full border border-neutral-300 flex-shrink-0"></span>
+                      )}
+                      <span className="font-mono text-neutral-400">0{stepNumber}</span>
+                      <span className="truncate">{name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
+
+          {/* Card 2: 实时日志控制台 */}
+          <div className="border border-neutral-200 rounded-xl p-5 bg-white flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="font-bold text-sm text-neutral-900 flex items-center gap-1.5">
+                  <Terminal size={14} /> 运行事件与标准输出
+                </div>
+                <span className="font-mono text-xs text-neutral-400">
+                  {logs.length} 行记录
+                </span>
+              </div>
+              <div className="text-xs text-neutral-500 mb-3">
+                实时捕获 Bus 事件与智能体通讯流水。
+              </div>
+
+              {/* Console window (Clean black box) */}
+              <div className="w-full h-[260px] bg-black rounded-lg p-3.5 overflow-y-auto font-mono text-xs text-neutral-300 leading-relaxed border border-neutral-800">
+                {logs.length === 0 ? (
+                  <div className="text-neutral-500 italic py-4 text-center">
+                    准备就绪。点击左侧按钮启动诊断。
+                  </div>
+                ) : (
+                  logs.map((l, i) => (
+                    <div key={i} className="mb-1">
+                      <span className="text-neutral-500 mr-2">[{l.time}]</span>
+                      <span className="text-neutral-200">{l.msg}</span>
+                    </div>
+                  ))
+                )}
+                <div ref={logsEndRef} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Informational Strips */}
+        <div className="border border-neutral-200 bg-neutral-50/60 rounded-xl p-3 text-xs text-neutral-600 font-mono mt-5">
+          事件录制: events.ndjson 持续落盘 · 宪法红线 6「案例永久留档」已激活
+        </div>
+        <div className="border border-neutral-200 bg-neutral-50/60 rounded-xl p-3 text-xs text-neutral-500 mt-2">
+          若浏览器探针发现 HTTP 5xx 或致命错误，将自动截图存证并注入根因分析链。
         </div>
       </div>
-      {runSummary && <div className="mt-4"><RunSummaryPanel summary={runSummary} /></div>}
-      {history.length > 0 && (
-        <div className="mt-4 text-sm" aria-label="Recent runs">
-          <h3 className="font-medium mb-2">Recent runs</h3>
-          <div className="flex flex-wrap gap-3 text-secondary">
-            {history.slice(0, 5).map(run => (
-              <span key={run.id} title={new Date(run.startedAt).toLocaleString()}>
-                {run.mode === 'scan' ? 'Scan' : 'Debug'} · {run.status} · {new Date(run.startedAt).toLocaleString()}
-              </span>
-            ))}
-          </div>
+
+      {/* Bottom Step Navigation */}
+      <div className="border-t border-neutral-100 pt-5 mt-6 flex items-center justify-between">
+        <div className="font-mono text-xs text-neutral-400 font-medium">
+          03 / 05
         </div>
-      )}
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate('overview')} className="btn-secondary">
+            <ArrowLeft size={13} /> 02 诊断概览
+          </button>
+          <button onClick={() => navigate('debug')} className="btn-secondary">
+            下一步: 缺陷工单 (04) <ArrowRight size={13} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

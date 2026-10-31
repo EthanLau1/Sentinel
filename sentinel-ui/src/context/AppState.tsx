@@ -3,11 +3,13 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import type { ReactNode } from 'react';
 import type { Project } from '../types';
 
+export type ViewType = 'quickstart' | 'overview' | 'run' | 'debug' | 'settings' | 'home';
+
 interface AppState {
   projects: Project[];
   selectedProjectId: string | null;
   sidebarCollapsed: boolean;
-  currentView: 'home' | 'overview' | 'run' | 'debug' | 'settings';
+  currentView: ViewType;
 }
 
 interface AppContextType {
@@ -23,7 +25,7 @@ const initialState: AppState = {
   projects: [],
   selectedProjectId: null,
   sidebarCollapsed: false,
-  currentView: 'home',
+  currentView: 'quickstart',
 };
 
 const STORAGE_KEY = 'sentinel.ui.state.v1';
@@ -33,10 +35,11 @@ function loadInitialState(): AppState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return initialState;
     const saved = JSON.parse(raw) as Partial<AppState>;
+    const view = saved.currentView === 'home' ? 'quickstart' : saved.currentView;
     return {
       ...initialState,
       selectedProjectId: typeof saved.selectedProjectId === 'string' ? saved.selectedProjectId : null,
-      currentView: saved.currentView ?? 'home',
+      currentView: view ?? 'quickstart',
       sidebarCollapsed: saved.sidebarCollapsed === true,
     };
   } catch {

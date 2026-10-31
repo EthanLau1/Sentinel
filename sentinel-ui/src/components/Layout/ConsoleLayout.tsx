@@ -1,84 +1,156 @@
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ProjectList } from '../Sidebar/ProjectList';
-import { Settings, Shield, Cpu } from 'lucide-react';
 import { useApp } from '../../context/AppState';
+import { Play, Plus } from 'lucide-react';
+import { apiClient } from '../../api/client';
 
 interface ConsoleLayoutProps {
   children: ReactNode;
 }
 
 export function ConsoleLayout({ children }: ConsoleLayoutProps) {
-  const { state, navigate } = useApp();
-  const activeProject = state.projects.find(p => p.id === state.selectedProjectId);
-  const providerLabel = activeProject?.provider ?? 'Global Default';
+  const { state, navigate, selectProject, setProjects } = useApp();
+  const currentProject = state.projects.find((p) => p.id === state.selectedProjectId);
+  const [activeModel, setActiveModel] = useState<string>('LM Studio');
+
+  useEffect(() => {
+    fetch('/api/settings?scope=global')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data || !data.configured) return;
+        const name =
+          data.providerName ||
+          (data.baseUrl?.includes('1234')
+            ? 'LM Studio'
+            : data.baseUrl?.includes('11434')
+            ? 'Ollama'
+            : data.baseUrl?.includes('8000')
+            ? 'vLLM'
+            : '云端 API');
+        setActiveModel(name);
+      })
+      .catch(() => {});
+  }, [state.currentView]);
+
+  const handleQuickAddProject = async (): Promise<void> => {
+    try {
+      const res = await fetch('/api/pick-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = (await res.json()) as { ok: boolean; path?: string; cancelled?: boolean; error?: string };
+
+      if (data.cancelled || !data.ok || !data.path) return;
+
+      const path = data.path;
+      const suggestedName = path.split('/').filter(Boolean).at(-1) ?? 'project';
+      const created = await apiClient.addProject(path, suggestedName);
+      const projects = await apiClient.getProjects();
+      setProjects(projects);
+      selectProject(created.id);
+      navigate('overview');
+    } catch (err) {
+      window.alert(`添加项目失败: ${String(err)}`);
+    }
+  };
 
   return (
-    <div className="flex flex-col h-full w-full" style={{ backgroundColor: 'var(--bg-base)' }}>
-      {/* Top Header */}
-      <header
-        className="flex items-center justify-between px-4"
-        style={{
-          height: 'var(--header-height)',
-          borderBottom: '1px solid var(--border-color)',
-          backgroundColor: 'var(--bg-surface)',
-          backdropFilter: 'blur(12px)',
-        }}
-      >
-        <div className="flex items-center gap-3">
+    <div
+      className="w-full min-h-screen py-3 sm:py-5 px-2 sm:px-4 flex flex-col justify-between"
+      style={{ backgroundColor: 'var(--bg-page)' }}
+    >
+      {/* Top Bar - Fully Responsive Wrap */}
+      <div className="max-w-6xl w-full mx-auto flex flex-wrap items-center justify-between gap-3 mb-3 px-1">
+        <div className="flex items-center gap-2.5">
           <div
-            className="flex items-center justify-center rounded-md"
-            style={{
-              background: 'var(--gradient-brand)',
-              width: '28px',
-              height: '28px',
-              boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)',
-            }}
+            onClick={() => navigate('quickstart')}
+            className="w-8 h-8 bg-black rounded-lg text-white font-bold flex items-center justify-center text-sm tracking-wider shadow-sm cursor-pointer hover:bg-neutral-800 transition"
+            title="回到快速启航"
           >
-            <Shield size={16} color="white" />
+            S
           </div>
-          <h1 className="font-semibold" style={{ fontSize: '0.95rem', letterSpacing: '-0.02em' }}>
-            Sentinel Console
-          </h1>
-          <span
-            className="text-xs font-mono"
-            style={{
-              color: 'var(--text-muted)',
-              padding: '2px 6px',
-              background: 'var(--bg-surface-elevated)',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--border-color)',
-            }}
-          >
-            v0.2
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-sm text-neutral-900 tracking-tight">Sentinel</span>
+            <span className="text-tiny font-mono text-neutral-400 border border-neutral-200 px-1 py-0.5 rounded bg-white">
+              v0.2.1
+            </span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-4 text-sm">
-          <div className="flex items-center gap-2 console-header-provider" style={{ color: 'var(--text-secondary)' }}>
-            <Cpu size={14} style={{ color: 'var(--accent-blue)' }} />
-            <span className="status-dot status-dot-green" />
-            <span style={{ fontSize: '0.75rem' }}>{providerLabel}</span>
-          </div>
-          <button aria-label="Open settings" onClick={() => navigate('settings')} className="btn btn-ghost" style={{ padding: '0.25rem 0.5rem' }}>
-            <Settings size={16} />
+        {/* Global Quick Actions */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Active Model Pill */}
+          <button
+            onClick={() => navigate('quickstart')}
+            className="border border-neutral-200 bg-white rounded-lg px-2.5 py-1 text-xs text-neutral-700 font-medium hover:border-black transition flex items-center gap-1.5 cursor-pointer shadow-sm min-h-[30px]"
+            title="点击切换模型"
+          >
+            <span className="status-dot status-dot-green"></span>
+            <span className="text-neutral-400 text-tiny">模型:</span>
+            <span className="text-neutral-800 font-semibold">{activeModel}</span>
           </button>
+
+          {/* Quick Project Switcher */}
+          {state.projects.length > 0 && (
+            <div className="flex items-center gap-1 border border-neutral-200 bg-white rounded-lg px-2 py-1 text-xs shadow-sm min-h-[30px]">
+              <span className="text-neutral-400 text-tiny">项目:</span>
+              <select
+                value={state.selectedProjectId ?? ''}
+                onChange={(e) => {
+                  if (e.target.value) selectProject(e.target.value);
+                }}
+                className="bg-transparent border-0 text-xs font-semibold text-neutral-800 focus:outline-none cursor-pointer max-w-[130px] truncate"
+              >
+                {state.projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleQuickAddProject}
+                className="hover:text-black text-neutral-400 p-0.5 transition cursor-pointer"
+                title="导入新项目"
+              >
+                <Plus size={12} />
+              </button>
+            </div>
+          )}
+
+          {/* Re-run button */}
+          {currentProject && (
+            <button
+              onClick={() => navigate('run')}
+              className="bg-black hover:bg-neutral-800 text-white rounded-lg px-3 py-1 text-xs font-medium transition flex items-center gap-1 cursor-pointer shadow-sm min-h-[30px]"
+            >
+              <Play size={10} fill="white" />
+              <span>重新巡检</span>
+            </button>
+          )}
         </div>
-      </header>
+      </div>
 
-      {/* Main Layout */}
-      <div className="flex flex-1 overflow-hidden console-body">
-        {/* Sidebar */}
-        <aside className="console-sidebar" style={{ width: 'var(--sidebar-width)', flexShrink: 0 }}>
-          <ProjectList />
-        </aside>
+      {/* Main Card - Fluid & Adaptive (No fixed min-height) */}
+      <div className="max-w-6xl w-full mx-auto bg-white border border-neutral-200 rounded-2xl shadow-card p-4 sm:p-6 lg:p-7 flex-1 flex flex-col min-h-0">
+        <div className="flex flex-col md:flex-row gap-5 md:gap-7 flex-1 min-h-0">
+          {/* Left: Sidebar (Responsive) */}
+          <aside className="w-full md:w-[180px] lg:w-[200px] flex-shrink-0">
+            <ProjectList />
+          </aside>
 
-        {/* Main Content */}
-        <main
-          className="flex-1 overflow-y-auto p-6 relative console-main"
-          style={{ backgroundColor: 'var(--bg-base)' }}
-        >
-          {children}
-        </main>
+          {/* Right: Main Content (Responsive) */}
+          <main className="flex-1 min-w-0 flex flex-col justify-between md:pl-6 md:border-l md:border-neutral-100">
+            {children}
+          </main>
+        </div>
+      </div>
+
+      {/* Clean Footer */}
+      <div className="max-w-6xl w-full mx-auto flex items-center justify-between mt-2.5 px-2 text-tiny text-neutral-400 font-mono">
+        <div>Sentinel · 本地沙箱</div>
+        <div>127.0.0.1:4317</div>
       </div>
     </div>
   );

@@ -1,12 +1,13 @@
 import { useEffect } from 'react';
 import { ConsoleLayout } from './components/Layout/ConsoleLayout';
-import { Home } from './views/Home';
+import { QuickStart } from './views/QuickStart';
 import { ProjectOverview } from './views/ProjectOverview';
 import { RunCenter } from './views/RunCenter';
 import { DebugWorkspace } from './views/DebugWorkspace';
 import { Settings } from './views/Settings';
 import { useApp } from './context/AppState';
 import { apiClient } from './api/client';
+import { AppProvider } from './context/AppState';
 
 function AppContent(): React.JSX.Element {
   const { state, setProjects } = useApp();
@@ -21,16 +22,16 @@ function AppContent(): React.JSX.Element {
 
   return (
     <ConsoleLayout>
-      {state.currentView === 'home' && <Home />}
-      {state.currentView === 'overview' && <ProjectOverview key={state.selectedProjectId ?? 'none'} />}
+      {(state.currentView === 'quickstart' || state.currentView === 'home') && <QuickStart />}
+      {state.currentView === 'overview' && (
+        <ProjectOverview key={state.selectedProjectId ?? 'none'} />
+      )}
       {state.currentView === 'run' && <RunCenter key={state.selectedProjectId ?? 'none'} />}
       {state.currentView === 'debug' && <DebugWorkspace />}
       {state.currentView === 'settings' && <Settings />}
     </ConsoleLayout>
   );
 }
-
-import { AppProvider } from './context/AppState';
 
 export default function App(): React.JSX.Element {
   return (

@@ -1,146 +1,116 @@
-import { Plus, Folder, Clock, ShieldAlert, Home, Play, Bug, Settings } from 'lucide-react';
 import { useApp } from '../../context/AppState';
 import { apiClient } from '../../api/client';
+import { Plus } from 'lucide-react';
 
 export function ProjectList() {
   const { state, selectProject, setProjects, navigate } = useApp();
 
   const handleAddProject = async (): Promise<void> => {
     try {
-      // Open macOS system folder picker via backend
-      const res = await fetch('/api/pick-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      const data = await res.json() as { ok: boolean; path?: string; cancelled?: boolean; error?: string };
+      const res = await fetch('/api/pick-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = (await res.json()) as { ok: boolean; path?: string; cancelled?: boolean; error?: string };
 
       if (data.cancelled || !data.ok || !data.path) return;
 
       const path = data.path;
       const suggestedName = path.split('/').filter(Boolean).at(-1) ?? 'project';
-      const nameInput = window.prompt('Give it a short name (optional):', suggestedName);
+      const nameInput = window.prompt('项目显示名称（可选）：', suggestedName);
       const name = nameInput?.trim() ? nameInput.trim() : undefined;
 
       const created = await apiClient.addProject(path, name);
       const projects = await apiClient.getProjects();
       setProjects(projects);
       selectProject(created.id);
+      navigate('overview');
     } catch (err) {
-      window.alert(`Failed to add project: ${String(err)}`);
+      window.alert(`添加项目失败: ${String(err)}`);
     }
   };
 
   const navItems = [
-    { id: 'home' as const, icon: Home, label: 'Home' },
-    { id: 'run' as const, icon: Play, label: 'Run' },
-    { id: 'debug' as const, icon: Bug, label: 'Debug' },
-    { id: 'settings' as const, icon: Settings, label: 'Settings' },
+    { id: 'quickstart' as const, step: '01', title: '快速启航' },
+    { id: 'overview' as const, step: '02', title: '诊断概览' },
+    { id: 'run' as const, step: '03', title: '执行巡检' },
+    { id: 'debug' as const, step: '04', title: '缺陷工单' },
+    { id: 'settings' as const, step: '05', title: '规则配置' },
   ];
 
+  const currentView = state.currentView === 'home' ? 'quickstart' : state.currentView;
+
   return (
-    <div
-      className="flex flex-col h-full"
-      style={{
-        borderRight: '1px solid var(--border-color)',
-        backgroundColor: 'var(--bg-surface)',
-      }}
-    >
-      {/* Section Header */}
-      <div className="px-4 py-3 project-section-title" style={{ borderBottom: '1px solid var(--border-color)' }}>
-        <h2
-          className="text-xs font-semibold"
-          style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}
-        >
-          Projects
-        </h2>
-      </div>
+    <div className="flex flex-col h-full justify-between pr-0 md:pr-2">
+      <div>
+        <div className="text-tiny font-semibold text-neutral-400 tracking-wider mb-2.5 uppercase">
+          工作区导航
+        </div>
 
-      {/* Project List */}
-      <div className="flex-1 overflow-y-auto py-2 project-items">
-        {state.projects.length === 0 && (
-          <div className="px-4 py-6 text-center">
-            <Folder size={24} className="mx-auto mb-2" style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No projects yet</p>
-          </div>
-        )}
-
-        {state.projects.map(project => {
-          const isSelected = project.id === state.selectedProjectId;
-          const hasP0 = project.stats.p0 > 0;
-
-          return (
-            <button
-              key={project.id}
-              onClick={() => selectProject(project.id)}
-              className={`px-3 py-3 mx-2 mb-1 cursor-pointer rounded-md transition-colors text-left w-[calc(100%-1rem)] ${isSelected ? 'accent-bar-left' : ''}`}
-              style={{
-                backgroundColor: isSelected ? 'var(--bg-surface-elevated)' : 'transparent',
-                paddingLeft: isSelected ? '1rem' : '0.75rem',
-                border: '0',
-              }}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <Folder size={14} style={{ color: isSelected ? 'var(--accent-blue)' : 'var(--text-muted)' }} />
-                <span
-                  className="font-medium truncate"
-                  style={{
-                    fontSize: '0.8125rem',
-                    color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  }}
-                >
-                  {project.name}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-3" style={{ paddingLeft: '1.375rem' }}>
-                <div className="flex items-center gap-1" style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-                  <ShieldAlert size={11} style={{ color: hasP0 ? 'var(--accent-red)' : 'var(--text-muted)' }} />
-                  <span>P0 {project.stats.p0}</span>
-                  <span style={{ color: 'var(--border-focus)' }}>/</span>
-                  <span>P1 {project.stats.p1}</span>
-                  <span style={{ color: 'var(--border-focus)' }}>/</span>
-                  <span>P2 {project.stats.p2}</span>
-                </div>
-              </div>
-
-              <div
-                className="flex items-center justify-between"
-                style={{ paddingLeft: '1.375rem', marginTop: '0.25rem', fontSize: '0.625rem', color: 'var(--text-muted)' }}
+        {/* Clean, high-density nav items with balanced line height */}
+        <div className="flex flex-col gap-1">
+          {navItems.map((item) => {
+            const isActive = currentView === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => navigate(item.id)}
+                className={`w-full px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition inline-flex items-center justify-between cursor-pointer min-h-[36px] ${
+                  isActive
+                    ? 'bg-black text-white shadow-sm font-semibold'
+                    : 'text-neutral-600 hover:text-black hover:bg-neutral-100'
+                }`}
               >
-                <span className="flex items-center gap-1">
-                  <Clock size={9} /> {project.lastRunTime}
+                <span>{item.title}</span>
+                <span className={`font-mono text-tiny ${isActive ? 'text-neutral-400' : 'text-neutral-400'}`}>
+                  {item.step}
                 </span>
-                <span>{project.provider}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Project Selector */}
+        <div className="mt-6 pt-4 border-t border-neutral-100 flex flex-col gap-2">
+          <div className="text-tiny font-semibold text-neutral-400 tracking-wider uppercase">
+            当前绑定项目
+          </div>
+
+          <div className="flex flex-col gap-1.5 mt-0.5">
+            {state.projects.length > 0 ? (
+              <select
+                value={state.selectedProjectId ?? ''}
+                onChange={(e) => {
+                  if (e.target.value) selectProject(e.target.value);
+                }}
+                className="w-full border border-neutral-200 bg-white rounded-lg px-2.5 py-1.5 text-xs text-neutral-800 focus:outline-none focus:border-black transition font-medium min-h-[34px]"
+              >
+                {state.projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="text-xs text-neutral-400 bg-neutral-50 p-2 rounded-lg border border-neutral-100">
+                暂未绑定项目
               </div>
-            </button>
-          );
-        })}
-      </div>
+            )}
 
-      {/* Navigation */}
-      <div className="px-3 py-3 flex flex-col gap-1 project-nav" style={{ borderTop: '1px solid var(--border-color)' }}>
-        {navItems.map(item => {
-          const isActive = state.currentView === item.id || (item.id === 'home' && state.currentView === 'overview');
-          return (
             <button
-              key={item.id}
-              className={`nav-btn ${isActive ? 'active' : ''}`}
-              onClick={() => navigate(item.id === 'home' ? 'home' : item.id)}
+              onClick={handleAddProject}
+              className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-neutral-300 rounded-lg py-1.5 text-xs text-neutral-600 hover:border-black hover:text-black transition cursor-pointer font-medium min-h-[34px]"
             >
-              <item.icon size={16} />
-              {item.label}
+              <Plus size={12} />
+              <span>添加项目</span>
             </button>
-          );
-        })}
+          </div>
+        </div>
       </div>
 
-      {/* Add Project */}
-      <div className="px-3 pb-3 project-add">
-        <button
-          className="btn btn-secondary w-full justify-center"
-          onClick={handleAddProject}
-          title="Add a project path"
-          style={{ fontSize: '0.75rem' }}
-        >
-          <Plus size={14} /> Add Project
-        </button>
+      <div className="text-tiny text-neutral-400 pt-3 border-t border-neutral-100 mt-4">
+        本地环境 · 源码隔离
       </div>
     </div>
   );

@@ -159,14 +159,12 @@ bun packages/cli/src/index.ts run --demo
 
 在 Web 控制台里：
 
-1. **Settings** —— 填 LLM provider（API Key + 模型名），可以存成全局默认，所有项目共用
-2. **Add Project** —— 选你的项目文件夹
-3. **Run** —— 点一下，Sentinel 会：
-   - 在你的项目里建 `.sentinel/` 目录，并**自动启动你的 dev server**（bun / pnpm / yarn / npm 都认）
-   - 发现公开页面和安全的 GET 接口，跑浏览器 / API 断言
-   - 把证据、发现、覆盖缺口、运行摘要写进你的项目
-   - **只有证据支持根因时**才提修复建议
-4. **看结果** —— bug 列表 → 点开看详情 → 看推荐修复和它的证据
+1. **01 快速启航 (Quick Start)** —— 选择推理模型（开箱支持 LM Studio、Ollama、云端通用 API、vLLM、零配置演示模式），一键选定本地项目目录直接开始。
+2. **02 诊断概览 (Overview)** —— 直观查看项目最近一次巡检结果：致命 (P0)、严重 (P1)、普通 (P2/P3) 缺陷数量，并可一键预览或导出 Markdown / JSON 报告。
+3. **03 执行巡检 (Run)** —— 一键发起架构扫描 (Scan) 或全链路诊断 (Debug)，实时查看 6 步推进可视化与流式日志终端。
+4. **04 缺陷工单 (Debug)** —— 审查现场异常证据、根因分析链与 AI 自动生成的差异补丁，一键复制 `git apply` 命令修复代码。
+5. **05 规则配置 (Settings)** —— 管理全局或单项目专属的 `.sentinel/llm.yml` 覆盖与安全护栏。
+*顶栏常驻操作条：支持多项目下拉秒切、当前活跃模型状态显示与一键重新巡检。*
 
 **English**
 
@@ -178,14 +176,12 @@ running it just opens the browser instead of starting a second copy. **To stop i
 
 In the web console:
 
-1. **Settings** — set up your LLM provider (API key + model name). You can save it as the global default, shared by all projects.
-2. **Add Project** — pick your project folder.
-3. **Run** — one click, and Sentinel will:
-   - create the `.sentinel/` directory in your project and **start your dev server for you** (bun, pnpm, yarn, and npm are all recognised)
-   - discover public pages and safe GET endpoints, then run browser and API assertions
-   - write evidence, findings, coverage gaps, and a run summary back into your project
-   - **only propose a fix when the evidence supports a root cause**
-4. **Read the result** — bug list → open a bug for details → see the recommended fix and the evidence behind it.
+1. **01 Quick Start** — choose your model connection (LM Studio, Ollama, Cloud API, vLLM, or Zero-Config Demo), select your project folder, and start with one click.
+2. **02 Overview** — see your latest run summary: counts of Critical (P0), High (P1), and Medium (P2/P3) defects, and export Markdown/JSON reports in one click.
+3. **03 Run** — trigger architecture scan or deep debug with real-time 6-step progress and streaming terminal logs.
+4. **04 Debug** — inspect runtime evidence, root-cause reasoning, and auto-generated code patches with one-click `git apply` commands.
+5. **05 Settings** — manage global or per-project `.sentinel/llm.yml` overrides and budget guardrails.
+*Global header bar: instant project switcher, active model indicator, and quick re-run action.*
 
 ---
 
@@ -645,6 +641,14 @@ like "not needed".
   **Only Next.js auto-discovers pages and APIs** — the other 12 stacks are recognized but
   produce no measurable target until you write `.sentinel/app.map.ts` by hand
   (see the capability matrix in section 8)
+- **Web 控制台本地模型自动守护拉起尚未实现** —— LM Studio / Ollama 仍需用户在后台先手动启动，控制台目前只负责 HTTP 连通性探测 (Ping)，不会自动执行终端命令在系统后台静默拉起守护进程
+  **Local model auto-daemon startup not implemented** — LM Studio and Ollama must still be launched manually by the user; the console currently performs HTTP connectivity probing only.
+- **缺陷工单看板状态流转尚未实现** —— 缺陷按巡检批次直接呈现，暂不支持在 UI 界面中交互式将 Bug 标记为"处理中"或"已解决"等状态暂存流转
+  **Defect lifecycle Kanban transitions not implemented** — findings are grouped per run session; interactive status transitions (Resolved / In-Progress) are planned for next milestones.
+- **多批次巡检报告在线对比 (Diffing) 尚未实现** —— 历史运行版本仅存盘留档，控制台内尚未提供图形化的两次运行结果对比视图
+  **Multi-run diff comparison not implemented** — run history is archived to disk, but in-console visual diffing between two separate inspection runs is not yet built.
+- **移动端深度交互尚未专门优化** —— 虽然已经支持响应式折叠与单栏流动排版，但核心体验依然面向桌面开发者浏览器（宽屏优先）
+  **Mobile-first workflows not deeply optimized** — while responsive stacking is supported, primary ergonomics are optimized for desktop browser developer workflows.
 
 ---
 
